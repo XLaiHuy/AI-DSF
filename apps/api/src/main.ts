@@ -18,7 +18,7 @@ export async function bootstrap() {
     const config = app.get(ConfigService)
     const uploadMax = z.coerce.number().int().positive().parse(config.get('UPLOAD_MAX_MB', '20'))
     await app.register(cookie, { secret: config.getOrThrow<string>('JWT_SECRET') })
-    await app.register(multipart, { limits: { files: 6, fileSize: Math.min(10, uploadMax) * mib } })
+    await app.register(multipart, { limits: { files: 6, fileSize: uploadMax * mib } })
     const webPort = port.parse(config.get('WEB_PORT', '3000'))
     app.enableCors({
       origin: [`http://localhost:${webPort}`, `http://127.0.0.1:${webPort}`],

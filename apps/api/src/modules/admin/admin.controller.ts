@@ -1,7 +1,9 @@
-import { Controller, Post, Get, Patch } from '@nestjs/common'
+import { Controller, Post, Get, Patch, UseGuards } from '@nestjs/common'
+import { AdminGuard } from '../../common/admin.guard'
 import { AdminService } from './admin.service'
 
 @Controller('admin')
+@UseGuards(AdminGuard)
 export class AdminController {
   constructor(private readonly service: AdminService) {}
 
@@ -20,7 +22,7 @@ export class AdminController {
     return this.service.pending()
   }
 
-  @Patch('products')
+  @Patch('products/:id')
   updateProduct() {
     return this.service.pending()
   }

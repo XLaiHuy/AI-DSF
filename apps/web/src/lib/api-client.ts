@@ -16,7 +16,7 @@ export class ApiError extends Error {
 type ApiOptions<T> = Omit<RequestInit, 'method' | 'body' | 'credentials'> & { schema?: ZodType<T> }
 
 async function request<T>(
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   data?: unknown,
   options: ApiOptions<T> = {},
@@ -63,4 +63,5 @@ export const apiClient = {
   post: <T = unknown>(path: string, data?: unknown, options?: ApiOptions<T>) => request('POST', path, data, options),
   put: <T = unknown>(path: string, data?: unknown, options?: ApiOptions<T>) => request('PUT', path, data, options),
   patch: <T = unknown>(path: string, data?: unknown, options?: ApiOptions<T>) => request('PATCH', path, data, options),
+  delete: <T = unknown>(path: string, options?: ApiOptions<T>) => request('DELETE', path, undefined, options),
 }
