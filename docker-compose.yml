@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: fincopilot
+      POSTGRES_PASSWORD: fincopilot
+      POSTGRES_DB: fincopilot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U fincopilot -d fincopilot"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  postgres_data:

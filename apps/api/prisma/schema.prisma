@@ -1,0 +1,300 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Source: docs/specs/sources/erd.dbml. Status values are varchar columns in the ERD.
+
+model SchemaMigration {
+  version     String   @id @db.VarChar(100)
+  description String   @db.VarChar(200)
+  appliedAt   DateTime @default(now()) @map("applied_at") @db.Timestamptz(6)
+
+  @@map("schema_migrations")
+}
+
+model MarketSource {
+  id                 String          @id @db.Uuid
+  sourceKey          String          @unique @map("source_key") @db.VarChar(160)
+  name               String          @db.VarChar(200)
+  sourceType         String          @map("source_type") @db.VarChar(24)
+  endpointUrl        String          @map("endpoint_url") @db.Text
+  isTrustedForAlerts Boolean         @default(false) @map("is_trusted_for_alerts")
+  isActive           Boolean         @default(true) @map("is_active")
+  lastFetchStatus    String?         @map("last_fetch_status") @db.VarChar(10)
+  lastAttemptAt      DateTime?       @map("last_attempt_at") @db.Timestamptz(6)
+  lastSuccessAt      DateTime?       @map("last_success_at") @db.Timestamptz(6)
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime        @default(now()) @map("updated_at") @db.Timestamptz(6)
+  articles           ArticleSource[]
+
+  @@map("market_source")
+}
+
+model MarketArticle {
+  id             String                  @id @db.Uuid
+  canonicalUrl   String                  @unique @map("canonical_url") @db.Text
+  title          String                  @db.Text
+  publishedAt    DateTime?               @map("published_at") @db.Timestamptz(6)
+  contentHash    String                  @map("content_hash") @db.VarChar(64)
+  duplicateOfId  String?                 @map("duplicate_of_id") @db.Uuid
+  feedStatus     String                  @default("ACTIVE") @map("feed_status") @db.VarChar(10)
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                @default(now()) @map("updated_at") @db.Timestamptz(6)
+  duplicateOf    MarketArticle?          @relation("ArticleDuplicates", fields: [duplicateOfId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  duplicates     MarketArticle[]         @relation("ArticleDuplicates")
+  sources        ArticleSource[]
+  categories     ArticleCategory[]
+  impactAnalyses ArticleImpactAnalysis[]
+
+  @@map("market_article")
+}
+
+model ArticleSource {
+  articleId           String           @map("article_id") @db.Uuid
+  sourceId            String           @map("source_id") @db.Uuid
+  sourceUrl           String           @map("source_url") @db.Text
+  normalizedSourceUrl String           @map("normalized_source_url") @db.Text
+  firstSeenAt         DateTime         @map("first_seen_at") @db.Timestamptz(6)
+  lastSeenAt          DateTime         @map("last_seen_at") @db.Timestamptz(6)
+  article             MarketArticle    @relation(fields: [articleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  source              MarketSource     @relation(fields: [sourceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  threatEvidence      ThreatEvidence[]
+
+  @@id([articleId, sourceId])
+  @@map("article_source")
+}
+
+model ArticleCategory {
+  articleId    String        @map("article_id") @db.Uuid
+  categoryCode String        @map("category_code") @db.VarChar(30)
+  article      MarketArticle @relation(fields: [articleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([articleId, categoryCode])
+  @@map("article_category")
+}
+
+model ThreatAlert {
+  id                 String            @id @db.Uuid
+  threatCategory     String            @map("threat_category") @db.VarChar(40)
+  tacticSummary      String            @map("tactic_summary") @db.Text
+  preventionGuidance String            @map("prevention_guidance") @db.Text
+  verificationStatus String            @default("UNVERIFIED") @map("verification_status") @db.VarChar(20)
+  issuedAt           DateTime?         @map("issued_at") @db.Timestamptz(6)
+  publishedAt        DateTime?         @map("published_at") @db.Timestamptz(6)
+  verifiedAt         DateTime?         @map("verified_at") @db.Timestamptz(6)
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
+  evidence           ThreatEvidence[]
+  indicators         ThreatIndicator[]
+
+  @@map("threat_alert")
+}
+
+model ThreatEvidence {
+  threatAlertId String        @map("threat_alert_id") @db.Uuid
+  articleId     String        @map("article_id") @db.Uuid
+  sourceId      String        @map("source_id") @db.Uuid
+  addedAt       DateTime      @default(now()) @map("added_at") @db.Timestamptz(6)
+  threatAlert   ThreatAlert   @relation(fields: [threatAlertId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  articleSource ArticleSource @relation(fields: [articleId, sourceId], references: [articleId, sourceId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([threatAlertId, articleId, sourceId])
+  @@index([articleId, sourceId])
+  @@map("threat_evidence")
+}
+
+model ThreatIndicator {
+  id               String            @id @db.Uuid
+  threatAlertId    String            @map("threat_alert_id") @db.Uuid
+  indicatorText    String            @map("indicator_text") @db.Text
+  indicatorType    String            @map("indicator_type") @db.VarChar(50)
+  threatAlert      ThreatAlert       @relation(fields: [threatAlertId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  forensicFindings ForensicFinding[]
+
+  @@map("threat_indicator")
+}
+
+model User {
+  id                  String               @id @db.Uuid
+  email               String               @unique @db.VarChar(255)
+  fullName            String?              @map("full_name") @db.VarChar(150)
+  authProvider        String               @default("EMAIL") @map("auth_provider") @db.VarChar(30)
+  providerUserId      String?              @map("provider_user_id") @db.VarChar(255)
+  passwordHash        String?              @map("password_hash") @db.Text
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime             @default(now()) @map("updated_at") @db.Timestamptz(6)
+  financialProfile    FinancialProfile?
+  calculationSessions CalculationSession[]
+  forensicAudits      ForensicAudit[]
+
+  @@map("users")
+}
+
+model FinancialProfile {
+  id                     String                  @id @db.Uuid
+  userId                 String?                 @unique @map("user_id") @db.Uuid
+  guestSessionId         String?                 @unique @map("guest_session_id") @db.Uuid
+  monthlyIncomeVnd       Decimal?                @map("monthly_income_vnd") @db.Decimal(18, 2)
+  monthlyExpenseVnd      Decimal?                @map("monthly_expense_vnd") @db.Decimal(18, 2)
+  existingDebtPaymentVnd Decimal?                @map("existing_debt_payment_vnd") @db.Decimal(18, 2)
+  liquidSavingsVnd       Decimal?                @map("liquid_savings_vnd") @db.Decimal(18, 2)
+  riskAppetite           String                  @default("BALANCED") @map("risk_appetite") @db.VarChar(20)
+  primaryGoal            String                  @default("BORROW_SAFE") @map("primary_goal") @db.VarChar(30)
+  createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                @default(now()) @map("updated_at") @db.Timestamptz(6)
+  user                   User?                   @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  impactAnalyses         ArticleImpactAnalysis[]
+  calculationSessions    CalculationSession[]
+
+  @@map("financial_profiles")
+}
+
+model ArticleImpactAnalysis {
+  id                 String            @id @db.Uuid
+  articleId          String            @map("article_id") @db.Uuid
+  profileId          String?           @map("profile_id") @db.Uuid
+  analysisMode       String            @map("analysis_mode") @db.VarChar(20)
+  extractedFactsJson Json              @map("extracted_facts_json") @db.JsonB
+  aiAssessmentJson   Json              @map("ai_assessment_json") @db.JsonB
+  suggestedRateDelta Decimal?          @map("suggested_rate_delta") @db.Decimal(6, 3)
+  llmProvider        String            @map("llm_provider") @db.VarChar(40)
+  llmModel           String            @map("llm_model") @db.VarChar(80)
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  article            MarketArticle     @relation(fields: [articleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  profile            FinancialProfile? @relation(fields: [profileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("article_impact_analyses")
+}
+
+model FinancialInstitution {
+  id              String             @id @db.Uuid
+  code            String             @unique @db.VarChar(50)
+  name            String             @db.VarChar(200)
+  institutionType String             @map("institution_type") @db.VarChar(30)
+  licenseIssuer   String             @map("license_issuer") @db.VarChar(30)
+  licenseNumber   String             @map("license_number") @db.VarChar(100)
+  officialWebsite String             @map("official_website") @db.Text
+  vietqrBin       String?            @map("vietqr_bin") @db.VarChar(12)
+  trustStatus     String             @default("LICENSED") @map("trust_status") @db.VarChar(20)
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime           @default(now()) @map("updated_at") @db.Timestamptz(6)
+  products        FinancialProduct[]
+
+  @@map("financial_institutions")
+}
+
+model FinancialProduct {
+  id                     String               @id @db.Uuid
+  institutionId          String               @map("institution_id") @db.Uuid
+  productCategory        String               @map("product_category") @db.VarChar(30)
+  productName            String               @map("product_name") @db.VarChar(200)
+  calcMethod             String               @map("calc_method") @db.VarChar(30)
+  rateType               String               @map("rate_type") @db.VarChar(20)
+  nominalRateMin         Decimal              @map("nominal_rate_min") @db.Decimal(7, 4)
+  nominalRateMax         Decimal              @map("nominal_rate_max") @db.Decimal(7, 4)
+  promoMonths            Int?                 @map("promo_months")
+  floatingMargin         Decimal?             @map("floating_margin") @db.Decimal(7, 4)
+  upfrontFeeRate         Decimal?             @default(0) @map("upfront_fee_rate") @db.Decimal(7, 4)
+  monthlyFeeVnd          Decimal?             @default(0) @map("monthly_fee_vnd") @db.Decimal(18, 2)
+  earlySettlementFeeRate Decimal?             @default(0) @map("early_settlement_fee_rate") @db.Decimal(7, 4)
+  minAmountVnd           Decimal              @map("min_amount_vnd") @db.Decimal(18, 2)
+  maxAmountVnd           Decimal              @map("max_amount_vnd") @db.Decimal(18, 2)
+  minTermMonths          Int                  @map("min_term_months")
+  maxTermMonths          Int                  @map("max_term_months")
+  sourceUrl              String               @map("source_url") @db.Text
+  effectiveDate          DateTime             @map("effective_date") @db.Date
+  dataProvenance         String               @default("CATALOG_VERIFIED") @map("data_provenance") @db.VarChar(20)
+  isActive               Boolean              @default(true) @map("is_active")
+  createdAt              DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime             @default(now()) @map("updated_at") @db.Timestamptz(6)
+  institution            FinancialInstitution @relation(fields: [institutionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("financial_products")
+}
+
+model CalculationSession {
+  id                String            @id @db.Uuid
+  userId            String?           @map("user_id") @db.Uuid
+  guestSessionId    String?           @map("guest_session_id") @db.Uuid
+  profileId         String?           @map("profile_id") @db.Uuid
+  sessionMode       String            @map("session_mode") @db.VarChar(30)
+  inputParamsJson   Json              @map("input_params_json") @db.JsonB
+  mathResultsJson   Json              @map("math_results_json") @db.JsonB
+  dtiRatioPct       Decimal?          @map("dti_ratio_pct") @db.Decimal(6, 2)
+  dtiRiskBand       String?           @map("dti_risk_band") @db.VarChar(20)
+  rateShockDelta    Decimal?          @map("rate_shock_delta") @db.Decimal(6, 3)
+  aiExplanationJson Json?             @map("ai_explanation_json") @db.JsonB
+  llmProvider       String?           @map("llm_provider") @db.VarChar(40)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  user              User?             @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  profile           FinancialProfile? @relation(fields: [profileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("calculation_sessions")
+}
+
+model ForensicAudit {
+  id                    String              @id @db.Uuid
+  userId                String?             @map("user_id") @db.Uuid
+  guestSessionId        String?             @map("guest_session_id") @db.Uuid
+  claimedEntityName     String?             @map("claimed_entity_name") @db.VarChar(200)
+  inputChannels         Json                @map("input_channels") @db.JsonB
+  rawTextMasked         String?             @map("raw_text_masked") @db.Text
+  extractedClaimsJson   Json                @map("extracted_claims_json") @db.JsonB
+  principalNominalVnd   Decimal?            @map("principal_nominal_vnd") @db.Decimal(18, 2)
+  principalNetVnd       Decimal?            @map("principal_net_vnd") @db.Decimal(18, 2)
+  quotedRatePct         Decimal?            @map("quoted_rate_pct") @db.Decimal(7, 4)
+  effectiveAprPct       Decimal?            @map("effective_apr_pct") @db.Decimal(8, 4)
+  riskScore             Int                 @map("risk_score")
+  verdictLevel          String              @map("verdict_level") @db.VarChar(20)
+  deterministicOverride Boolean             @default(false) @map("deterministic_override")
+  aiExplanationText     String              @map("ai_explanation_text") @db.Text
+  llmProvider           String              @map("llm_provider") @db.VarChar(40)
+  sourceFilesPurgedAt   DateTime            @map("source_files_purged_at") @db.Timestamptz(6)
+  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  user                  User?               @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  qrPayloads            ForensicQrPayload[]
+  findings              ForensicFinding[]
+
+  @@map("forensic_audits")
+}
+
+model ForensicQrPayload {
+  id                    String        @id @db.Uuid
+  auditId               String        @map("audit_id") @db.Uuid
+  rawQrString           String        @map("raw_qr_string") @db.Text
+  acqBin                String?       @map("acq_bin") @db.VarChar(12)
+  bankName              String?       @map("bank_name") @db.VarChar(120)
+  accountNumberMasked   String?       @map("account_number_masked") @db.VarChar(64)
+  serviceCode           String?       @map("service_code") @db.VarChar(30)
+  qrAmountVnd           Decimal?      @map("qr_amount_vnd") @db.Decimal(18, 2)
+  purposeText           String?       @map("purpose_text") @db.Text
+  crcValid              Boolean       @map("crc_valid")
+  visionBeneficiaryName String?       @map("vision_beneficiary_name") @db.VarChar(150)
+  entityMismatchFlag    Boolean       @default(false) @map("entity_mismatch_flag")
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  audit                 ForensicAudit @relation(fields: [auditId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("forensic_qr_payloads")
+}
+
+model ForensicFinding {
+  id                 String           @id @db.Uuid
+  auditId            String           @map("audit_id") @db.Uuid
+  ruleCode           String           @map("rule_code") @db.VarChar(50)
+  severity           String           @db.VarChar(20)
+  scoreImpact        Int              @map("score_impact")
+  title              String           @db.VarChar(200)
+  description        String           @db.Text
+  evidenceQuote      String           @map("evidence_quote") @db.Text
+  matchedIndicatorId String?          @map("matched_indicator_id") @db.Uuid
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  audit              ForensicAudit    @relation(fields: [auditId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  matchedIndicator   ThreatIndicator? @relation(fields: [matchedIndicatorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("forensic_findings")
+}

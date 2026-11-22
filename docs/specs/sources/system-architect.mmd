@@ -1,0 +1,76 @@
+flowchart LR
+    subgraph L1["Layer 1 — Client Web Responsive (Next.js 15 + React 19)"]
+        UI_HOME["SCR-01: Home Command Center"]
+        UI_RADAR["SCR-02 / SCR-03: Market & Threat Radar"]
+        UI_SURVEY["SCR-04 / SCR-05: Survey, Calculator, DTI & Shock"]
+        UI_FORENSIC["SCR-06 / SCR-07: Forensic Auditor - Mũi nhọn"]
+        UI_PROFILE["SCR-08 / SCR-09: Hồ sơ R07, Lịch sử & Admin"]
+    end
+
+    subgraph L2["Layer 2 — Backend Modular Monolith (Node.js 22 + NestJS 11 + Fastify)"]
+        AUTH_GUARD["Guest Session & Optional JWT + Magic-Byte Guard"]
+
+        subgraph MOD_A["Module A: RadarModule"]
+            FEED_COL["RSS/Web Collector & 2-Layer Dedup"]
+            RADAR_SVC["Impact R07 & Threat Alert Extractor"]
+        end
+
+        subgraph MOD_D["Module D: ProfileAuthModule"]
+            PROF_SVC["Financial Profile & Guest-to-User Merge"]
+        end
+
+        subgraph MOD_B["Module B: SurveyCalcModule"]
+            TRUST_FLT["Trust Filter - NHNN / UBCKNN"]
+            HYBRID_LK["Hybrid Catalog + Web Reference"]
+            MATH_ENG["Deterministic Math Engine - decimal.js"]
+            DTI_SIM["DTI Assessment & Rate Shock Simulator"]
+        end
+
+        subgraph MOD_C["Module C: ForensicModule"]
+            QR_ENG["Sharp + ZXing-WASM + VietQR EMVCo TLV"]
+            PDF_ENG["unpdf + Canvas PDF Rasterizer"]
+            RULE_ENG["7 Hard Rules & Deterministic Override"]
+            PII_PURGE["PII Masker & Auto-Purge finally"]
+        end
+
+        subgraph MOD_E["Module E: AiGatewayModule"]
+            AI_GW["Vercel AI SDK + Zod + Circuit Breaker"]
+        end
+    end
+
+    subgraph L3["Layer 3 — Storage, Cache & Ephemeral Buffer"]
+        PG[("PostgreSQL 16 - 17 Tables via Prisma")]
+        REDIS[("Redis 7 + BullMQ Worker")]
+        TMP_MEM[("Ephemeral Buffer - Auto Purge <= 15m")]
+    end
+
+    subgraph L4["Layer 4 — External Sources & Multi-LLM Providers"]
+        EXT_NEWS["CafeF, VnEconomy, Vietstock, NHNN, NCSC"]
+        LLM_OAI["OpenAI API - Primary"]
+        LLM_ALT["Gemini / Claude / OpenAI-Compatible - Fallback"]
+    end
+
+    UI_HOME & UI_RADAR & UI_SURVEY & UI_FORENSIC & UI_PROFILE -- "HTTPS REST JSON / Multipart" --> AUTH_GUARD
+    AUTH_GUARD --> RADAR_SVC & PROF_SVC & TRUST_FLT & QR_ENG & PDF_ENG
+
+    EXT_NEWS -- "BullMQ Cron Fetch" --> FEED_COL
+    FEED_COL --> PG
+    RADAR_SVC --> PG & REDIS
+    RADAR_SVC -- "Luồng 2: threat_indicator" --> RULE_ENG
+    RADAR_SVC -- "Luồng 1: Delta r" --> DTI_SIM
+
+    TRUST_FLT --> HYBRID_LK --> MATH_ENG --> DTI_SIM
+    HYBRID_LK --> PG
+    DTI_SIM --> PG
+
+    QR_ENG & PDF_ENG --> AI_GW
+    QR_ENG & PDF_ENG & AI_GW --> RULE_ENG
+    RULE_ENG -- "Luồng 3: 1-Click Thay thế" --> TRUST_FLT
+    RULE_ENG --> PII_PURGE
+    PII_PURGE -- "Delete Original Files" --> TMP_MEM
+    PII_PURGE -- "Save Masked JSON" --> PG
+
+    RADAR_SVC & DTI_SIM --> AI_GW
+    AI_GW -- "Primary" --> LLM_OAI
+    AI_GW -. "Circuit Breaker Fallback" .-> LLM_ALT
+    AI_GW -. "State & Cache" .-> REDIS

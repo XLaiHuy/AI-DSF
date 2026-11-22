@@ -1,0 +1,233 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1100" width="1800" height="1100" style="font-family: 'Segoe UI', Inter, Arial, sans-serif; background:#F8FAFC;">
+  <defs>
+    <marker id="arr-slate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#334155"/>
+    </marker>
+    <marker id="arr-rose" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#AE2070"/>
+    </marker>
+    <marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#DC2626"/>
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#059669"/>
+    </marker>
+    <marker id="arr-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#1D4ED8"/>
+    </marker>
+    <filter id="sh" x="-3%" y="-3%" width="106%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0F172A" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+<rect x="0" y="0" width="1800" height="84" fill="#0F172A"/>
+<rect x="0" y="80" width="1800" height="4" fill="#AE2070"/>
+<text x="36" y="37" fill="#FFFFFF" font-size="22" font-weight="800">FINCOPILOT AI — KIẾN TRÚC HỆ THỐNG 4 TẦNG (5 MODULES + MULTI-LLM GATEWAY)</text>
+<text x="36" y="62" fill="#CBD5E1" font-size="13.5">Next.js 15 Responsive • Node.js 22 (NestJS + Fastify) • PostgreSQL 16 (17 Bảng) + Redis/BullMQ • OpenAI Primary + Fallback • PII Auto-Purge</text>
+<rect x="28" y="106" width="360" height="476" rx="12" fill="#EFF6FF" stroke="#1D4ED8" stroke-width="2" stroke-dasharray="8 4"/>
+<text x="44" y="132" fill="#1D4ED8" font-size="14" font-weight="800">LAYER 1 — CLIENT WEB RESPONSIVE</text>
+<text x="44" y="150" fill="#475569" font-size="11.2">Next.js 15 + React 19 + TS + Tailwind + shadcn/ui + Recharts</text>
+<g filter="url(#sh)">
+<rect x="44" y="166" width="328" height="68" rx="8" fill="#FFFFFF" stroke="#3B82F6" stroke-width="1.6"/>
+<text x="56" y="188" fill="#0F172A" font-size="12.5" font-weight="700">SCR-01: Home Command Center</text>
+<text x="56" y="206" fill="#334155" font-size="11.2">• Hero Dropzone Giám định nhanh • Radar Snapshot</text>
+<text x="56" y="223" fill="#334155" font-size="11.2">• Quick Survey Widget • Trạng thái Hồ sơ R07</text>
+</g>
+<g filter="url(#sh)">
+<rect x="44" y="246" width="328" height="72" rx="8" fill="#FFFFFF" stroke="#3B82F6" stroke-width="1.6"/>
+<text x="56" y="268" fill="#0F172A" font-size="12.5" font-weight="700">SCR-02 / SCR-03: Market &amp; Threat Radar</text>
+<text x="56" y="286" fill="#334155" font-size="11.2">• Bảng tin Vĩ mô &amp; Cảnh báo NCSC (Lọc chủ đề)</text>
+<text x="56" y="303" fill="#334155" font-size="11.2">• Tách Dữ kiện gốc vs Nhận định AI • Mô phỏng P2</text>
+</g>
+<g filter="url(#sh)">
+<rect x="44" y="330" width="328" height="80" rx="8" fill="#FFFFFF" stroke="#3B82F6" stroke-width="1.6"/>
+<text x="56" y="352" fill="#0F172A" font-size="12.5" font-weight="700">SCR-04 / SCR-05: Survey, Calc &amp; DTI</text>
+<text x="56" y="370" fill="#334155" font-size="11.2">• 3 Tab: Khảo sát Vay | Tích lũy-Quỹ mở | Nhập tay</text>
+<text x="56" y="387" fill="#334155" font-size="11.2">• Bảng so sánh nhiều bên, Lịch nợ, DTI Gauge, Sốc lãi</text>
+</g>
+<g filter="url(#sh)">
+<rect x="44" y="422" width="328" height="76" rx="8" fill="#FFF1F2" stroke="#E11D48" stroke-width="1.6"/>
+<text x="56" y="444" fill="#0F172A" font-size="12.5" font-weight="700">SCR-06 / SCR-07: Forensic Auditor (Đinh)</text>
+<text x="56" y="462" fill="#334155" font-size="11.2">• Upload Chat Zalo/FB + Hợp đồng PDF + Ảnh VietQR</text>
+<text x="56" y="479" fill="#334155" font-size="11.2">• Phán quyết 3 mức, APR thực, Xuất Bằng chứng, 1-Click P2</text>
+</g>
+<g filter="url(#sh)">
+<rect x="44" y="510" width="328" height="58" rx="8" fill="#FFFFFF" stroke="#64748B" stroke-width="1.6"/>
+<text x="56" y="532" fill="#0F172A" font-size="12.5" font-weight="700">SCR-08 / SCR-09: Hồ sơ R07, Lịch sử &amp; Admin</text>
+<text x="56" y="550" fill="#334155" font-size="11.2">• Guest-first + Optional Google/Email • Admin Catalog</text>
+</g>
+<rect x="28" y="606" width="360" height="464" rx="12" fill="#FFFBEB" stroke="#B45309" stroke-width="2" stroke-dasharray="8 4"/>
+<text x="44" y="632" fill="#B45309" font-size="14" font-weight="800">LAYER 4 — EXTERNAL SOURCES &amp; AI</text>
+<g filter="url(#sh)">
+<rect x="44" y="648" width="328" height="128" rx="8" fill="#FFFFFF" stroke="#D97706" stroke-width="1.6"/>
+<text x="56" y="670" fill="#0F172A" font-size="12.5" font-weight="700">Nguồn Tin Vĩ mô &amp; Cảnh báo Chính thống</text>
+<text x="56" y="688" fill="#334155" font-size="11.2">• CafeF, VnEconomy, Vietstock (RSS/Web)</text>
+<text x="56" y="705" fill="#334155" font-size="11.2">• Ngân hàng Nhà nước (NHNN) &amp; UBCKNN</text>
+<text x="56" y="722" fill="#334155" font-size="11.2">• Cục ATTT (NCSC) — Cảnh báo lừa đảo xác thực</text>
+<text x="56" y="739" fill="#334155" font-size="11.2">• BullMQ Cron Scheduler (Cập nhật định kỳ)</text>
+<text x="56" y="756" fill="#334155" font-size="11.2">• Guardrail: Lỗi nguồn giữ mốc cũ, không đẩy tin cũ</text>
+</g>
+<g filter="url(#sh)">
+<rect x="44" y="794" width="328" height="118" rx="8" fill="#FFFFFF" stroke="#AE2070" stroke-width="1.6"/>
+<path d="M 44 802 Q 44 794 52 794 L 364 794 Q 372 794 372 802 L 372 824 L 44 824 Z" fill="#AE2070"/>
+<text x="56" y="814" fill="#FFFFFF" font-size="12.5" font-weight="700">Multi-LLM Primary: OpenAI API</text>
+<text x="56" y="844" fill="#334155" font-size="11.2">• gpt-4.1-mini: Phân tích Radar, Giải thích Survey</text>
+<text x="56" y="861" fill="#334155" font-size="11.2">• gpt-4.1 / gpt-4o (Vision): Đọc ảnh chat Zalo, tên chủ</text>
+<text x="56" y="878" fill="#334155" font-size="11.2">  TK trên ảnh VietQR, điều khoản PDF scan + Trích dẫn</text>
+<text x="56" y="895" fill="#334155" font-size="11.2">• Structured Output bắt buộc qua Zod Schema</text>
+</g>
+<g filter="url(#sh)">
+<rect x="44" y="928" width="328" height="124" rx="8" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.6"/>
+<path d="M 44 936 Q 44 928 52 928 L 364 928 Q 372 928 372 936 L 372 958 L 44 958 Z" fill="#4F46E5"/>
+<text x="56" y="948" fill="#FFFFFF" font-size="12.5" font-weight="700">Multi-LLM Fallback (Provider-Agnostic)</text>
+<text x="56" y="978" fill="#334155" font-size="11.2">• Google Gemini 2.5 Flash / Pro (Search Grounding)</text>
+<text x="56" y="995" fill="#334155" font-size="11.2">• Anthropic Claude / OpenAI-Compatible Endpoints</text>
+<text x="56" y="1012" fill="#334155" font-size="11.2">• Tự chuyển đổi qua ENV + Circuit Breaker (timeout/429)</text>
+<text x="56" y="1029" fill="#334155" font-size="11.2">• Nếu AI offline: Math &amp; VietQR Rule Engine vẫn chạy 100%</text>
+</g>
+<rect x="480" y="106" width="830" height="964" rx="12" fill="#F5F3FF" stroke="#6D28D9" stroke-width="2" stroke-dasharray="8 4"/>
+<text x="500" y="132" fill="#5B21B6" font-size="14" font-weight="800">LAYER 2 — BACKEND MODULAR MONOLITH (NODE.JS 22 + NESTJS 11 + FASTIFY)</text>
+<g filter="url(#sh)">
+<rect x="500" y="148" width="790" height="62" rx="8" fill="#FFFFFF" stroke="#7C3AED" stroke-width="1.6"/>
+<path d="M 500 156 Q 500 148 508 148 L 1282 148 Q 1290 148 1290 156 L 1290 178 L 500 178 Z" fill="#5B21B6"/>
+<text x="512" y="168" fill="#FFFFFF" font-size="12.5" font-weight="700">API Gateway Layer: Guest Session Guard + Optional JWT + Zod Validator + Rate Limit</text>
+<text x="512" y="198" fill="#334155" font-size="11.2">• Cấp/nhận guest_session_id (dùng ngay không cần login) • Validate request Zod • Kiểm tra Magic Bytes &amp; giới hạn upload &lt;= 20MB</text>
+</g>
+<g filter="url(#sh)">
+<rect x="500" y="224" width="386" height="206" rx="8" fill="#FFFFFF" stroke="#2563EB" stroke-width="1.6"/>
+<path d="M 500 232 Q 500 224 508 224 L 878 224 Q 886 224 886 232 L 886 254 L 500 254 Z" fill="#1D4ED8"/>
+<text x="512" y="244" fill="#FFFFFF" font-size="12.5" font-weight="700">Module A: RadarModule (Phân hệ 1)</text>
+<text x="512" y="274" fill="#334155" font-size="11.2">• Feed Collector (rss-parser + undici + cheerio)</text>
+<text x="512" y="291" fill="#334155" font-size="11.2">• Normalization &amp; 2-Layer Dedup (URL + SHA-256)</text>
+<text x="512" y="308" fill="#334155" font-size="11.2">• Freshness Guardrail (last_fetch_status = ERROR)</text>
+<text x="512" y="325" fill="#334155" font-size="11.2">• Impact Analysis API (R07: General vs Personalized)</text>
+<text x="512" y="342" fill="#334155" font-size="11.2">• Threat Alert Extractor -&gt; Sinh threat_indicator</text>
+<text x="512" y="359" fill="#334155" font-size="11.2">• Luồng 1 &amp; 2: Đẩy Δr sang Mod B, Indicator sang Mod C</text>
+</g>
+<g filter="url(#sh)">
+<rect x="904" y="224" width="386" height="206" rx="8" fill="#FFFFFF" stroke="#7C3AED" stroke-width="1.6"/>
+<path d="M 904 232 Q 904 224 912 224 L 1282 224 Q 1290 224 1290 232 L 1290 254 L 904 254 Z" fill="#6D28D9"/>
+<text x="916" y="244" fill="#FFFFFF" font-size="12.5" font-weight="700">Module D: ProfileAuthModule (Phân hệ 0)</text>
+<text x="916" y="274" fill="#334155" font-size="11.2">• Quản lý Financial Profile (Thu nhập, Chi phí, Nợ)</text>
+<text x="916" y="291" fill="#334155" font-size="11.2">• Khẩu vị rủi ro &amp; Mục tiêu tài chính (nhánh R07)</text>
+<text x="916" y="308" fill="#334155" font-size="11.2">• Optional Login (Email / Google OAuth2)</text>
+<text x="916" y="325" fill="#334155" font-size="11.2">• Guest-to-User Transaction Merge: Gộp hồ sơ,</text>
+<text x="916" y="342" fill="#334155" font-size="11.2">  lịch sử tính toán và báo cáo giám định về user_id</text>
+<text x="916" y="359" fill="#334155" font-size="11.2">• Cung cấp ngữ cảnh cho Module A &amp; Module B</text>
+</g>
+<g filter="url(#sh)">
+<rect x="500" y="460" width="790" height="200" rx="8" fill="#FFFFFF" stroke="#059669" stroke-width="1.6"/>
+<path d="M 500 468 Q 500 460 508 460 L 1282 460 Q 1290 460 1290 468 L 1290 490 L 500 490 Z" fill="#047857"/>
+<text x="512" y="480" fill="#FFFFFF" font-size="12.5" font-weight="700">Module B: SurveyCalcModule (Phân hệ 2 — Khảo sát &amp; Tính toán Xác định)</text>
+<text x="512" y="510" fill="#334155" font-size="11.2">• Trust Filter (Chủ đề 3): Loại bỏ 100% app tín dụng đen, sàn ảo, Ponzi ngoài danh sách cấp phép NHNN/UBCKNN</text>
+<text x="512" y="527" fill="#334155" font-size="11.2">• Hybrid Survey Lookup: Ưu tiên Catalog chuẩn hóa (link nguồn + ngày hiệu lực) + Web Search Fallback có gắn nhãn</text>
+<text x="512" y="544" fill="#334155" font-size="11.2">• Deterministic Math Engine (decimal.js): EMI, Gốc đều, Quy đổi Lãi phẳng + Phí ẩn -&gt; APR/EAR (Newton-Raphson)</text>
+<text x="512" y="561" fill="#334155" font-size="11.2">• Investment Engine: Lãi kép + DCA, trừ phí quản lý/bán/thuế 0.1%, tính 3 kịch bản Thận trọng - Cơ sở - Tích cực</text>
+<text x="512" y="578" fill="#334155" font-size="11.2">• DTI Assessment (4 ngưỡng &lt;35%..&gt;50%) &amp; Floating Rate Shock Simulator (phân biệt cố định vs thả nổi)</text>
+</g>
+<g filter="url(#sh)">
+<rect x="500" y="686" width="790" height="236" rx="8" fill="#FFF1F2" stroke="#DC2626" stroke-width="1.6"/>
+<path d="M 500 694 Q 500 686 508 686 L 1282 686 Q 1290 686 1290 694 L 1290 716 L 500 716 Z" fill="#B91C1C"/>
+<text x="512" y="706" fill="#FFFFFF" font-size="12.5" font-weight="700">Module C: ForensicModule (Phân hệ 3 — Mũi nhọn Giám định Đa tầng)</text>
+<text x="512" y="736" fill="#334155" font-size="11.2">• Ephemeral Staging: Nhận tối đa 5 ảnh + 1 PDF (&lt;= 5 trang) + Text; gắn TTL tự xóa &lt;= 15 phút</text>
+<text x="512" y="753" fill="#334155" font-size="11.2">• VietQR Deterministic Pipeline: Sharp (multi-crop/threshold) + zxing-wasm + EMVCo/NAPAS 247 TLV Parser</text>
+<text x="512" y="770" fill="#334155" font-size="11.2">  (Xác thực CRC-16, giải mã BIN -&gt; Ngân hàng, STK, QRIBFTTA/QRIBFTTC, Tag 54 tiền, Tag 62 nội dung)</text>
+<text x="512" y="787" fill="#334155" font-size="11.2">• PDF Pipeline: unpdf (text layer) + @napi-rs/canvas rasterize bản scan sang PNG cho Vision LLM</text>
+<text x="512" y="804" fill="#334155" font-size="11.2">• 7 Hard-Rule Engine (RULE_01..07): Phí trước QR, Lỗi 102, Lệch pháp nhân vs QR cá nhân, Không phép, NCSC, APR, Ponzi</text>
+<text x="512" y="821" fill="#334155" font-size="11.2">• Deterministic Override: Có luật CRITICAL -&gt; Khóa cứng điểm &gt;= 75 &amp; HIGH_RISK (Cấm AI hạ mức cảnh báo)</text>
+<text x="512" y="838" fill="#334155" font-size="11.2">• Finally PII Guard: Che CCCD/SĐT và XÓA VĨNH VIỄN tệp gốc ngay sau trích xuất; xuất Báo cáo &amp; 1-Click sang Module B</text>
+</g>
+<g filter="url(#sh)">
+<rect x="500" y="940" width="790" height="114" rx="8" fill="#FFFFFF" stroke="#AE2070" stroke-width="1.6"/>
+<path d="M 500 948 Q 500 940 508 940 L 1282 940 Q 1290 940 1290 948 L 1290 970 L 500 970 Z" fill="#AE2070"/>
+<text x="512" y="960" fill="#FFFFFF" font-size="12.5" font-weight="700">Module E: AiGatewayModule (Vercel AI SDK + Zod + Circuit Breaker)</text>
+<text x="512" y="990" fill="#334155" font-size="11.2">• Interface thống nhất: generateStructured(taskType, zodSchema, payload) — tách rời logic nghiệp vụ khỏi từng hãng AI</text>
+<text x="512" y="1007" fill="#334155" font-size="11.2">• Task Routing: Chọn model tối ưu (gpt-4.1-mini cho tóm tắt/giải thích; gpt-4.1/4o Vision cho ảnh chat, PDF, tên TK VietQR)</text>
+<text x="512" y="1024" fill="#334155" font-size="11.2">• Fallback &amp; Resilience: Tự chuyển OpenAI -&gt; Gemini -&gt; Claude khi 429/timeout; Degraded Mode vẫn giữ nguyên Rule &amp; Math</text>
+</g>
+<rect x="1412" y="106" width="360" height="964" rx="12" fill="#ECFDF5" stroke="#047857" stroke-width="2" stroke-dasharray="8 4"/>
+<text x="1430" y="132" fill="#065F46" font-size="14" font-weight="800">LAYER 3 — STORAGE &amp; BUFFER</text>
+<g filter="url(#sh)">
+<rect x="1430" y="152" width="324" height="420" rx="8" fill="#FFFFFF" stroke="#059669" stroke-width="1.6"/>
+<path d="M 1430 160 Q 1430 152 1438 152 L 1746 152 Q 1754 152 1754 160 L 1754 182 L 1430 182 Z" fill="#065F46"/>
+<text x="1442" y="172" fill="#FFFFFF" font-size="12.5" font-weight="700">PostgreSQL 16 (Prisma ORM — 17 Bảng)</text>
+<text x="1442" y="202" fill="#334155" font-size="11.2">Cụm 1 — Radar Kế thừa (8 bảng):</text>
+<text x="1442" y="219" fill="#334155" font-size="11.2">  market_source, market_article, article_source,</text>
+<text x="1442" y="236" fill="#334155" font-size="11.2">  article_category, threat_alert, threat_evidence,</text>
+<text x="1442" y="253" fill="#334155" font-size="11.2">  threat_indicator, schema_migrations</text>
+<text x="1442" y="270" fill="#334155" font-size="11.2"></text>
+<text x="1442" y="287" fill="#334155" font-size="11.2">Cụm 0 — Auth, Profile &amp; Cache (3 bảng):</text>
+<text x="1442" y="304" fill="#334155" font-size="11.2">  users, financial_profiles, article_impact_analyses</text>
+<text x="1442" y="321" fill="#334155" font-size="11.2"></text>
+<text x="1442" y="338" fill="#334155" font-size="11.2">Cụm 2 — Survey &amp; Calculator (3 bảng):</text>
+<text x="1442" y="355" fill="#334155" font-size="11.2">  financial_institutions, financial_products,</text>
+<text x="1442" y="372" fill="#334155" font-size="11.2">  calculation_sessions</text>
+<text x="1442" y="389" fill="#334155" font-size="11.2"></text>
+<text x="1442" y="406" fill="#334155" font-size="11.2">Cụm 3 — Forensic Auditor (3 bảng):</text>
+<text x="1442" y="423" fill="#334155" font-size="11.2">  forensic_audits, forensic_qr_payloads,</text>
+<text x="1442" y="440" fill="#334155" font-size="11.2">  forensic_findings (đã che PII, không lưu file gốc)</text>
+</g>
+<g filter="url(#sh)">
+<rect x="1430" y="592" width="324" height="174" rx="8" fill="#FFFFFF" stroke="#0284C7" stroke-width="1.6"/>
+<path d="M 1430 600 Q 1430 592 1438 592 L 1746 592 Q 1754 592 1754 600 L 1754 622 L 1430 622 Z" fill="#0369A1"/>
+<text x="1442" y="612" fill="#FFFFFF" font-size="12.5" font-weight="700">Redis 7 + BullMQ Worker</text>
+<text x="1442" y="642" fill="#334155" font-size="11.2">• Cache feed Radar &amp; bảng Catalog (&lt; 300ms)</text>
+<text x="1442" y="659" fill="#334155" font-size="11.2">• Hàng đợi Cronjob thu thập RSS/NCSC định kỳ</text>
+<text x="1442" y="676" fill="#334155" font-size="11.2">• Distributed Rate Limit &amp; Lock chống trùng job</text>
+<text x="1442" y="693" fill="#334155" font-size="11.2">• Circuit Breaker State cho Multi-LLM Gateway</text>
+</g>
+<g filter="url(#sh)">
+<rect x="1430" y="786" width="324" height="268" rx="8" fill="#FFF1F2" stroke="#DC2626" stroke-width="1.6"/>
+<path d="M 1430 794 Q 1430 786 1438 786 L 1746 786 Q 1754 786 1754 794 L 1754 816 L 1430 816 Z" fill="#991B1B"/>
+<text x="1442" y="806" fill="#FFFFFF" font-size="12.5" font-weight="700">Ephemeral Buffer &amp; Privacy Guard</text>
+<text x="1442" y="836" fill="#334155" font-size="11.2">• Chỉ giữ Buffer RAM / Temp trong lúc chạy pipeline</text>
+<text x="1442" y="853" fill="#334155" font-size="11.2">• Magic-Byte Validation (chỉ JPEG/PNG/WEBP/PDF)</text>
+<text x="1442" y="870" fill="#334155" font-size="11.2">• Khối finally {} XÓA VĨNH VIỄN tệp gốc ngay khi</text>
+<text x="1442" y="887" fill="#334155" font-size="11.2">  hoàn tất trích xuất (ghi nhận source_files_purged_at)</text>
+<text x="1442" y="904" fill="#334155" font-size="11.2">• TTL dọn rác tối đa 15 phút nếu tiến trình ngắt đột ngột</text>
+<text x="1442" y="921" fill="#334155" font-size="11.2">• Regex Masking che CCCD (12 số) &amp; SĐT trước khi</text>
+<text x="1442" y="938" fill="#334155" font-size="11.2">  lưu JSON vào PostgreSQL</text>
+</g>
+<path d="M 388 330 L 434 330 L 434 179 L 500 179" fill="none" stroke="#1D4ED8" stroke-width="2" marker-end="url(#arr-blue)"/>
+<rect x="389" y="229" width="81.19999999999999" height="14" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="392" y="240" fill="#1D4ED8" font-size="10.2" font-weight="700">HTTPS / JSON</text>
+<path d="M 372 712 L 456 712 L 456 320 L 500 320" fill="none" stroke="#B45309" stroke-width="2" marker-end="url(#arr-slate)"/>
+<rect x="399" y="509" width="69.0" height="14" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="402" y="520" fill="#B45309" font-size="10.2" font-weight="700">Cron Fetch</text>
+<path d="M 500 970 L 436 970 L 436 852 L 372 852" fill="none" stroke="#AE2070" stroke-width="2" marker-end="url(#arr-rose)"/>
+<rect x="399" y="829" width="50.699999999999996" height="14" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="402" y="840" fill="#AE2070" font-size="10.2" font-weight="700">Primary</text>
+<path d="M 500 1004 L 372 1004" fill="none" stroke="#4F46E5" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arr-slate)"/>
+<rect x="399" y="1009" width="56.8" height="14" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="402" y="1020" fill="#4F46E5" font-size="10.2" font-weight="700">Fallback</text>
+<path d="M 1290 290 L 1430 290" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arr-green)"/>
+<rect x="1317" y="269" width="75.1" height="14" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="1320" y="280" fill="#059669" font-size="10.2" font-weight="700">Profile SQL</text>
+<path d="M 886 350 L 894 350 L 894 218 L 1344 218 L 1344 250 L 1430 250" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arr-green)"/>
+<rect x="1317" y="229" width="62.9" height="14" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="1320" y="240" fill="#059669" font-size="10.2" font-weight="700">Radar SQL</text>
+<path d="M 1290 548 L 1362 548 L 1362 410 L 1430 410" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arr-green)"/>
+<rect x="1363" y="389" width="50.699999999999996" height="14" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="1366" y="400" fill="#059669" font-size="10.2" font-weight="700">Catalog</text>
+<path d="M 1290 736 L 1380 736 L 1380 510 L 1430 510" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arr-green)"/>
+<rect x="1309" y="714" width="81.19999999999999" height="14" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="1312" y="725" fill="#059669" font-size="10.2" font-weight="700">Masked Audit</text>
+<path d="M 1290 830 L 1430 830" fill="none" stroke="#DC2626" stroke-width="2" marker-end="url(#arr-red)"/>
+<rect x="1309" y="809" width="87.3" height="14" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="1312" y="820" fill="#DC2626" font-size="10.2" font-weight="700">Stage &amp; Purge</text>
+<path d="M 1290 980 L 1396 980 L 1396 680 L 1430 680" fill="none" stroke="#0284C7" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arr-slate)"/>
+<rect x="1309" y="959" width="87.3" height="14" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="1312" y="970" fill="#0284C7" font-size="10.2" font-weight="700">Cache/Breaker</text>
+<path d="M 640 430 L 640 460" fill="none" stroke="#1D4ED8" stroke-width="2" marker-end="url(#arr-blue)"/>
+<rect x="645" y="439" width="130.0" height="14" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="648" y="450" fill="#1D4ED8" font-size="10.2" font-weight="700">Luồng 1: Δr Lãi suất</text>
+<path d="M 516 430 L 516 446 L 486 446 L 486 730 L 500 730" fill="none" stroke="#1D4ED8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arr-blue)"/>
+<rect x="511" y="667" width="87.3" height="14" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="514" y="678" fill="#1D4ED8" font-size="10.2" font-weight="700">Luồng 2: NCSC</text>
+<path d="M 890 686 L 890 660" fill="none" stroke="#DC2626" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arr-red)"/>
+<rect x="895" y="667" width="160.5" height="14" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="898" y="678" fill="#DC2626" font-size="10.2" font-weight="700">Luồng 3: 1-Click Thay thế</text>
+<path d="M 1100 660 L 1100 686" fill="none" stroke="#059669" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arr-green)"/>
+<rect x="1105" y="667" width="130.0" height="14" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="1108" y="678" fill="#059669" font-size="10.2" font-weight="700">Luồng 4: Trust Check</text>
+</svg>

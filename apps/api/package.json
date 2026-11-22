@@ -1,0 +1,40 @@
+{
+  "name": "api",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "prisma generate && nest start --watch",
+    "build": "prisma generate && tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "lint": "eslint src prisma prisma.config.ts",
+    "typecheck": "prisma generate && tsc --noEmit",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.0",
+    "@fastify/multipart": "^9.3.0",
+    "@fincopilot/shared-types": "workspace:*",
+    "@fincopilot/financial-math": "workspace:*",
+    "@nestjs/bullmq": "^11.0.0",
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.1.0",
+    "@nestjs/jwt": "^11.0.0",
+    "@nestjs/platform-fastify": "^11.1.0",
+    "@prisma/client": "^6.19.0",
+    "bullmq": "^5.66.0",
+    "fastify": "^5.6.0",
+    "ioredis": "^5.8.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "yaml": "^2.8.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@types/node": "^24.0.0",
+    "prisma": "^6.19.0",
+    "tsx": "^4.21.0"
+  }
+}

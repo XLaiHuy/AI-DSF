@@ -1,0 +1,16 @@
+routing:
+  RADAR_CLASSIFY_IMPACT:
+    primary: openai:gpt-4.1-mini
+    fallbacks: [google:gemini-2.5-flash, openai-compatible]
+  SURVEY_WEB_LOOKUP:
+    primary: openai:gpt-4.1-mini
+    fallbacks: [google:gemini-2.5-flash]
+  SURVEY_EXPLAIN:
+    primary: openai:gpt-4.1-mini
+    fallbacks: [anthropic:claude-3-5-haiku, google:gemini-2.5-flash]
+  FORENSIC_VISION_EXTRACT:
+    primary: openai:gpt-4.1
+    fallbacks: [google:gemini-2.5-pro, anthropic:claude-sonnet]
+  FORENSIC_VERDICT_NARRATIVE:
+    primary: openai:gpt-4.1-mini
+    fallbacks: [google:gemini-2.5-flash]

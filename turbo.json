@@ -1,0 +1,12 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [".env", "config/*.yaml", "tsconfig.base.json", "eslint.config.mjs"],
+  "globalPassThroughEnv": ["DATABASE_URL", "REDIS_URL", "API_PORT", "WEB_PORT", "JWT_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "AI_PROVIDER_CHAIN", "OPENAI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "ANTHROPIC_API_KEY", "UPLOAD_MAX_MB", "PDF_MAX_PAGES", "NODE_ENV"],
+  "tasks": {
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**", "!.next/cache/**"], "env": ["API_PORT"] },
+    "dev": { "dependsOn": ["^build"], "cache": false, "persistent": true },
+    "lint": {},
+    "typecheck": { "dependsOn": ["^build"] },
+    "test": { "dependsOn": ["^build"] }
+  }
+}

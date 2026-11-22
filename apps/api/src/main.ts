@@ -1,0 +1,43 @@
+import 'reflect-metadata'
+import cookie from '@fastify/cookie'
+import multipart from '@fastify/multipart'
+import { ConfigService } from '@nestjs/config'
+import { NestFactory } from '@nestjs/core'
+import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
+import { z } from 'zod'
+import { AppModule } from './app.module'
+import { ApiExceptionFilter } from './common/api-exception.filter'
+
+const port = z.coerce.number().int().min(1).max(65535)
+const mib = 1024 * 1024
+
+export async function bootstrap() {
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter())
+
+  try {
+    const config = app.get(ConfigService)
+    const uploadMax = z.coerce.number().int().positive().parse(config.get('UPLOAD_MAX_MB', '20'))
+    await app.register(cookie, { secret: config.getOrThrow<string>('JWT_SECRET') })
+    await app.register(multipart, { limits: { files: 6, fileSize: Math.min(10, uploadMax) * mib } })
+    const webPort = port.parse(config.get('WEB_PORT', '3000'))
+    app.enableCors({
+      origin: [`http://localhost:${webPort}`, `http://127.0.0.1:${webPort}`],
+      credentials: true,
+    })
+    app.setGlobalPrefix('api/v1')
+    app.useGlobalFilters(new ApiExceptionFilter())
+    app.enableShutdownHooks()
+    await app.listen(port.parse(config.get('API_PORT', '4000')), '::')
+    return app
+  } catch (error) {
+    await app.close()
+    throw error
+  }
+}
+
+if (require.main === module) {
+  void bootstrap().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : 'API startup failed')
+    process.exitCode = 1
+  })
+}

@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FinCopilot AI — User Stories (Epic 0–3) &amp; Visual User Flows</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 13mm 14mm 15mm 14mm;
+      @bottom-left {
+        content: "FinCopilot AI — User Stories & Visual User Flows (MVP v1.0)";
+        font-family: 'Segoe UI', Arial, sans-serif;
+        font-size: 8.5pt;
+        color: #64748b;
+      }
+      @bottom-right {
+        content: "Trang " counter(page) " / " counter(pages);
+        font-family: 'Segoe UI', Arial, sans-serif;
+        font-size: 8.5pt;
+        color: #64748b;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', 'Inter', Arial, sans-serif;
+      font-size: 9.4pt;
+      line-height: 1.44;
+      color: #0f172a;
+      background: #ffffff;
+    }
+
+    .doc-header {
+      border-top: 6px solid #ae2070;
+      border-bottom: 1.5px solid #e2e8f0;
+      padding: 10px 0 10px 0;
+      margin-bottom: 12px;
+    }
+
+    .doc-tag {
+      display: inline-block;
+      background: #fdf2f8;
+      color: #831843;
+      border: 1px solid #fbcfe8;
+      border-radius: 999px;
+      padding: 2px 10px;
+      font-size: 8pt;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .doc-title {
+      font-size: 18pt;
+      font-weight: 800;
+      margin: 6px 0 3px 0;
+      color: #0f172a;
+    }
+
+    .doc-sub {
+      font-size: 9.5pt;
+      color: #475569;
+      margin: 0;
+    }
+
+    h2.sec-title {
+      font-size: 12pt;
+      font-weight: 800;
+      color: #831843;
+      border-bottom: 1.5px solid #ae2070;
+      padding-bottom: 3px;
+      margin: 12px 0 7px 0;
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .info-box {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 8px 11px;
+      break-inside: avoid;
+    }
+
+    .info-box h3 {
+      margin: 0 0 4px 0;
+      font-size: 9.8pt;
+      color: #0f172a;
+    }
+
+    .info-box ul {
+      margin: 0;
+      padding-left: 16px;
+      font-size: 8.8pt;
+    }
+
+    .epic-banner {
+      background: #0f172a;
+      color: #ffffff;
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-weight: 700;
+      font-size: 9.8pt;
+      margin: 10px 0 6px 0;
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+    .epic-banner.e0 { background: #5b21b6; }
+    .epic-banner.e1 { background: #1d4ed8; }
+    .epic-banner.e2 { background: #047857; }
+    .epic-banner.e3 { background: #b91c1c; }
+
+    .us-card {
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 7px 10px;
+      margin-bottom: 7px;
+      background: #ffffff;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .us-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+      border-bottom: 1px dashed #e2e8f0;
+      padding-bottom: 3px;
+    }
+
+    .us-id {
+      font-weight: 800;
+      font-size: 9.6pt;
+      color: #0f172a;
+    }
+
+    .prio {
+      font-size: 7.5pt;
+      font-weight: 700;
+      padding: 1px 7px;
+      border-radius: 999px;
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    .prio.crit { background: #fee2e2; color: #991b1b; }
+    .prio.p1 { background: #ede9fe; color: #5b21b6; }
+
+    .us-card ul {
+      margin: 0;
+      padding-left: 16px;
+      font-size: 8.7pt;
+      color: #334155;
+    }
+    .us-card li { margin-bottom: 2px; }
+
+    code {
+      font-family: Consolas, monospace;
+      font-size: 8.2pt;
+      background: #f1f5f9;
+      padding: 0 3px;
+      border-radius: 3px;
+    }
+
+    /* VISUAL FLOWCHART PAGES */
+    .flow-page {
+      page-break-before: always;
+      break-before: page;
+    }
+
+    .flow-shell {
+      border: 1px solid #cbd5e1;
+      border-top: 5px solid #4f46e5;
+      border-radius: 10px;
+      background: #f8fafc;
+      padding: 12px 13px;
+    }
+    .flow-shell.f2 { border-top-color: #059669; }
+    .flow-shell.f3 { border-top-color: #dc2626; }
+    .flow-shell.f4 { border-top-color: #ae2070; }
+
+    .flow-hdr {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 7px;
+      margin-bottom: 9px;
+    }
+
+    .flow-hdr h3 {
+      margin: 0;
+      font-size: 13pt;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .flow-hdr p {
+      margin: 2px 0 0 0;
+      font-size: 8.5pt;
+      color: #475569;
+    }
+    .flow-code {
+      font-weight: 800;
+      font-size: 8.5pt;
+      color: #4338ca;
+      background: #e0e7ff;
+      padding: 3px 9px;
+      border-radius: 5px;
+      white-space: nowrap;
+    }
+
+    .f-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .f-row2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+      width: 100%;
+    }
+
+    .f-row3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .lane {
+      background: #ffffff;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      padding: 7px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .lane-title {
+      font-size: 7.8pt;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      color: #475569;
+      text-transform: uppercase;
+      text-align: center;
+      border-bottom: 1px solid #f1f5f9;
+      padding-bottom: 3px;
+    }
+
+    /* Step Node Cards (Matching original UserStory.pdf pastel style) */
+    .node {
+      border-radius: 7px;
+      padding: 6px 9px;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      width: 100%;
+      max-width: 440px;
+      break-inside: avoid;
+    }
+    .node.wide { max-width: 100%; }
+
+    .node.start, .node.end { background: #ecfdf5; border-color: #6ee7b7; }
+    .node.action { background: #eff6ff; border-color: #93c5fd; }
+    .node.decide { background: #fffbeb; border-color: #fcd34d; }
+    .node.ai     { background: #f5f3ff; border-color: #c4b5fd; }
+    .node.alert  { background: #fef2f2; border-color: #fca5a5; }
+
+    .node-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 7.2pt;
+      font-weight: 800;
+      margin-bottom: 2px;
+      text-transform: uppercase;
+    }
+    .start .node-top, .end .node-top { color: #047857; }
+    .action .node-top { color: #1d4ed8; }
+    .decide .node-top { color: #b45309; }
+    .ai .node-top { color: #6d28d9; }
+    .alert .node-top { color: #b91c1c; }
+
+    .nid {
+      color: #64748b;
+      font-family: Consolas, monospace;
+      font-size: 7.5pt;
+    }
+
+    .node-title {
+      font-size: 9pt;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0;
+    }
+
+    .node-desc {
+      font-size: 8pt;
+      color: #475569;
+      margin: 1px 0 0 0;
+      line-height: 1.32;
+    }
+
+    .arr {
+      font-size: 10pt;
+      font-weight: 800;
+      color: #64748b;
+      line-height: 1;
+      text-align: center;
+    }
+
+    .branch-lbl {
+      display: inline-block;
+      font-size: 7.5pt;
+      font-weight: 700;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      padding: 0 7px;
+      color: #334155;
+      margin-bottom: 2px;
+      align-self: center;
+    }
+
+    .flow-foot {
+      margin-top: 8px;
+      padding-top: 5px;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      font-size: 7.8pt;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER & OVERVIEW -->
+  <div class="doc-header">
+    <span class="doc-tag">FinCopilot AI • Chuẩn hóa Epic 0–3 &amp; 4 User Flows</span>
+    <h1 class="doc-title">USER STORIES &amp; USER FLOW — FINCOPILOT AI (MVP v1.0)</h1>
+    <p class="doc-sub">Hệ điều hành Tài chính Cá nhân Thông minh &amp; Lá chắn Gian lận Đa tầng • Đồng bộ 100% với <code>01_DeBai_YeuCau_NghiepVu.pdf</code>, <code>ERD.png</code> &amp; <code>System-architect.png</code></p>
+  </div>
+
+  <div class="two-col">
+    <div class="info-box">
+      <h3>Product Overview (Vấn đề Thực tế)</h3>
+      <ul>
+        <li>Tin tức vĩ mô rải rác ở nhiều nguồn, người dùng không thấy được tác động cụ thể lên ví tiền của bản thân.</li>
+        <li>Nhu cầu vay &amp; tích lũy thiếu minh bạch vì lãi phẳng, phí ẩn, ưu đãi ngắn hạn rồi thả nổi.</li>
+        <li>Thủ đoạn lừa đảo vay qua Zalo/PDF, giả mạo VietQR cá nhân, bẫy nộp phí giải ngân trước &amp; "lỗi 102" gia tăng mạnh.</li>
+      </ul>
+    </div>
+    <div class="info-box">
+      <h3>Product Goals (Mục tiêu 3 Trụ cột Khép kín)</h3>
+      <ul>
+        <li>Thu thập tin thị trường &amp; cảnh báo xác thực; AI tách bạch dữ kiện gốc và nhận định cá nhân hóa theo hồ sơ.</li>
+        <li>Nhận nhu cầu ➔ khảo sát nhiều Ngân hàng/CTTC/Quỹ mở hợp pháp ➔ tính con số thực tế (APR thực, DTI, kịch bản).</li>
+        <li><strong>Mũi nhọn MVP:</strong> Giám định Chat/PDF/VietQR theo 7 Luật Cứng VN, xuất bằng chứng &amp; 1-click sang nguồn vay hợp pháp.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- EPIC 0 -->
+  <div class="epic-banner e0">EPIC 0: GUEST-FIRST &amp; HỒ SƠ TÀI CHÍNH CÁ NHÂN (Lấp khoảng trống nhánh R07)</div>
+
+  <div class="us-card">
+    <div class="us-head">
+      <span class="us-id">US-pf01: Sử dụng ngay dạng Guest &amp; Thiết lập Hồ sơ Tài chính</span>
+      <span class="prio">P0 • Guest-first</span>
+    </div>
+    <ul>
+      <li>Người dùng truy cập mở dùng ngay cả 3 phân hệ thông qua <code>guest_session_id</code> mà không bị buộc đăng nhập trước.</li>
+      <li>Cho phép nhập/cập nhật Hồ sơ Tài chính (Thu nhập ròng, Chi phí sinh hoạt, Nợ hiện tại, Tiền nhàn rỗi, Khẩu vị rủi ro, Mục tiêu chính).</li>
+      <li>Hồ sơ tự động bật phân tích cá nhân hóa ở Phân hệ 1 (<code>R07</code>) và điền sẵn khi tính DTI ở Phân hệ 2.</li>
+    </ul>
+  </div>
+
+  <div class="us-card">
+    <div class="us-head">
+      <span class="us-id">US-pf02: Đăng nhập Tùy chọn (Email / Google OAuth) &amp; Gộp Lịch sử</span>
+      <span class="prio p1">P1 • Optional Sync</span>
+    </div>
+    <ul>
+      <li>Người dùng có thể đăng nhập tùy chọn để lưu trữ lâu dài Hồ sơ tài chính, các kịch bản vay/đầu tư và lịch sử báo cáo giám định (đã che PII).</li>
+      <li>Hệ thống chạy transaction PostgreSQL gộp an toàn dữ liệu từ <code>guest_session_id</code> sang <code>user_id</code> sau đăng nhập.</li>
+    </ul>
+  </div>
+
+  <!-- EPIC 1 -->
+  <div class="epic-banner e1">EPIC 1: MARKET &amp; THREAT RADAR (Phân hệ 1 — Radar Tin tức &amp; Cảnh báo)</div>
+
+  <div class="us-card">
+    <div class="us-head">
+      <span class="us-id">US-r01: Thu thập, Phân loại &amp; Khử trùng Tin tức Tài chính</span>
+      <span class="prio">P0 • Radar</span>
+    </div>
+    <ul>
+      <li>Thu thập định kỳ qua RSS/API từ CafeF, Vietstock, VnEconomy, Ngân hàng Nhà nước (NHNN) và NCSC.</li>
+      <li>Phân loại theo chủ đề (Lãi suất, Ngân hàng, Thị trường, Chính sách, Lừa đảo) và gộp tin trùng qua <code>canonical_url</code> &amp; <code>content_hash</code>.</li>
+      <li>Hiển thị đủ tiêu đề, nguồn, thời điểm công bố, link gốc; khi nguồn lỗi (<code>ERROR</code>), giữ nguyên mốc cũ và <strong>không hiển thị tin cũ như tin mới</strong>.</li>
+    </ul>
+  </div>
+
+  <div class="us-card">
+    <div class="us-head">
+      <span class="us-id">US-ro02: AI Phân tích Tác động Ví tiền Cá nhân</span>
+      <span class="prio">P0 • AI Insight</span>
+    </div>
+    <ul>
+      <li>Phân tách rạch ròi <strong>Dữ kiện gốc từ tin</strong> với <strong>Nhận định / Ước tính của AI</strong>.</li>
+      <li>Giải thích tác động tới tiền tiết kiệm, chi phí vay hoặc dòng tiền; thiếu hồ sơ chỉ xuất mức tổng quát, đủ hồ sơ cá nhân hóa theo rủi ro &amp; thanh khoản.</li>
+      <li>Có nút 1-click đẩy biến động lãi suất (<code>Δr</code>) sang Phân hệ 2 mô phỏng ngay trên khoản vay/gửi.</li>
+    </ul>
+  </div>
+
+  <div class="us-card">
+    <div class="us-head">
+      <span class="us-id">US-ro3: Phát hiện Cảnh báo Lừa đảo &amp; Nạp Chỉ dấu sang Phân hệ 3</span>
+      <span class="prio">P0 • Security Sync</span>
+    </div>
+    <ul>
+      <li>Thu thập cảnh báo từ nguồn xác thực (<code>is_trusted_for_alerts = true</code>); trích xuất dấu hiệu, thủ đoạn, nhóm lừa đảo và cách phòng tránh.</li>
+      <li>Cảnh báo chưa xác minh (<code>UNVERIFIED</code>) phải gắn nhãn rõ ràng, không trình bày như sự thật đã xác nhận.</li>
+      <li>Tự động sinh thực thể <code>threat_indicator</code> (STK, SĐT, domain, mẫu kịch bản) đẩy sang Phân hệ 3 đối chiếu (<code>RULE_05</code>).</li>
+    </ul>
+  </div>
+
+  <!-- EPIC 2 -->
+  <div class="epic-banner e2">EPIC 2: MULTI-PROVIDER SURVEY &amp; DETERMINISTIC CALCULATOR (Phân hệ 2 — Vay &amp; Đầu tư An toàn)</div>
+
+  <div class="us-card">
+    <div class="us-head">
+      <span class="us-id">US-lo01: Nhập Nhu cầu ➔ Khảo sát &amp; Tính toán Khoản vay Nhiều Bên (Hybrid)</span>
+      <span class="prio">P0 • Core Change</span>
+    </div>
+    <ul>
+      <li>Người dùng nhập nhu cầu (Số tiền, Kỳ hạn, Hình thức, Mục đích); hệ thống quét Catalog chuẩn hóa ~15–25 Ngân hàng/CTTC hợp pháp (gắn nhãn <em>"Đã chuẩn hóa"</em> kèm link nguồn &amp; ngày hiệu lực) + tùy chọn tra cứu web bổ sung (gắn nhãn <em>"Tham khảo web"</em>).</li>
+      <li>Tính toán xác định bằng <code>decimal.js</code> cho từng bên: Trả hàng tháng, Tổng lãi, Tổng phí, <strong>Tiền thực nhận</strong>, <strong>APR thực</strong> và Lịch trả nợ chi tiết từng tháng.</li>
+    </ul>
+  </div>
+
+  <div class="us-card">
+    <div class="us-head">
+      <span class="us-id">US-lo02: Nhập tay Gói bất kỳ &amp; So sánh Đa phương án Vay</span>
+      <span class="prio">P0 • Comparison</span>
+    </div>
+    <ul>
+      <li>Cho phép nhập tay tự do hoặc chọn 2+ gói từ kết quả khảo sát để đặt cạnh nhau đối chiếu bảng &amp; biểu đồ.</li>
+      <li>Hỗ trợ Dư nợ giảm dần, Gốc đều và Lãi phẳng trên gốc; AI giải thích đánh đổi giữa kỳ hạn, áp lực trả nợ và tổng chi phí (không kết luận chỉ dựa vào lãi niêm yết).</li>
+    </ul>
+  </div>
+
+  <div class="us-card">
+    <div class="us-head">
+      <span class="us-id">US-lo03: Đánh giá Khả năng Trả nợ (DTI %)</span>
+      <span class="prio">P0 • Risk Guard</span>
+    </div>
+    <ul>
+      <li>Tính chính xác <code>DTI %</code> &amp; <code>Dư tiền sinh hoạt</code> từ Thu nhập, Chi phí và Nợ hiện tại; cảnh báo 4 ngưỡng (<code>&lt;35%</code>, <code>35–45%</code>, <code>45–50%</code>, <code>&gt;50%</code>).</li>
+      <li>Hiển thị rõ kết quả mang tính ước tính hỗ trợ quyết định, không phải phê duyệt tín dụng của ngân hàng.</li>
+    </ul>
+  </div>
+
+  <div class="us-card">
+    <div class="us-head">
+      <span class="us-id">US-lo04: Mô phỏng Kịch bản Biến động Lãi suất</span>
+      <span class="prio">P0 • Simulation</span>
+    </div>
+    <ul>
+      <li>Nhập hoặc kéo thanh trượt mức lãi suất giả định; tính lại lịch trả nợ và chênh lệch tổng chi phí.</li>
+      <li>Phân biệt khoản vay lãi cố định vs thả nổi; không tự áp biến động thị trường khi chưa xác định cơ chế điều chỉnh.</li>
+    </ul>
+  </div>
+
+  <div class="us-card">
+    <div class="us-head">
+      <span class="us-id">US-inv01: Khảo sát &amp; Tính toán Tích lũy / Đầu tư An toàn</span>
+      <span class="prio">P0 • Wealth</span>
+    </div>
+    <ul>
+      <li>Nhập vốn đầu, góp định kỳ hàng tháng, thời gian nắm giữ và khẩu vị rủi ro ➔ khảo sát Tiết kiệm ngân hàng, Ví tích lũy, Quỹ mở được UBCKNN cấp phép.</li>
+      <li>Tính lãi kép + DCA trừ đúng phí quản lý/phí bán/thuế 0.1%; hiển thị 3 kịch bản (Thận trọng / Cơ sở / Tích cực).</li>
+    </ul>
+  </div>
+
+  <div class="us-card">
+    <div class="us-head">
+      <span class="us-id">US-inv02: Bộ lọc Tín nhiệm (Trust Filter — Chủ đề 3)</span>
+      <span class="prio">P0 • Trust Filter</span>
+    </div>
+    <ul>
+      <li>Tự động loại bỏ khỏi danh sách mọi app tín dụng đen, sàn ngoại hối/crypto trái phép, mô hình Ponzi cam kết lãi phi lý.</li>
+      <li>Nếu người dùng nhập tên đơn vị ngoài danh sách hợp pháp, cảnh báo ngay và điều hướng sang Phân hệ 3 để giám định hợp đồng/QR.</li>
+    </ul>
+  </div>
+
+  <!-- EPIC 3 -->
+  <div class="epic-banner e3">EPIC 3: DEAL &amp; CONTRACT FORENSIC AUDITOR (Phân hệ 3 — Mũi nhọn Tạo Khác biệt MVP)</div>
+
+  <div class="us-card">
+    <div class="us-head">
+      <span class="us-id">US-fa01: Tải lên Đa phương thức &amp; Giải mã VietQR (EMVCo / NAPAS 247)</span>
+      <span class="prio crit">P0 • ĐINH MVP</span>
+    </div>
+    <ul>
+      <li>Tải đồng thời tối đa 5 ảnh (chat Zalo/FB, ảnh hợp đồng, ảnh VietQR), 1 PDF hợp đồng (digital/scan &le; 5 trang) và văn bản kèm theo.</li>
+      <li>Giải mã tự động chuỗi VietQR không cần API trả phí (BIN ➔ Ngân hàng, STK, loại dịch vụ <code>QRIBFTTA</code> cá nhân / Merchant, số tiền Tag 54, nội dung Tag 62, kiểm tra CRC-16).</li>
+      <li>Kết hợp AI Vision đọc tên chủ tài khoản in trên ảnh QR (vì QR cá nhân không mã hóa họ tên) và điều khoản văn bản.</li>
+    </ul>
+  </div>
+
+  <div class="us-card">
+    <div class="us-head">
+      <span class="us-id">US-fa02: Giám định 7 Luật Cứng VN, Lệch Thực thể &amp; Quy đổi APR Thực</span>
+      <span class="prio crit">P0 • ĐINH MVP</span>
+    </div>
+    <ul>
+      <li>Chạy đồng thời 7 Luật Cứng (<code>RULE_01</code> phí trước QR, <code>RULE_02</code> bẫy lỗi 102, <code>RULE_03</code> lệch pháp nhân vs QR cá nhân, <code>RULE_04</code> không phép/mạo danh, <code>RULE_05</code> trùng NCSC, <code>RULE_06</code> lãi phẳng/trần APR, <code>RULE_07</code> Ponzi).</li>
+      <li>Quy đổi Tiền thực nhận (<code>P_net</code>) &amp; APR thực; phán quyết 3 mức kèm trích dẫn nguyên văn và <strong>Deterministic Override</strong> (cấm LLM hạ mức khi có luật <code>CRITICAL</code>).</li>
+    </ul>
+  </div>
+
+  <div class="us-card">
+    <div class="us-head">
+      <span class="us-id">US-fa03: Xuất Báo cáo Bằng chứng, Tự xóa File PII &amp; 1-Click sang Phân hệ 2</span>
+      <span class="prio crit">P0 • ĐINH MVP</span>
+    </div>
+    <ul>
+      <li>Xuất Báo cáo Bằng chứng (PDF/Markdown) kèm hướng dẫn xử lý khẩn cấp nếu đã chuyển tiền.</li>
+      <li>Nút 1-click đẩy thẳng Số tiền + Kỳ hạn sang Phân hệ 2 kiểm tra DTI và khảo sát nguồn vay chính thống.</li>
+      <li>Tự xóa vĩnh viễn tệp ảnh/PDF gốc trong khối <code>finally</code> sau trích xuất và che PII (CCCD, SĐT) trước khi lưu DB.</li>
+    </ul>
+  </div>
+
+  <!-- FLOW 01 -->
+  <div class="flow-page">
+    <div class="flow-shell">
+      <div class="flow-hdr">
+        <div>
+          <h3>Market &amp; Threat Radar — User Flow</h3>
+          <p>Thu thập tin vĩ mô • Phân tích tác động ví tiền (R07) • Cảnh báo xác thực &amp; Nạp chỉ dấu sang Phân hệ 3</p>
+        </div>
+        <span class="flow-code">FLOW 01</span>
+      </div>
+
+      <div class="f-col">
+        <div class="node start"><div class="node-top"><span>● BẮT ĐẦU</span><span class="nid">R01</span></div><p class="node-title">Truy cập ứng dụng (Guest Mode sẵn sàng)</p><p class="node-desc">Mở FinCopilot AI với guest_session_id hoặc tài khoản đã đăng nhập</p></div>
+        <div class="arr">↓</div>
+        <div class="node action"><div class="node-top"><span>● THAO TÁC</span><span class="nid">R02</span></div><p class="node-title">Mở Market &amp; Threat Radar (SCR-02)</p><p class="node-desc">Chọn phân hệ trên Dashboard; xem trạng thái độ tươi của 5 nguồn tin</p></div>
+        <div class="arr">↓</div>
+        <div class="node action"><div class="node-top"><span>● THAO TÁC</span><span class="nid">R03</span></div><p class="node-title">Lọc danh sách theo chủ đề &amp; độ tươi</p><p class="node-desc">Lãi suất, Ngân hàng, Thị trường, Chính sách, Lừa đảo (nguồn lỗi không đẩy tin cũ)</p></div>
+        <div class="arr">↓</div>
+        <div class="node decide"><div class="node-top"><span>● QUYẾT ĐỊNH</span><span class="nid">R04</span></div><p class="node-title">Chọn loại thông tin cần xem?</p><p class="node-desc">Rẽ nhánh Tin thị trường vĩ mô hoặc Cảnh báo lừa đảo xác thực</p></div>
+        <div class="arr">↓</div>
+
+        <div class="f-row2">
+          <div class="lane">
+            <div class="lane-title">Nhánh A • Tin Thị trường &amp; Tác động AI</div>
+            <div class="node action wide"><div class="node-top"><span>● THAO TÁC</span><span class="nid">R05</span></div><p class="node-title">Mở chi tiết tin tài chính (SCR-03)</p><p class="node-desc">Hiển thị nguồn, thời điểm công bố &amp; liên kết bài gốc</p></div>
+            <div class="arr">↓</div>
+            <div class="node ai wide"><div class="node-top"><span>● AI / GUARDRAIL</span><span class="nid">R06</span></div><p class="node-title">Tách 2 cột: Dữ kiện gốc vs Nhận định AI</p><p class="node-desc">Không pha trộn số liệu thực tế với ước tính dự báo</p></div>
+            <div class="arr">↓</div>
+            <div class="node decide wide"><div class="node-top"><span>● QUYẾT ĐỊNH</span><span class="nid">R07</span></div><p class="node-title">Đã có Hồ sơ Tài chính?</p><p class="node-desc">Kiểm tra financial_profiles của Guest / User</p></div>
+            <div class="f-row2" style="margin-top:2px;">
+              <div class="f-col">
+                <span class="branch-lbl">Có hồ sơ</span>
+                <div class="node ai wide"><div class="node-top"><span>● AI / INSIGHT</span><span class="nid">R08</span></div><p class="node-title">Insight cá nhân hóa</p><p class="node-desc">Theo thu nhập, nợ hiện tại &amp; khẩu vị rủi ro</p></div>
+              </div>
+              <div class="f-col">
+                <span class="branch-lbl">Chưa có</span>
+                <div class="node ai wide"><div class="node-top"><span>● AI / INSIGHT</span><span class="nid">R09</span></div><p class="node-title">Insight tổng quát</p><p class="node-desc">Nêu rõ giả định + gợi ý điền nhanh hồ sơ</p></div>
+              </div>
+            </div>
+            <div class="arr">↓</div>
+            <div class="node ai wide"><div class="node-top"><span>● CẦU NỐI LUỒNG 1</span><span class="nid">R13</span></div><p class="node-title">Nút "Mô phỏng tác động lên khoản vay/tiết kiệm"</p><p class="node-desc">Chuyển thẳng sang Phân hệ 2 (SCR-05) kèm mức Δr</p></div>
+          </div>
+
+          <div class="lane">
+            <div class="lane-title">Nhánh B • Cảnh báo Lừa đảo &amp; Lá chắn P3</div>
+            <div class="node alert wide"><div class="node-top"><span>● CẢNH BÁO</span><span class="nid">R10</span></div><p class="node-title">Đọc cảnh báo lừa đảo (NHNN / NCSC)</p><p class="node-desc">Thủ đoạn, đối tượng nhắm tới &amp; dấu hiệu nhận diện</p></div>
+            <div class="arr">↓</div>
+            <div class="node action wide"><div class="node-top"><span>● THAO TÁC</span><span class="nid">R11</span></div><p class="node-title">Xem hướng dẫn phòng tránh</p><p class="node-desc">Các bước kiểm tra trước khi chuyển tiền hoặc cài app</p></div>
+            <div class="arr">↓</div>
+            <div class="node decide wide"><div class="node-top"><span>● XÁC MINH</span><span class="nid">R12</span></div><p class="node-title">Kiểm tra verification_status</p><p class="node-desc">VERIFIED (nguồn trusted) vs UNVERIFIED (gắn nhãn nhắc nhở)</p></div>
+            <div class="arr">↓</div>
+            <div class="node alert wide"><div class="node-top"><span>● CẦU NỐI LUỒNG 2</span><span class="nid">R12B</span></div><p class="node-title">Đồng bộ threat_indicator sang Phân hệ 3</p><p class="node-desc">Tự nạp STK, SĐT, domain &amp; mẫu lỗi 102 để chặn bẫy (RULE_05)</p></div>
+          </div>
+        </div>
+
+        <div class="arr">↓</div>
+        <div class="node end"><div class="node-top"><span>● KẾT THÚC</span><span class="nid">R14</span></div><p class="node-title">Hoàn thành hoặc chuyển sang Phân hệ 2 / 3</p><p class="node-desc">Quay về Dashboard SCR-01 hoặc đi tiếp vòng tròn khép kín</p></div>
+      </div>
+
+      <div class="flow-foot">
+        <span>User Journey • Radar Tin tức &amp; Đồng bộ Chỉ dấu An ninh mạng</span>
+        <span>FLOW 01 • FinCopilot AI</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOW 02 -->
+  <div class="flow-page">
+    <div class="flow-shell f2">
+      <div class="flow-hdr">
+        <div>
+          <h3>Multi-Provider Survey &amp; Deterministic Calculator — User Flow</h3>
+          <p>Nhập nhu cầu ➔ Trust Filter ➔ Khảo sát nhiều bên (Hybrid) ➔ Tính decimal.js, APR thực, DTI &amp; Sốc lãi</p>
+        </div>
+        <span class="flow-code" style="color:#065f46;background:#d1fae5;">FLOW 02</span>
+      </div>
+
+      <div class="f-col">
+        <div class="node start"><div class="node-top"><span>● BẮT ĐẦU</span><span class="nid">L01</span></div><p class="node-title">Mở Survey &amp; Calculator Hub (SCR-04)</p><p class="node-desc">Tự động nhận thông số pre-fill nếu chuyển từ Phân hệ 1 hoặc Phân hệ 3</p></div>
+        <div class="arr">↓</div>
+        <div class="node decide"><div class="node-top"><span>● QUYẾT ĐỊNH</span><span class="nid">L02</span></div><p class="node-title">Chọn chế độ tính toán &amp; khảo sát</p><p class="node-desc">Khảo sát Vay vốn | Khảo sát Tích lũy-Đầu tư | Nhập tay gói bất kỳ</p></div>
+        <div class="arr">↓</div>
+
+        <div class="f-row3">
+          <div class="lane">
+            <div class="lane-title">A • Khảo sát &amp; Tính Vay</div>
+            <div class="node action wide"><div class="node-top"><span>● THAO TÁC</span><span class="nid">L03</span></div><p class="node-title">Nhập nhu cầu vay</p><p class="node-desc">Số tiền P, Kỳ hạn n, Hình thức, Mục đích, Tên bên muốn check</p></div>
+            <div class="arr">↓</div>
+            <div class="node alert wide"><div class="node-top"><span>● TRUST FILTER</span><span class="nid">L04</span></div><p class="node-title">Lọc giấy phép NHNN</p><p class="node-desc">Chặn app tín dụng đen; nếu phát hiện gợi ý đẩy sang P3</p></div>
+            <div class="arr">↓</div>
+            <div class="node action wide"><div class="node-top"><span>● HYBRID SURVEY</span><span class="nid">L05</span></div><p class="node-title">Quét nhiều Ngân hàng/CTTC</p><p class="node-desc">Catalog "Đã chuẩn hóa" + tùy chọn "Tham khảo web"</p></div>
+          </div>
+
+          <div class="lane">
+            <div class="lane-title">B • Tích lũy &amp; Đầu tư An toàn</div>
+            <div class="node action wide"><div class="node-top"><span>● THAO TÁC</span><span class="nid">L06</span></div><p class="node-title">Nhập kế hoạch tích lũy</p><p class="node-desc">Vốn đầu C0, Góp tháng PMT, Thời gian n, Khẩu vị rủi ro</p></div>
+            <div class="arr">↓</div>
+            <div class="node alert wide"><div class="node-top"><span>● TRUST FILTER</span><span class="nid">L07</span></div><p class="node-title">Lọc sàn ảo &amp; Ponzi</p><p class="node-desc">Chỉ giữ Tiết kiệm, Ví tích lũy, Quỹ mở UBCKNN cấp phép</p></div>
+            <div class="arr">↓</div>
+            <div class="node ai wide"><div class="node-top"><span>● MATH ENGINE</span><span class="nid">L08</span></div><p class="node-title">Lãi kép + DCA trừ phí/thuế</p><p class="node-desc">Vẽ 3 kịch bản: Thận trọng, Cơ sở, Tích cực</p></div>
+          </div>
+
+          <div class="lane">
+            <div class="lane-title">C • Nhập tay &amp; So sánh</div>
+            <div class="node action wide"><div class="node-top"><span>● THAO TÁC</span><span class="nid">L09</span></div><p class="node-title">Nhập 1–3 gói tự chọn</p><p class="node-desc">Lãi suất, kiểu tính phẳng/giảm dần, phí bảo hiểm, ưu đãi</p></div>
+            <div class="arr">↓</div>
+            <div class="node action wide"><div class="node-top"><span>● MATH ENGINE</span><span class="nid">L10</span></div><p class="node-title">Quy đổi APR thực &amp; Lịch nợ</p><p class="node-desc">Tính Tiền thực nhận P_net, Newton-Raphson APR &amp; Bảng tháng</p></div>
+            <div class="arr">↓</div>
+            <div class="node action wide"><div class="node-top"><span>● ĐỐI CHIẾU</span><span class="nid">L11</span></div><p class="node-title">So sánh bảng &amp; biểu đồ</p><p class="node-desc">Xếp hạng theo tổng chi phí &amp; APR thực, không theo lãi niêm yết</p></div>
+          </div>
+        </div>
+
+        <div class="arr">↓</div>
+        <div class="f-row2">
+          <div class="node ai wide"><div class="node-top"><span>● ĐÁNH GIÁ DTI &amp; SỐC LÃI</span><span class="nid">L12</span></div><p class="node-title">Tính DTI % (4 ngưỡng) &amp; Kéo thanh trượt đổi lãi (SCR-05)</p><p class="node-desc">Phân tách cố định vs thả nổi; cảnh báo nếu DTI &gt; 45–50% hoặc hụt dòng tiền</p></div>
+          <div class="node ai wide"><div class="node-top"><span>● AI EXPLANATION</span><span class="nid">L13</span></div><p class="node-title">AI giải thích đánh đổi giữa các phương án</p><p class="node-desc">Đọc số từ decimal.js để giải thích rõ ràng, cấm AI tự tính hoặc sửa số</p></div>
+        </div>
+        <div class="arr">↓</div>
+        <div class="node end"><div class="node-top"><span>● KẾT THÚC</span><span class="nid">L14</span></div><p class="node-title">Lưu phiên calculation_sessions &amp; Ra quyết định an toàn</p><p class="node-desc">Gắn nhãn nguồn dữ liệu &amp; miễn trừ ước tính hỗ trợ quyết định</p></div>
+      </div>
+
+      <div class="flow-foot">
+        <span>User Journey • Khảo sát đa bên, Tính toán Xác định, DTI &amp; Trust Filter</span>
+        <span>FLOW 02 • FinCopilot AI</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOW 03 -->
+  <div class="flow-page">
+    <div class="flow-shell f3">
+      <div class="flow-hdr">
+        <div>
+          <h3>Deal &amp; Contract Forensic Auditor — User Flow (Mũi nhọn MVP)</h3>
+          <p>Tải đa phương thức ➔ Giải mã VietQR + Vision ➔ 7 Luật Cứng + APR Thực ➔ Phán quyết &amp; 1-Click sang P2</p>
+        </div>
+        <span class="flow-code" style="color:#991b1b;background:#fee2e2;">FLOW 03</span>
+      </div>
+
+      <div class="f-col">
+        <div class="node start"><div class="node-top"><span>● BẮT ĐẦU</span><span class="nid">F01</span></div><p class="node-title">Mở Phòng Giám định Forensic Auditor (SCR-06)</p><p class="node-desc">Hiển thị cam kết bảo mật: tự động xóa tệp ảnh/PDF ngay sau trích xuất</p></div>
+        <div class="arr">↓</div>
+        <div class="node action"><div class="node-top"><span>● THAO TÁC</span><span class="nid">F02</span></div><p class="node-title">Tải tài liệu đa phương thức hoặc chọn 3 Case mẫu</p><p class="node-desc">Tối đa 5 ảnh (Chat Zalo/FB, ảnh QR) + 1 PDF hợp đồng (&le; 5 trang) + Văn bản</p></div>
+        <div class="arr">↓</div>
+        <div class="node decide"><div class="node-top"><span>● BẢO MẬT FILE</span><span class="nid">F03</span></div><p class="node-title">Kiểm tra Magic Bytes, dung lượng &le; 20MB &amp; Stage tạm TTL 15 phút</p><p class="node-desc">Từ chối file sai định dạng; giữ file hợp lệ trên RAM để xử lý song song 3 nhánh</p></div>
+        <div class="arr">↓</div>
+
+        <div class="f-row3">
+          <div class="lane">
+            <div class="lane-title">Nhánh 1 • Giải mã VietQR</div>
+            <div class="node action wide"><div class="node-top"><span>● DETERMINISTIC</span><span class="nid">F04</span></div><p class="node-title">Sharp + ZXing-WASM + EMVCo TLV</p><p class="node-desc">Lấy BIN ngân hàng, STK, QRIBFTTA cá nhân vs Merchant, Tag 54 tiền, Tag 62, CRC-16</p></div>
+          </div>
+          <div class="lane">
+            <div class="lane-title">Nhánh 2 • Đọc Hợp đồng PDF</div>
+            <div class="node action wide"><div class="node-top"><span>● PDF PIPELINE</span><span class="nid">F05</span></div><p class="node-title">unpdf (Digital) / Canvas Rasterize</p><p class="node-desc">Lấy text từng trang hoặc chuyển bản scan sang ảnh PNG cho Vision</p></div>
+          </div>
+          <div class="lane">
+            <div class="lane-title">Nhánh 3 • AI Vision Trích xuất</div>
+            <div class="node ai wide"><div class="node-top"><span>● MULTI-LLM VISION</span><span class="nid">F06</span></div><p class="node-title">Đọc Chat, Tên chủ TK trên ảnh QR &amp; Điều khoản</p><p class="node-desc">Trả JSON Zod kèm trích dẫn nguyên văn evidence_quote</p></div>
+          </div>
+        </div>
+
+        <div class="arr">↓</div>
+        <div class="f-row2">
+          <div class="node alert wide"><div class="node-top"><span>● 7 LUẬT CỨNG VN</span><span class="nid">F07</span></div><p class="node-title">Kiểm tra RULE_01..RULE_07 &amp; Đối chiếu NCSC</p><p class="node-desc">Phí trước QR, Lỗi 102, Lệch thực thể, Không phép, NCSC, Trần lãi, Ponzi</p></div>
+          <div class="node action wide"><div class="node-top"><span>● TOÁN HỌC XÁC ĐỊNH</span><span class="nid">F08</span></div><p class="node-title">Quy đổi Tiền thực nhận P_net &amp; APR thực</p><p class="node-desc">Bóc tách bẫy lãi phẳng &amp; phí trừ trước so với mặt bằng NHNN</p></div>
+        </div>
+        <div class="arr">↓</div>
+        <div class="node decide"><div class="node-top"><span>● DETERMINISTIC OVERRIDE</span><span class="nid">F09</span></div><p class="node-title">Chấm điểm 0–100 &amp; Chốt Phán quyết (Cấm AI hạ mức nếu có luật CRITICAL)</p><p class="node-desc">0–29 AN TOÀN | 30–69 CẦN THẬN TRỌNG | 70–100 NGUY HIỂM CAO (Khóa cứng &ge; 75)</p></div>
+        <div class="arr">↓</div>
+        <div class="node alert"><div class="node-top"><span>● BẢO MẬT PII (FINALLY)</span><span class="nid">F10</span></div><p class="node-title">XÓA VĨNH VIỄN ảnh/PDF gốc &amp; Che số CCCD/SĐT trước khi lưu DB</p><p class="node-desc">Ghi nhận mốc source_files_purged_at vào forensic_audits</p></div>
+        <div class="arr">↓</div>
+        <div class="node end"><div class="node-top"><span>● KẾT THÚC (SCR-07)</span><span class="nid">F11–F12</span></div><p class="node-title">Xem Bằng chứng, Xuất PDF/MD &amp; Bấm 1-Click sang Phân hệ 2 (SCR-04/05)</p><p class="node-desc">Nếu đã chuyển tiền ➔ Hiện hướng dẫn khóa thẻ &amp; trình báo NCSC/Công an</p></div>
+      </div>
+
+      <div class="flow-foot">
+        <span>User Journey • Giám định Đa phương thức, Bảo mật PII &amp; Phán quyết Xác định</span>
+        <span>FLOW 03 • FinCopilot AI</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOW 04 -->
+  <div class="flow-page">
+    <div class="flow-shell f4">
+      <div class="flow-hdr">
+        <div>
+          <h3>End-to-End Closed-Loop — 4 Cầu nối Khép kín giữa 3 Phân hệ</h3>
+          <p>Hành trình xuyên suốt chuẩn Kịch bản Demo 5 phút: Đọc Radar ➔ Soi bẫy Forensic ➔ Tính vay chính thống &amp; DTI</p>
+        </div>
+        <span class="flow-code" style="color:#831843;background:#fce7f3;">FLOW 04</span>
+      </div>
+
+      <div class="f-col">
+        <div class="node start"><div class="node-top"><span>● BẮT ĐẦU</span><span class="nid">X01</span></div><p class="node-title">Người dùng mở Dashboard FinCopilot AI (SCR-01)</p><p class="node-desc">Hồ sơ tài chính đã có (Thu nhập 18tr, Chi phí 8tr, Nợ hiện tại 2tr) hoặc Guest</p></div>
+        <div class="arr">↓</div>
+        <div class="node action"><div class="node-top"><span>● PHÂN HỆ 1 (RADAR)</span><span class="nid">X02</span></div><p class="node-title">Đọc tin lãi suất NHNN &amp; Cảnh báo "lỗi 102 VietQR" từ NCSC</p><p class="node-desc">AI tách Dữ kiện gốc vs Tác động ví tiền cá nhân; cảnh báo NCSC nạp indicator sang P3</p></div>
+        <div class="arr">↓</div>
+        <div class="node alert"><div class="node-top"><span>● TÌNH HUỐNG THỰC TẾ</span><span class="nid">X03</span></div><p class="node-title">Nhận chào mời vay 50 triệu bên ngoài qua Zalo + PDF + Ảnh VietQR</p><p class="node-desc">Báo "lãi chỉ 0.9%/tháng" nhưng đòi quét QR nộp 2.500.000đ phí mở khóa lỗi 102</p></div>
+        <div class="arr">↓</div>
+        <div class="node ai"><div class="node-top"><span>● PHÂN HỆ 3 (FORENSIC)</span><span class="nid">X04–X05</span></div><p class="node-title">Tải lên SCR-06 ➔ Nhận Phán quyết Đỏ NGUY HIỂM CAO (95/100) ở SCR-07</p><p class="node-desc">Bật cờ RULE_01, RULE_02, RULE_03, RULE_05 + Quy đổi APR thực đội lên &gt; 34%/năm</p></div>
+        <div class="arr">↓</div>
+        <div class="node decide"><div class="node-top"><span>● QUYẾT ĐỊNH CẦU NỐI 3</span><span class="nid">X06</span></div><p class="node-title">Người dùng bấm "Khảo sát &amp; Tính phương án vay hợp pháp thay thế"?</p><p class="node-desc">Mang theo Số tiền 50.000.000đ + Kỳ hạn 24 tháng + Hồ sơ Thu nhập sang Phân hệ 2</p></div>
+        <div class="arr">↓</div>
+        <div class="f-row2">
+          <div class="f-col">
+            <span class="branch-lbl">Có (1-Click Handoff sang P2)</span>
+            <div class="node action wide"><div class="node-top"><span>● PHÂN HỆ 2 (SURVEY)</span><span class="nid">X07</span></div><p class="node-title">Trust Filter lọc nguồn sạch &amp; Tính chi phí nhiều Ngân hàng/CTTC</p><p class="node-desc">Hiển thị trả tháng, tiền thực nhận, APR thực &amp; Đồng hồ DTI (34.5% An toàn)</p></div>
+            <div class="arr">↓</div>
+            <div class="node ai wide"><div class="node-top"><span>● MÔ PHỎNG &amp; GIẢI THÍCH</span><span class="nid">X08</span></div><p class="node-title">Kéo thanh trượt sốc lãi suất +2% (Cầu nối Luồng 1) &amp; Xem giải thích AI</p><p class="node-desc">Hoặc chuyển sang tab Tích lũy/Quỹ mở (3 kịch bản) nếu người dùng có tiền nhàn rỗi</p></div>
+          </div>
+          <div class="f-col">
+            <span class="branch-lbl">Không (Chỉ xuất bằng chứng)</span>
+            <div class="node alert wide"><div class="node-top"><span>● BẢO VỆ TÀI KHOẢN</span><span class="nid">X09</span></div><p class="node-title">Xuất Báo cáo Bằng chứng PDF/MD &amp; Chặn giao dịch</p><p class="node-desc">File gốc tự hủy vĩnh viễn; lưu tóm tắt đã che PII vào Lịch sử SCR-08</p></div>
+          </div>
+        </div>
+        <div class="arr">↓</div>
+        <div class="node end"><div class="node-top"><span>● KẾT THÚC KHÉP KÍN</span><span class="nid">X10</span></div><p class="node-title">Hoàn thành vòng tròn: Hiểu thị trường ➔ Chặn bẫy lừa đảo ➔ Chọn giải pháp an toàn</p><p class="node-desc">Quay về Dashboard SCR-01 hoặc đăng nhập tùy chọn để đồng bộ lịch sử đa thiết bị</p></div>
+      </div>
+
+      <div class="flow-foot">
+        <span>Kịch bản Demo 5 Phút • Luồng Khép kín 3 Phân hệ</span>
+        <span>FLOW 04 • FinCopilot AI</span>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

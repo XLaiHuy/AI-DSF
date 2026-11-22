@@ -1,0 +1,245 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+:root {
+  color-scheme: light;
+  --background: #f6f7f4;
+  --foreground: #172922;
+  --card: #fff;
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: #185c48;
+  --primary-foreground: #fff;
+  --secondary: #e9efe9;
+  --secondary-foreground: var(--foreground);
+  --muted: #edf1ec;
+  --muted-foreground: #52645b;
+  --accent: #dcece2;
+  --accent-foreground: #194b3b;
+  --destructive: #ad3527;
+  --border: #d9e3db;
+  --input: var(--border);
+  --ring: #247c62;
+  --radius: 0.75rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, sans-serif;
+}
+
+::selection { background: var(--accent); color: var(--accent-foreground); }
+
+:where(a, button, [tabindex]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 3;
+  inset-block-start: 0.75rem;
+  inset-inline-start: 0.75rem;
+  padding: 0.75rem;
+  background: var(--card);
+  color: var(--primary);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus { transform: none; }
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "topbar" "main";
+  min-block-size: 100dvh;
+}
+
+.topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-block-size: 4rem;
+  padding-inline: clamp(1rem, 3vw, 2rem);
+  border-block-end: 1px solid var(--border);
+  background: var(--card);
+}
+
+.brand, .profile-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-block-size: 2.75rem;
+  white-space: nowrap;
+}
+
+.brand { font-weight: 700; }
+.brand-mark {
+  display: grid;
+  place-items: center;
+  inline-size: 1.85rem;
+  block-size: 1.85rem;
+  border-radius: 0.45rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.profile-link {
+  margin-inline-start: auto;
+  color: var(--primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.topbar-section { display: none; }
+
+.app-nav {
+  position: fixed;
+  z-index: 2;
+  inset-inline: 0;
+  inset-block-end: 0;
+  padding: 0.45rem 0.25rem max(0.45rem, env(safe-area-inset-bottom));
+  border-block-start: 1px solid var(--border);
+  background: var(--card);
+}
+
+.app-nav ul { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.15rem; }
+
+.app-nav a {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  min-block-size: 3.1rem;
+  padding: 0.25rem 0.1rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  color: var(--muted-foreground);
+  text-align: center;
+  font-size: 0.6875rem;
+  line-height: 1.2;
+}
+
+.app-nav a svg { flex: none; }
+.app-nav a:hover { background: var(--muted); }
+.app-nav a[aria-current] {
+  border-color: var(--primary);
+  background: var(--accent);
+  color: var(--accent-foreground);
+  font-weight: 700;
+}
+
+.app-main {
+  grid-area: main;
+  min-inline-size: 0;
+  padding: clamp(2rem, 6vw, 4.25rem) clamp(1rem, 6vw, 5rem) calc(5.5rem + env(safe-area-inset-bottom));
+}
+
+.page { max-inline-size: 55rem; margin-inline: auto; }
+.page h1 {
+  font-size: clamp(1.9rem, 5vw, 3.1rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.12;
+  text-wrap: balance;
+}
+.page-description {
+  max-inline-size: 67ch;
+  margin-block-start: 0.8rem;
+  color: var(--muted-foreground);
+  line-height: 1.65;
+}
+
+.page-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-block-size: 2.75rem;
+  margin-block-start: 1.5rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.6rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+}
+.page-action:hover { background: #124837; }
+
+.handoff {
+  display: grid;
+  max-inline-size: 38rem;
+  margin-block-start: 2rem;
+  padding: 0.25rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.handoff > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  justify-content: space-between;
+  padding-block: 0.8rem;
+}
+.handoff > div + div { border-block-start: 1px solid var(--border); }
+.handoff dt { color: var(--muted-foreground); }
+.handoff dd { font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+@media (min-width: 48rem) {
+  .app-shell {
+    grid-template-columns: 14rem minmax(0, 1fr);
+    grid-template-areas: "topbar topbar" "nav main";
+  }
+  .topbar-section {
+    display: block;
+    padding-inline-start: 1rem;
+    border-inline-start: 1px solid var(--border);
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+  }
+  .app-nav {
+    grid-area: nav;
+    position: static;
+    padding: 1.25rem 0.8rem;
+    border-block-start: 0;
+    border-inline-end: 1px solid var(--border);
+  }
+  .app-nav ul { grid-template-columns: 1fr; gap: 0.3rem; }
+  .app-nav a {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 0.7rem;
+    min-block-size: 2.75rem;
+    padding-inline: 0.65rem;
+    font-size: 0.9rem;
+  }
+}

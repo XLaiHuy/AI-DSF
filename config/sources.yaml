@@ -1,0 +1,26 @@
+sources:
+  - sourceKey: cafef
+    name: CafeF
+    sourceType: RSS
+    endpointUrl: https://cafef.vn/thi-truong-chung-khoan.rss
+    isTrustedForAlerts: false
+  - sourceKey: vneconomy
+    name: VnEconomy
+    sourceType: RSS
+    endpointUrl: https://vneconomy.vn/rss/home.rss
+    isTrustedForAlerts: false
+  - sourceKey: vietstock
+    name: Vietstock
+    sourceType: RSS
+    endpointUrl: https://vietstock.vn/830/thi-truong-chung-khoan.rss
+    isTrustedForAlerts: false
+  - sourceKey: nhnn
+    name: NHNN
+    sourceType: WEB
+    endpointUrl: https://www.sbv.gov.vn/
+    isTrustedForAlerts: true
+  - sourceKey: ncsc
+    name: NCSC
+    sourceType: WEB
+    endpointUrl: https://ncsc.gov.vn/
+    isTrustedForAlerts: true

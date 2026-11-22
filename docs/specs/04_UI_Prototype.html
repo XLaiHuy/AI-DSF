@@ -1,0 +1,2114 @@
+<!DOCTYPE html>
+<html lang="vi" data-brand="rose">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <script>
+    try {
+      const savedScheme = localStorage.getItem("fc-color-scheme");
+      if (savedScheme) document.querySelector('meta[name="color-scheme"]').content = savedScheme;
+      const savedBrand = localStorage.getItem("fc-brand");
+      if (savedBrand) document.documentElement.dataset.brand = savedBrand;
+    } catch (e) {}
+  </script>
+  <title>FinCopilot AI — Interactive UI Prototype (9 Màn hình SCR-01..SCR-09)</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      /* Base light/dark surface tokens using light-dark() + fallback */
+      --bg-canvas: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-subtle: #f1f5f9;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --border-color: #cbd5e1;
+      --border-soft: #e2e8f0;
+
+      /* Brand primary (Rose default = MoMo Fintech) */
+      --brand: #ae2070;
+      --brand-dark: #831843;
+      --brand-soft: #fdf2f8;
+      --brand-contrast: #ffffff;
+
+      /* Semantic */
+      --blue: #1d4ed8;
+      --blue-soft: #eff6ff;
+      --green: #047857;
+      --green-soft: #ecfdf5;
+      --amber: #b45309;
+      --amber-soft: #fffbeb;
+      --red: #b91c1c;
+      --red-soft: #fef2f2;
+      --purple: #6d28d9;
+      --purple-soft: #f5f3ff;
+
+      --radius: 10px;
+      --shadow: 0 2px 10px rgb(15 23 42 / 0.06);
+      accent-color: var(--brand);
+    }
+
+    :root[data-brand="navy"] {
+      --brand: #2563eb;
+      --brand-dark: #1e40af;
+      --brand-soft: #eff6ff;
+    }
+
+    @supports (color: light-dark(white, black)) {
+      :root {
+        --bg-canvas: light-dark(#f8fafc, #0b1120);
+        --bg-surface: light-dark(#ffffff, #111827);
+        --bg-subtle: light-dark(#f1f5f9, #1e293b);
+        --text-main: light-dark(#0f172a, #f1f5f9);
+        --text-muted: light-dark(#475569, #94a3b8);
+        --border-color: light-dark(#cbd5e1, #334155);
+        --border-soft: light-dark(#e2e8f0, #1e293b);
+        --brand-soft: light-dark(#fdf2f8, #3b0d26);
+        --blue-soft: light-dark(#eff6ff, #172554);
+        --green-soft: light-dark(#ecfdf5, #064e3b);
+        --amber-soft: light-dark(#fffbeb, #451a03);
+        --red-soft: light-dark(#fef2f2, #450a0a);
+        --purple-soft: light-dark(#f5f3ff, #2e1065);
+        --blue: light-dark(#1d4ed8, #60a5fa);
+        --green: light-dark(#047857, #34d399);
+        --amber: light-dark(#b45309, #fbbf24);
+        --red: light-dark(#b91c1c, #f87171);
+        --purple: light-dark(#6d28d9, #a78bfa);
+      }
+      :root[data-brand="navy"] {
+        --brand-soft: light-dark(#eff6ff, #172554);
+      }
+    }
+
+    :root:has(> head > meta[name="color-scheme"][content="dark"]) {
+      color-scheme: dark;
+    }
+    :root:has(> head > meta[name="color-scheme"][content="light"]) {
+      color-scheme: light;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg-canvas);
+      color: var(--text-main);
+      line-height: 1.5;
+      font-size: 14px;
+    }
+
+    .visually-hidden:where(:not(:focus-within, :active)) {
+      position: absolute !important;
+      clip-path: inset(50%) !important;
+      overflow: hidden !important;
+      width: 1px !important;
+      height: 1px !important;
+      margin: -1px !important;
+      padding: 0 !important;
+      border: 0 !important;
+      white-space: nowrap !important;
+    }
+
+    /* App Layout */
+    .app-shell {
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+      min-height: 100vh;
+      max-width: 100%;
+    }
+    .app-shell > *, .main-area, .content, .card, .grid-2 > *, .grid-3 > * {
+      min-width: 0;
+    }
+
+    .sidebar {
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border-soft);
+      padding: 18px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+
+    .logo-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 4px 6px;
+    }
+
+    .logo-mark {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      background: var(--brand);
+      color: var(--brand-contrast);
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .logo-title { font-weight: 800; font-size: 15.5px; line-height: 1.1; }
+    .logo-sub { font-size: 11px; color: var(--text-muted); }
+
+    .nav-group { display: flex; flex-direction: column; gap: 4px; }
+    .nav-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 4px 10px;
+      letter-spacing: 0.4px;
+    }
+
+    .nav-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      padding: 9px 11px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text-main);
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+    }
+    .nav-btn:hover { background: var(--bg-subtle); }
+    .nav-btn[aria-current="page"] {
+      background: var(--brand-soft);
+      color: var(--brand);
+      border-color: color-mix(in srgb, var(--brand) 30%, transparent);
+    }
+
+    .scr-tag {
+      font-family: Consolas, monospace;
+      font-size: 10.5px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--bg-subtle);
+      color: var(--text-muted);
+    }
+
+    .main-area {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .topbar {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-soft);
+      padding: 10px 22px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .profile-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--text-main);
+    }
+    .profile-pill:hover { border-color: var(--brand); }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .theme-switch {
+      display: inline-flex;
+      background: var(--bg-subtle);
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid var(--border-soft);
+      gap: 2px;
+    }
+
+    .theme-btn {
+      border: 0;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 4px 9px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .theme-btn.active {
+      background: var(--bg-surface);
+      color: var(--brand);
+      box-shadow: 0 1px 3px rgb(0 0 0 / 0.1);
+    }
+
+    .content {
+      padding: 20px 24px 80px 24px;
+      max-width: 1220px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* Cards & Grids */
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+
+    .hero-forensic {
+      border: 2px dashed var(--brand);
+      background: var(--brand-soft);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    h1.page-title {
+      font-size: 20px;
+      font-weight: 800;
+      margin: 0 0 4px 0;
+    }
+    .page-desc {
+      margin: 0 0 14px 0;
+      color: var(--text-muted);
+      font-size: 13.5px;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      border: 1px solid var(--border-color);
+      background: var(--bg-surface);
+      color: var(--text-main);
+      cursor: pointer;
+    }
+    .btn:hover { background: var(--bg-subtle); }
+    .btn-primary {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: var(--brand-contrast);
+    }
+    .btn-primary:hover { filter: brightness(1.06); background: var(--brand); }
+    .btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+    /* Badges & Alerts */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+    .b-blue { background: var(--blue-soft); color: var(--blue); }
+    .b-green { background: var(--green-soft); color: var(--green); }
+    .b-amber { background: var(--amber-soft); color: var(--amber); }
+    .b-red { background: var(--red-soft); color: var(--red); }
+    .b-purple { background: var(--purple-soft); color: var(--purple); }
+
+    .alert-banner {
+      padding: 12px 15px;
+      border-radius: 8px;
+      border-left: 4px solid var(--amber);
+      background: var(--amber-soft);
+      margin-bottom: 14px;
+      font-size: 13px;
+    }
+    .alert-banner.red { border-left-color: var(--red); background: var(--red-soft); }
+    .alert-banner.green { border-left-color: var(--green); background: var(--green-soft); }
+    .alert-banner.blue { border-left-color: var(--blue); background: var(--blue-soft); }
+
+    /* Tabs (Modern ARIA Pattern) */
+    .tablist {
+      display: flex;
+      overflow-x: auto;
+      border-bottom: 1px solid var(--border-soft);
+      gap: 4px;
+      margin-bottom: 16px;
+    }
+    .tablist [role="tab"] {
+      flex: none;
+      position: relative;
+      padding: 10px 14px;
+      border: 0;
+      background: transparent;
+      color: var(--text-muted);
+      font-weight: 700;
+      font-size: 13.5px;
+      cursor: pointer;
+    }
+    .tablist [role="tab"][aria-selected="true"] {
+      color: var(--brand);
+    }
+    .tablist [role="tab"][aria-selected="true"]::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0;
+      border-block-end: 3px solid var(--brand);
+    }
+
+    /* Forms & Validation After Interaction */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 12px;
+    }
+    .field { display: flex; flex-direction: column; gap: 3px; }
+    .field label { font-weight: 700; font-size: 12.5px; }
+    .hint { font-size: 11.5px; color: var(--text-muted); }
+    .field input, .field select, .field textarea {
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      padding: 8px 10px;
+      border-radius: 7px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-surface);
+      color: var(--text-main);
+      font-size: 13.5px;
+      font-family: inherit;
+    }
+    .error-msg {
+      display: none;
+      color: var(--red);
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+    :is(input:user-invalid, input.user-invalid-fallback) {
+      border-color: var(--red);
+      background: var(--red-soft);
+    }
+    :is(input:user-invalid, input.user-invalid-fallback) + .error-msg {
+      display: block;
+    }
+    :is(input:user-valid, input.user-valid-fallback) {
+      border-color: var(--green);
+    }
+
+    /* Responsive Table */
+    .table-wrapper {
+      overflow: auto;
+      max-inline-size: 100%;
+      max-block-size: 460px;
+      container-type: inline-size;
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+    }
+    table.data-tbl {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 13px;
+    }
+    table.data-tbl thead th {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 2;
+      background: var(--bg-subtle);
+      color: var(--text-main);
+      text-align: left;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border-color);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    table.data-tbl tbody th {
+      position: sticky;
+      inset-inline-start: 0;
+      z-index: 1;
+      background: var(--bg-surface);
+      text-align: left;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border-soft);
+      font-weight: 700;
+    }
+    table.data-tbl td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border-soft);
+      vertical-align: top;
+    }
+
+    @container (width < 580px) {
+      .stackable table, .stackable thead, .stackable tbody, .stackable tr, .stackable th, .stackable td {
+        display: block;
+      }
+      .stackable thead { display: none; }
+      .stackable tr {
+        margin-block-end: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .stackable tbody th {
+        position: static;
+        background: var(--bg-subtle);
+      }
+      .stackable td::before {
+        content: attr(data-label) ": ";
+        font-weight: 700;
+        color: var(--text-muted);
+      }
+    }
+
+    /* Native Modal Dialog */
+    dialog {
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      background: var(--bg-surface);
+      color: var(--text-main);
+      max-width: 620px;
+      width: calc(100% - 28px);
+      padding: 18px 20px;
+      box-shadow: 0 20px 50px rgb(0 0 0 / 0.25);
+    }
+    dialog:modal {
+      overscroll-behavior: contain;
+    }
+    dialog::backdrop {
+      background: rgb(15 23 42 / 0.55);
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
+
+    /* Forensic Verdict Banner */
+    .verdict-banner {
+      border-radius: 10px;
+      padding: 16px 18px;
+      color: #ffffff;
+      margin-bottom: 16px;
+    }
+    .verdict-banner.HIGH_RISK { background: #b91c1c; }
+    .verdict-banner.CAUTION { background: #b45309; }
+    .verdict-banner.SAFE { background: #047857; }
+
+    .quote-box {
+      background: var(--bg-subtle);
+      border-left: 3px solid var(--red);
+      padding: 6px 10px;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      margin-top: 5px;
+      border-radius: 0 5px 5px 0;
+    }
+
+    /* Mobile Bottom Tab Bar */
+    .mobile-bar {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border-color);
+      z-index: 30;
+      padding: 6px 2px;
+      justify-content: space-around;
+    }
+    .mobile-bar button {
+      flex: 1;
+      min-width: 0;
+      border: 0;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 4px 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      cursor: pointer;
+    }
+    .mobile-bar button[aria-current="page"] { color: var(--brand); }
+
+    @media (max-width: 860px) {
+      .app-shell { grid-template-columns: minmax(0, 1fr); }
+      .sidebar { display: none; }
+      .mobile-bar { display: flex; }
+      .topbar { padding: 8px 12px; gap: 6px; }
+      .grid-2, .grid-3 { grid-template-columns: minmax(0, 1fr); }
+      .content { padding: 12px 12px 84px 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="live-announcer" aria-live="polite" class="visually-hidden"></div>
+
+  <div class="app-shell">
+    <!-- DESKTOP SIDEBAR -->
+    <aside class="sidebar" aria-label="Điều hướng chính">
+      <div class="logo-box">
+        <div class="logo-mark">FC</div>
+        <div>
+          <div class="logo-title">FinCopilot AI</div>
+          <div class="logo-sub">Prototype v1.0 • 9 Màn hình</div>
+        </div>
+      </div>
+
+      <nav class="nav-group" aria-label="Phân hệ chính">
+        <div class="nav-label">Hệ điều hành Tài chính</div>
+        <button type="button" class="nav-btn" data-nav="SCR-01" aria-current="page">
+          <span>Tổng quan</span><span class="scr-tag">SCR-01</span>
+        </button>
+        <button type="button" class="nav-btn" data-nav="SCR-02">
+          <span>Radar Tin &amp; Bẫy</span><span class="scr-tag">SCR-02</span>
+        </button>
+        <button type="button" class="nav-btn" data-nav="SCR-04">
+          <span>Khảo sát &amp; Tính</span><span class="scr-tag">SCR-04</span>
+        </button>
+        <button type="button" class="nav-btn" data-nav="SCR-06">
+          <span>Giám định Lừa đảo</span><span class="scr-tag">SCR-06</span>
+        </button>
+      </nav>
+
+      <nav class="nav-group" aria-label="Tiện ích & Vận hành">
+        <div class="nav-label">Cá nhân hóa &amp; Dữ liệu</div>
+        <button type="button" class="nav-btn" data-nav="SCR-08">
+          <span>Hồ sơ R07 &amp; Lịch sử</span><span class="scr-tag">SCR-08</span>
+        </button>
+        <button type="button" class="nav-btn" data-nav="SCR-09">
+          <span>Admin Data Ops</span><span class="scr-tag">SCR-09</span>
+        </button>
+      </nav>
+
+      <div style="margin-top:auto; font-size:11.5px; color:var(--text-muted); border-top:1px solid var(--border-soft); padding-top:10px;">
+        <strong>Luồng Demo 5 phút:</strong><br/>
+        1. Xem Radar NCSC (SCR-02)<br/>
+        2. Chạy Case 1 ở Giám định (SCR-06)<br/>
+        3. Bấm 1-Click sang Tính vay (SCR-05)
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-area">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button type="button" class="profile-pill" id="topbar-profile-pill" data-nav="SCR-08">
+            <span id="topbar-profile-text">Hồ sơ R07: Thu nhập 18tr • Nợ 2tr</span>
+          </button>
+          <span class="badge b-green" id="auth-status-badge">Guest Mode (Dùng ngay)</span>
+        </div>
+
+        <div class="topbar-right">
+          <div class="theme-switch" role="group" aria-label="Chọn màu thương hiệu">
+            <button type="button" class="theme-btn active" data-brand-pick="rose">MoMo Rose</button>
+            <button type="button" class="theme-btn" data-brand-pick="navy">Neutral Navy</button>
+          </div>
+          <div class="theme-switch" role="group" aria-label="Chế độ sáng tối">
+            <button type="button" class="theme-btn active" data-scheme-pick="light dark">System</button>
+            <button type="button" class="theme-btn" data-scheme-pick="light">Light</button>
+            <button type="button" class="theme-btn" data-scheme-pick="dark">Dark</button>
+          </div>
+          <button type="button" class="btn btn-sm" id="btn-open-login" command="show-modal" commandfor="dlg-login">Đăng nhập / Gộp Guest</button>
+        </div>
+      </header>
+
+      <main class="content">
+        <!-- SCR-01: HOME COMMAND CENTER -->
+        <section id="SCR-01" class="screen active" aria-label="Trang chủ Điều phối">
+          <h1 class="page-title">Xin chào! Hôm nay FinCopilot AI giúp gì cho ví tiền của bạn?</h1>
+          <p class="page-desc">Vòng tròn khép kín: <strong>Hiểu thị trường</strong> ➔ <strong>Khảo sát &amp; Tính toán An toàn</strong> ➔ <strong>Giám định Bẫy Chat/PDF/VietQR</strong>.</p>
+
+          <div class="hero-forensic">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+              <div>
+                <span class="badge b-red">Mũi nhọn MVP • Chủ đề 3</span>
+                <h2 style="margin:6px 0 4px 0; font-size:18px;">Phòng Giám định Hợp đồng, Tin nhắn &amp; Mã VietQR</h2>
+                <p style="margin:0; font-size:13.5px; color:var(--text-muted);">
+                  Nhận lời mời vay qua Zalo, file PDF đòi phí bảo hiểm hay mã VietQR báo "lỗi 102"? Kiểm tra ngay trong vài giây.
+                </p>
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" class="btn btn-primary" data-nav="SCR-06">Mở Phòng Giám định (SCR-06)</button>
+                <button type="button" class="btn" id="hero-demo-case1">Chạy thử Case Lỗi 102 + QR</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h3 style="margin:0; font-size:15.5px;">Phân hệ 1: Radar Tin &amp; Bẫy hôm nay</h3>
+                <button type="button" class="btn btn-sm" data-nav="SCR-02">Xem tất cả</button>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <div style="padding:10px; border:1px solid var(--border-soft); border-radius:8px;">
+                  <span class="badge b-red">NCSC Đã xác minh</span>
+                  <div style="font-weight:700; margin-top:4px;">Cảnh báo thủ đoạn "Lỗi 102 đóng băng khoản vay" qua VietQR cá nhân</div>
+                  <div style="font-size:12px; color:var(--text-muted);">Đã nạp tự động 3 chỉ dấu vào Bộ luật RULE_05 của Phân hệ 3.</div>
+                </div>
+                <div style="padding:10px; border:1px solid var(--border-soft); border-radius:8px;">
+                  <span class="badge b-blue">NHNN &amp; CafeF</span>
+                  <div style="font-weight:700; margin-top:4px;">Định hướng ổn định lãi suất cho vay tiêu dùng Quý IV</div>
+                  <div style="font-size:12px; color:var(--text-muted);">Click xem phân tích tác động ví tiền theo Hồ sơ R07 của bạn.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h3 style="margin:0; font-size:15.5px;">Phân hệ 2: Khảo sát &amp; Tính nhanh</h3>
+                <button type="button" class="btn btn-sm" data-nav="SCR-04">Mở đầy đủ</button>
+              </div>
+              <p style="font-size:12.5px; color:var(--text-muted); margin-top:0;">
+                Nhập nhu cầu thực tế ➔ Hệ thống quét <strong>12 Ngân hàng / CTTC / Quỹ mở hợp pháp</strong> &amp; tính toán chính xác.
+              </p>
+              <div class="form-grid" style="margin-bottom:12px;">
+                <div class="field">
+                  <label for="quick-amount">Số tiền cần vay (VNĐ)</label>
+                  <input id="quick-amount" type="number" value="50000000" min="1000000" step="1000000" />
+                </div>
+                <div class="field">
+                  <label for="quick-term">Kỳ hạn (tháng)</label>
+                  <select id="quick-term">
+                    <option value="12">12 tháng</option>
+                    <option value="24" selected>24 tháng</option>
+                    <option value="36">36 tháng</option>
+                  </select>
+                </div>
+              </div>
+              <button type="button" class="btn btn-primary" id="btn-quick-survey" style="width:100%;">Khảo sát nhiều bên &amp; Tính chi phí thực ➔</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- SCR-02: RADAR FEED -->
+        <section id="SCR-02" class="screen" aria-label="Bảng tin Radar">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div>
+              <h1 class="page-title">Phân hệ 1: Market &amp; Threat Radar</h1>
+              <p class="page-desc">Tổng hợp CafeF, VnEconomy, Vietstock, NHNN &amp; NCSC • Chống trùng lặp • Tách dữ kiện vs Nhận định AI.</p>
+            </div>
+            <label style="font-size:12.5px; display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="toggle-source-error" checked /> Giả lập nguồn Vietstock đang lỗi (Freshness Guardrail)
+            </label>
+          </div>
+
+          <div class="alert-banner" id="radar-error-banner">
+            <strong>Cảnh báo độ tươi nguồn tin (US-r01):</strong> Nguồn <strong>Vietstock</strong> tạm gián đoạn lúc 16:30 (<code>last_fetch_status = ERROR</code>). Hệ thống giữ nguyên mốc cập nhật hợp lệ gần nhất và <strong>không hiển thị tin cũ như tin mới</strong>.
+          </div>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;" id="radar-filters">
+            <button type="button" class="btn btn-sm btn-primary" data-rfilter="ALL">Tất cả</button>
+            <button type="button" class="btn btn-sm" data-rfilter="MARKET">Tin Thị trường &amp; Lãi suất</button>
+            <button type="button" class="btn btn-sm" data-rfilter="ALERT">Cảnh báo Lừa đảo (NCSC/NHNN)</button>
+          </div>
+
+          <div class="grid-2" id="radar-feed-list"></div>
+        </section>
+
+        <!-- SCR-03: ARTICLE / ALERT DETAIL -->
+        <section id="SCR-03" class="screen" aria-label="Chi tiết Phân tích Tin">
+          <button type="button" class="btn btn-sm" data-nav="SCR-02" style="margin-bottom:10px;">← Quay lại Radar Feed</button>
+          <div id="radar-detail-container"></div>
+        </section>
+
+        <!-- SCR-04: SURVEY & CALCULATOR INPUT HUB -->
+        <section id="SCR-04" class="screen" aria-label="Khảo sát và Tính toán">
+          <h1 class="page-title">Phân hệ 2: Khảo sát Nhiều Bên &amp; Bộ Tính Toán Xác Định</h1>
+          <p class="page-desc">Tất cả phép tính dùng công thức xác định (<code>decimal.js</code> ở Backend). Bộ lọc Tín nhiệm tự chặn sàn ảo &amp; app đen.</p>
+
+          <div class="tablist" role="tablist" aria-label="Chế độ Phân hệ 2">
+            <button type="button" role="tab" id="tab-loan" aria-selected="true">1. Khảo sát &amp; Tính Vay</button>
+            <button type="button" role="tab" id="tab-invest" aria-selected="false">2. Tích lũy &amp; Đầu tư An toàn</button>
+            <button type="button" role="tab" id="tab-manual" aria-selected="false">3. Nhập tay &amp; So sánh (US-lo1..lo4)</button>
+          </div>
+
+          <!-- PANEL 1: LOAN SURVEY -->
+          <div role="tabpanel" id="panel-loan" aria-labelledby="tab-loan">
+            <div class="card">
+              <form id="form-loan-survey" novalidate>
+                <div class="form-grid">
+                  <div class="field">
+                    <label for="loan-amount">Số tiền cần vay (VNĐ)</label>
+                    <span id="loan-amt-hint" class="hint">Từ 2.000.000đ đến 2.000.000.000đ</span>
+                    <input id="loan-amount" type="number" required min="2000000" max="2000000000" value="50000000" aria-describedby="loan-amt-hint" data-error="err-loan-amount" />
+                    <div id="err-loan-amount" class="error-msg">Lỗi: Vui lòng nhập số tiền vay hợp lệ tối thiểu 2.000.000đ.</div>
+                  </div>
+                  <div class="field">
+                    <label for="loan-term">Kỳ hạn (tháng)</label>
+                    <span class="hint">Ví dụ: 12, 24, 36, 60 tháng</span>
+                    <input id="loan-term" type="number" required min="3" max="360" value="24" data-error="err-loan-term" />
+                    <div id="err-loan-term" class="error-msg">Lỗi: Kỳ hạn từ 3 đến 360 tháng.</div>
+                  </div>
+                  <div class="field">
+                    <label for="loan-type">Hình thức vay</label>
+                    <span class="hint">Lọc sản phẩm phù hợp từ Catalog</span>
+                    <select id="loan-type">
+                      <option value="UNSECURED_LOAN">Vay tín chấp tiêu dùng</option>
+                      <option value="SECURED_LOAN">Vay thế chấp / Mua nhà</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="loan-check-entity">Kiểm tra tên đơn vị ngoài (Test Trust Filter)</label>
+                    <span class="hint">Thử gõ "App Vay Nhanh 24h" hoặc để trống</span>
+                    <input id="loan-check-entity" type="text" placeholder="VD: App Vay Nhanh 24h..." />
+                  </div>
+                </div>
+
+                <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border-soft); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                  <label style="font-size:13px; display:flex; align-items:center; gap:6px;">
+                    <input type="checkbox" id="loan-web-fallback" checked /> Bật thêm nguồn <strong>Tham khảo từ Web</strong> ngoài Catalog chuẩn hóa
+                  </label>
+                  <button type="submit" class="btn btn-primary">Khảo sát nhiều bên &amp; Tính toán ngay ➔</button>
+                </div>
+              </form>
+            </div>
+            <div id="trust-filter-block" style="display:none;" class="alert-banner red"></div>
+          </div>
+
+          <!-- PANEL 2: INVESTMENT SURVEY -->
+          <div role="tabpanel" id="panel-invest" aria-labelledby="tab-invest" hidden>
+            <div class="card">
+              <form id="form-invest-survey" novalidate>
+                <div class="form-grid">
+                  <div class="field">
+                    <label for="inv-c0">Vốn ban đầu (VNĐ)</label>
+                    <span class="hint">Tiền nhàn rỗi sẵn có (C0)</span>
+                    <input id="inv-c0" type="number" min="0" value="20000000" required />
+                  </div>
+                  <div class="field">
+                    <label for="inv-pmt">Góp thêm mỗi tháng (VNĐ)</label>
+                    <span class="hint">Đều đặn hàng tháng (DCA)</span>
+                    <input id="inv-pmt" type="number" min="0" value="3000000" required />
+                  </div>
+                  <div class="field">
+                    <label for="inv-term">Thời gian nắm giữ (tháng)</label>
+                    <span class="hint">Kỳ vọng đầu tư an toàn</span>
+                    <input id="inv-term" type="number" min="1" max="360" value="24" required />
+                  </div>
+                  <div class="field">
+                    <label for="inv-risk">Khẩu vị rủi ro</label>
+                    <span class="hint">Lọc Tiết kiệm, Ví tích lũy, Quỹ mở UBCKNN</span>
+                    <select id="inv-risk">
+                      <option value="CONSERVATIVE">Thận trọng (Tiết kiệm / Quỹ Trái phiếu)</option>
+                      <option value="BALANCED" selected>Cân bằng (Quỹ Cân bằng + Tiết kiệm)</option>
+                      <option value="GROWTH">Tăng trưởng (Quỹ mở Cổ phiếu UBCKNN)</option>
+                    </select>
+                  </div>
+                </div>
+                <div style="margin-top:14px; text-align:right;">
+                  <button type="submit" class="btn btn-primary">Tính Lãi kép &amp; 3 Kịch bản Quỹ mở ➔</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- PANEL 3: MANUAL COMPARE -->
+          <div role="tabpanel" id="panel-manual" aria-labelledby="tab-manual" hidden>
+            <div class="card">
+              <p style="margin-top:0; font-size:13px; color:var(--text-muted);">
+                Kế thừa đầy đủ <code>US-lo1..lo4</code>: Tự nhập 2 gói bất kỳ để quy đổi lãi phẳng sang <strong>APR thực</strong> và so sánh tổng chi phí.
+              </p>
+              <div class="grid-2">
+                <div style="padding:12px; border:1px solid var(--border-soft); border-radius:8px;">
+                  <h4 style="margin:0 0 8px 0;">Phương án A (VD: Ngân hàng dư nợ giảm dần)</h4>
+                  <div class="form-grid">
+                    <div class="field"><label>Số tiền (đ)</label><input id="man-a-amt" type="number" value="50000000" /></div>
+                    <div class="field"><label>Kỳ hạn (th)</label><input id="man-a-term" type="number" value="24" /></div>
+                    <div class="field"><label>Lãi (%/năm)</label><input id="man-a-rate" type="number" step="0.1" value="14.5" /></div>
+                    <div class="field"><label>Phí trừ trước (đ)</label><input id="man-a-fee" type="number" value="0" /></div>
+                  </div>
+                </div>
+                <div style="padding:12px; border:1px solid var(--border-soft); border-radius:8px;">
+                  <h4 style="margin:0 0 8px 0;">Phương án B (VD: Lãi phẳng + phí hồ sơ)</h4>
+                  <div class="form-grid">
+                    <div class="field"><label>Số tiền (đ)</label><input id="man-b-amt" type="number" value="50000000" /></div>
+                    <div class="field"><label>Kỳ hạn (th)</label><input id="man-b-term" type="number" value="24" /></div>
+                    <div class="field"><label>Lãi phẳng (%/tháng)</label><input id="man-b-rate" type="number" step="0.1" value="0.9" /></div>
+                    <div class="field"><label>Phí trừ trước (đ)</label><input id="man-b-fee" type="number" value="5000000" /></div>
+                  </div>
+                </div>
+              </div>
+              <div style="margin-top:14px; text-align:right;">
+                <button type="button" class="btn btn-primary" id="btn-run-manual">Quy đổi APR thực &amp; So sánh A vs B ➔</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- SCR-05: SURVEY & CALCULATOR RESULTS -->
+        <section id="SCR-05" class="screen" aria-label="Kết quả Đối chiếu và Lịch trả nợ">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+            <div>
+              <h1 class="page-title" id="scr5-title">Kết quả Khảo sát &amp; Tính toán Thực tế</h1>
+              <p class="page-desc" id="scr5-sub" style="margin-bottom:0;">Đã áp dụng Trust Filter • Toàn bộ con số tính bằng công thức xác định.</p>
+            </div>
+            <button type="button" class="btn btn-sm" data-nav="SCR-04">← Chỉnh lại nhu cầu (SCR-04)</button>
+          </div>
+
+          <div id="scr5-loan-view">
+            <div class="grid-2">
+              <div class="card">
+                <h3 style="margin:0 0 6px 0; font-size:15px;">Đánh giá Sức trả nợ (DTI %) — Theo Hồ sơ R07</h3>
+                <div id="dti-summary-box"></div>
+                <p style="margin:8px 0 0 0; font-size:11.5px; color:var(--text-muted);">
+                  * Kết quả là ước tính hỗ trợ quyết định, không phải đánh giá phê duyệt tín dụng chính thức của ngân hàng (<code>US-lo3</code>).
+                </p>
+              </div>
+              <div class="card">
+                <h3 style="margin:0 0 6px 0; font-size:15px;">Mô phỏng Cú sốc Lãi suất Thả nổi (US-lo4)</h3>
+                <label for="shock-slider" style="font-size:13px; font-weight:700;">Biến động giả định sau kỳ ưu đãi: <span id="shock-val-lbl" class="badge b-blue">+0.0%/năm</span></label>
+                <input id="shock-slider" type="range" min="-2" max="4" step="0.5" value="0" style="width:100%; margin:10px 0;" />
+                <div id="shock-impact-text" style="font-size:12.5px; color:var(--text-muted);"></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3 style="margin:0 0 10px 0; font-size:15px;">Bảng Đối chiếu Nhiều Bên (Xếp hạng theo APR thực tế)</h3>
+              <div class="table-wrapper stackable" tabindex="0" role="region" aria-labelledby="tbl-loan-cap">
+                <table class="data-tbl">
+                  <caption id="tbl-loan-cap" class="visually-hidden">Bảng đối chiếu các gói vay hợp pháp</caption>
+                  <thead>
+                    <tr>
+                      <th>Tổ chức / Gói vay</th>
+                      <th>Nguồn dữ liệu</th>
+                      <th>Tiền thực nhận</th>
+                      <th>Trả/tháng</th>
+                      <th>Tổng lãi + phí</th>
+                      <th>APR thực</th>
+                      <th>DTI</th>
+                      <th>Lịch</th>
+                    </tr>
+                  </thead>
+                  <tbody id="loan-compare-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3 style="margin:0 0 6px 0; font-size:15px;">Giải thích Đánh đổi của AI (Grounded — Không tự sửa số)</h3>
+              <p id="ai-loan-explain" style="margin:0; font-size:13px;"></p>
+            </div>
+
+            <div class="card">
+              <h3 style="margin:0 0 10px 0; font-size:15px;" id="schedule-title">Bảng Lịch Thanh toán Từng tháng</h3>
+              <div class="table-wrapper stackable" tabindex="0" role="region" aria-labelledby="schedule-title">
+                <table class="data-tbl">
+                  <thead>
+                    <tr>
+                      <th>Kỳ</th>
+                      <th>Tổng trả tháng</th>
+                      <th>Tiền gốc</th>
+                      <th>Tiền lãi + phí</th>
+                      <th>Dư nợ còn lại</th>
+                    </tr>
+                  </thead>
+                  <tbody id="schedule-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div id="scr5-invest-view" style="display:none;">
+            <div class="card">
+              <h3 style="margin:0 0 10px 0; font-size:15px;">Biểu đồ 3 Kịch bản Tăng trưởng Tài sản (Thận trọng / Cơ sở / Tích cực)</h3>
+              <div id="invest-svg-chart"></div>
+              <p style="margin:8px 0 0 0; font-size:12px; color:var(--text-muted);">* Lợi suất lịch sử của Quỹ mở UBCKNN không bảo đảm kết quả tương lai.</p>
+            </div>
+            <div class="card">
+              <h3 style="margin:0 0 10px 0; font-size:15px;">Bảng Khảo sát Kênh Tích lũy &amp; Quỹ mở Hợp pháp (Sau Phí &amp; Thuế 0.1%)</h3>
+              <div class="table-wrapper stackable" tabindex="0" role="region" aria-label="Bảng khảo sát đầu tư an toàn">
+                <table class="data-tbl">
+                  <thead>
+                    <tr>
+                      <th>Tổ chức / Sản phẩm</th>
+                      <th>Nguồn</th>
+                      <th>Lãi kỳ vọng</th>
+                      <th>Tổng vốn nạp</th>
+                      <th>Phí bán + Thuế</th>
+                      <th>Giá trị Ròng (Cơ sở)</th>
+                      <th>Lãi ròng</th>
+                    </tr>
+                  </thead>
+                  <tbody id="invest-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- SCR-06: FORENSIC WORKBENCH -->
+        <section id="SCR-06" class="screen" aria-label="Phòng Giám định Forensic Auditor">
+          <h1 class="page-title">Phân hệ 3: Phòng Giám định Hợp đồng, Chat &amp; VietQR</h1>
+          <p class="page-desc">Giải mã VietQR chuẩn EMVCo/NAPAS 247 + AI Vision + 7 Luật Cứng Việt Nam + Quy đổi APR thực.</p>
+
+          <div class="alert-banner green">
+            <strong>Cam kết Bảo mật PII:</strong> Ảnh chụp &amp; PDF chỉ xử lý tạm và <strong>tự động xóa vĩnh viễn</strong> ngay sau khi trích xuất. Số CCCD/SĐT tự động che dạng <code>090****123</code>.
+          </div>
+
+          <div class="card">
+            <h3 style="margin:0 0 10px 0; font-size:15px;">1. Tải tài liệu cần giám định hoặc chọn nhanh 1 trong 3 Case mẫu</h3>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+              <button type="button" class="btn btn-danger btn-sm" data-sample="case1">Mẫu 1: Bẫy Lỗi 102 + VietQR Cá nhân (95/100)</button>
+              <button type="button" class="btn btn-sm" data-sample="case2">Mẫu 2: Lãi phẳng 0.9%/th + Phí ẩn 5tr (APR 30.7%)</button>
+              <button type="button" class="btn btn-sm" data-sample="case3">Mẫu 3: Hợp đồng Ngân hàng Chuẩn (12/100)</button>
+            </div>
+
+            <div class="form-grid">
+              <div class="field">
+                <label for="f-files">Chọn Ảnh Chat / Hợp đồng PDF / Ảnh VietQR</label>
+                <span class="hint">Tối đa 5 ảnh + 1 PDF (&le; 5 trang, &le; 20MB)</span>
+                <input id="f-files" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf" />
+              </div>
+              <div class="field">
+                <label for="f-qr-raw">Chuỗi VietQR (nếu muốn kiểm tra trực tiếp chuỗi EMVCo)</label>
+                <span class="hint">Tự điền khi chạy Case mẫu</span>
+                <input id="f-qr-raw" type="text" placeholder="0002010102123854..." />
+              </div>
+            </div>
+
+            <div class="field" style="margin-top:12px;">
+              <label for="f-text">Nội dung tin nhắn Zalo / Điều khoản hợp đồng</label>
+              <textarea id="f-text" rows="4" placeholder="Dán đoạn chat đòi phí giải ngân, báo lỗi 102 hoặc điều khoản hợp đồng..."></textarea>
+            </div>
+
+            <div style="margin-top:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <span id="f-selected-info" style="font-size:12.5px; color:var(--text-muted);">Chưa chọn tệp nào (hoặc bấm Mẫu ở trên để chạy thử ngay)</span>
+              <button type="button" class="btn btn-primary" id="btn-run-forensic">Bắt đầu Giám định Đa tầng ➔</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- SCR-07: FORENSIC VERDICT REPORT -->
+        <section id="SCR-07" class="screen" aria-label="Báo cáo Phán quyết Giám định">
+          <button type="button" class="btn btn-sm" data-nav="SCR-06" style="margin-bottom:10px;">← Giám định hồ sơ khác</button>
+          <div id="forensic-report-root"></div>
+        </section>
+
+        <!-- SCR-08: PROFILE & HISTORY -->
+        <section id="SCR-08" class="screen" aria-label="Hồ sơ Tài chính và Lịch sử">
+          <h1 class="page-title">Hồ sơ Tài chính Cá nhân (R07 / DTI) &amp; Lịch sử</h1>
+          <p class="page-desc">Chỉnh sửa thông số bên dưới sẽ cập nhật tức thì chế độ phân tích cá nhân hóa <code>R07</code> ở Radar và tỷ lệ <code>DTI</code> ở Phân hệ 2.</p>
+
+          <div class="card">
+            <form id="form-profile" novalidate>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="pf-income">Thu nhập ròng/tháng (VNĐ)</label>
+                  <input id="pf-income" type="number" min="0" required value="18000000" />
+                </div>
+                <div class="field">
+                  <label for="pf-expense">Chi phí sinh hoạt/tháng (VNĐ)</label>
+                  <input id="pf-expense" type="number" min="0" required value="8000000" />
+                </div>
+                <div class="field">
+                  <label for="pf-debt">Nợ phải trả hiện tại/tháng (VNĐ)</label>
+                  <input id="pf-debt" type="number" min="0" required value="2000000" />
+                </div>
+                <div class="field">
+                  <label for="pf-savings">Tiền nhàn rỗi dự phòng (VNĐ)</label>
+                  <input id="pf-savings" type="number" min="0" required value="50000000" />
+                </div>
+                <div class="field">
+                  <label for="pf-risk">Khẩu vị rủi ro</label>
+                  <select id="pf-risk">
+                    <option value="CONSERVATIVE">Thận trọng</option>
+                    <option value="BALANCED" selected>Cân bằng</option>
+                    <option value="GROWTH">Tăng trưởng</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="pf-goal">Mục tiêu chính</label>
+                  <select id="pf-goal">
+                    <option value="BORROW_SAFE" selected>Vay an toàn</option>
+                    <option value="OPTIMIZE_DEBT">Tối ưu nợ</option>
+                    <option value="SAVE_INVEST">Tích lũy sinh lời</option>
+                  </select>
+                </div>
+              </div>
+              <div style="margin-top:14px; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+                <button type="button" class="btn" id="btn-clear-profile">Xóa Hồ sơ (Test Guest chưa điền R07)</button>
+                <button type="submit" class="btn btn-primary">Lưu Hồ sơ Tài chính</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <h3 style="margin:0 0 8px 0; font-size:15px;">Lịch sử Giám định (Đã hủy file gốc &amp; che PII)</h3>
+              <ul id="history-audits" style="margin:0; padding-left:18px; font-size:13px;"></ul>
+            </div>
+            <div class="card">
+              <h3 style="margin:0 0 8px 0; font-size:15px;">Lịch sử Khảo sát &amp; Tính toán</h3>
+              <ul id="history-calcs" style="margin:0; padding-left:18px; font-size:13px;"></ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- SCR-09: ADMIN DATA OPS -->
+        <section id="SCR-09" class="screen" aria-label="Bảng Điều hành Dữ liệu">
+          <h1 class="page-title">Admin / Data Operations Panel</h1>
+          <p class="page-desc">Giám sát trạng thái 5 nguồn thu thập RSS/NCSC và quản lý Catalog sản phẩm chuẩn hóa NHNN/UBCKNN.</p>
+
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <h3 style="margin:0; font-size:15px;">1. Trạng thái Nguồn Tin Radar (<code>market_source</code>)</h3>
+              <button type="button" class="btn btn-sm btn-primary" id="btn-admin-retry">Chạy Retry Nguồn Lỗi</button>
+            </div>
+            <div class="table-wrapper stackable" tabindex="0" role="region" aria-label="Trạng thái nguồn RSS">
+              <table class="data-tbl">
+                <thead>
+                  <tr><th>Nguồn</th><th>Loại</th><th>Trusted Alert</th><th>Lần thành công gần nhất</th><th>Trạng thái</th></tr>
+                </thead>
+                <tbody id="admin-sources-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 style="margin:0 0 10px 0; font-size:15px;">2. Danh mục Sản phẩm Chuẩn hóa Phân hệ 2 (<code>financial_products</code>)</h3>
+            <div class="table-wrapper stackable" tabindex="0" role="region" aria-label="Catalog sản phẩm">
+              <table class="data-tbl">
+                <thead>
+                  <tr><th>Tổ chức</th><th>Cấp phép</th><th>Sản phẩm</th><th>Lãi niêm yết</th><th>Hiệu lực</th><th>Trạng thái</th></tr>
+                </thead>
+                <tbody id="admin-products-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- MOBILE BOTTOM BAR -->
+  <nav class="mobile-bar" aria-label="Điều hướng di động">
+    <button type="button" data-nav="SCR-01" aria-current="page"><span>Tổng quan</span></button>
+    <button type="button" data-nav="SCR-02"><span>Radar</span></button>
+    <button type="button" data-nav="SCR-04"><span>Khảo sát</span></button>
+    <button type="button" data-nav="SCR-06"><span>Giám định</span></button>
+    <button type="button" data-nav="SCR-08"><span>Hồ sơ</span></button>
+  </nav>
+
+  <!-- NATIVE MODAL: OPTIONAL LOGIN & GUEST MERGE -->
+  <dialog id="dlg-login" closedby="any" aria-labelledby="dlg-login-title">
+    <h2 id="dlg-login-title" style="margin:0 0 6px 0; font-size:17px;">Đăng nhập Tùy chọn &amp; Đồng bộ Lịch sử (US-pf02)</h2>
+    <p style="margin:0 0 12px 0; font-size:13px; color:var(--text-muted);">
+      Bạn đang dùng ở chế độ <strong>Guest</strong>. Khi đăng nhập, hệ thống tự động gộp Hồ sơ tài chính và lịch sử từ <code>guest_session_id</code> vào tài khoản cá nhân trên PostgreSQL.
+    </p>
+    <form id="form-login-demo" method="dialog">
+      <div class="field" style="margin-bottom:10px;">
+        <label for="login-email">Email cá nhân</label>
+        <span class="hint">Định dạng: ban@example.com</span>
+        <input id="login-email" type="email" required value="minh.nguyen@example.com" autocomplete="email" data-error="err-login-email" />
+        <div id="err-login-email" class="error-msg">Lỗi: Vui lòng nhập email đúng định dạng.</div>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+        <button type="submit" value="cancel" class="btn" formnovalidate>Đóng</button>
+        <button type="submit" value="google" class="btn btn-primary" autofocus>Đăng nhập Google &amp; Gộp dữ liệu Guest</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- NATIVE MODAL: EVIDENCE EXPORT -->
+  <dialog id="dlg-evidence" closedby="any" aria-labelledby="dlg-ev-title">
+    <h2 id="dlg-ev-title" style="margin:0 0 6px 0; font-size:17px;">Báo cáo Bằng chứng Giám định (Evidence Pack)</h2>
+    <pre id="evidence-markdown-box" style="background:var(--bg-subtle); padding:12px; border-radius:8px; font-size:12px; overflow:auto; max-height:340px; white-space:pre-wrap;"></pre>
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">
+      <form method="dialog">
+        <button type="submit" value="close" class="btn">Đóng</button>
+      </form>
+      <button type="button" class="btn btn-primary" id="btn-download-md">Tải file Bằng chứng (.md)</button>
+    </div>
+  </dialog>
+
+  <script>
+    // ============================================================
+    // 1. STATE & SEED CATALOG DATA
+    // ============================================================
+    const state = {
+      activeScreen: "SCR-01",
+      loggedInEmail: null,
+      profile: {
+        hasProfile: true,
+        income: 18000000,
+        expense: 8000000,
+        debt: 2000000,
+        savings: 50000000,
+        risk: "BALANCED",
+        goal: "BORROW_SAFE",
+      },
+      sourceErrorSimulated: true,
+      radarFilter: "ALL",
+      selectedArticleId: "art-1",
+      surveyMode: "LOAN",
+      loanParams: { amount: 50000000, term: 24, type: "UNSECURED_LOAN", webFallback: true },
+      investParams: { c0: 20000000, pmt: 3000000, term: 24, risk: "BALANCED" },
+      manualMode: false,
+      shockDelta: 0,
+      selectedScheduleIdx: 0,
+      lastAudit: null,
+      historyAudits: ["[Mẫu sẵn] Hợp đồng 50tr + Lỗi 102 VietQR — NGUY HIỂM CAO (95/100)"],
+      historyCalcs: ["[Mẫu sẵn] Khảo sát Vay 50tr / 24 tháng — 6 bên hợp pháp"],
+    };
+
+    const RADAR_ITEMS = [
+      {
+        id: "art-1",
+        kind: "ALERT",
+        badge: "NCSC ĐÃ XÁC MINH",
+        badgeClass: "b-red",
+        source: "Cục ATTT (NCSC)",
+        date: "22/11/2026 • 14:20",
+        title: "Cảnh báo thủ đoạn giả mạo nhân viên ngân hàng báo 'lỗi 102' ép quét VietQR nộp phí giải ngân",
+        summary: "Kẻ gian gửi hợp đồng PDF có dấu đỏ giả, sau đó viện lý do sai số tài khoản để nạn nhân chuyển 10–30% qua VietQR cá nhân.",
+        facts: [
+          "Cục ATTT ghi nhận hàng loạt phản ánh về kịch bản 'lỗi 102 / đóng băng khoản vay' trong tháng 11/2026.",
+          "Các đối tượng yêu cầu chuyển tiền qua tài khoản ngân hàng cá nhân trước khi nhận vốn.",
+          "Các ngân hàng & CTTC chính thức không thu phí giải ngân qua chuyển khoản trước."
+        ],
+        aiGeneral: "Người đi vay qua kênh online không qua chi nhánh có nguy cơ gặp kịch bản này cao; cần dùng Phân hệ 3 kiểm tra mọi hợp đồng gửi qua Zalo.",
+        aiPersonalized: "Với mục tiêu Vay an toàn của bạn, tuyệt đối không quét QR nộp phí trước; 3 chỉ dấu mới (từ khóa 'lỗi 102', QR cá nhân thu phí) đã được đồng bộ thẳng sang Phân hệ 3.",
+        indicators: ["Tài khoản cá nhân thu phí giải ngân", "Từ khóa: lỗi 102 / đóng băng khoản vay"],
+        rateDelta: 0,
+      },
+      {
+        id: "art-2",
+        kind: "MARKET",
+        badge: "CHÍNH SÁCH • LÃI SUẤT",
+        badgeClass: "b-blue",
+        source: "NHNN & CafeF (Đã gộp 2 nguồn)",
+        date: "22/11/2026 • 10:15",
+        title: "NHNN định hướng giữ mặt bằng lãi suất cho vay tiêu dùng ổn định & hạ nhẹ nhóm ngân hàng TMCP",
+        summary: "Lãi suất huy động duy trì vùng thấp giúp chi phí vốn đầu vào giảm; áp lực trả nợ khoản vay thả nổi có xu hướng dịu lại.",
+        facts: [
+          "Thông cáo NHNN ngày 22/11/2026 khuyến khích TCTD tiết giảm chi phí hoạt động để giảm lãi cho vay.",
+          "Lãi suất cho vay tín chấp nhóm Big4 và TMCP lớn hiện dao động 12.5% – 16.5%/năm theo dư nợ giảm dần."
+        ],
+        aiGeneral: "Nếu đang chuẩn bị vay tiêu dùng, nên ưu tiên các ngân hàng niêm yết dư nợ giảm dần thay vì các gói tính lãi phẳng không rõ phí.",
+        aiPersonalized: "Với thu nhập 18tr/tháng và nợ hiện tại 2tr/tháng (biên trả nợ còn tốt), nếu lãi thả nổi giảm -1%/năm trên khoản vay 50tr/24 tháng, bạn tiết kiệm được ~24.000đ/tháng.",
+        indicators: [],
+        rateDelta: -1.0,
+      },
+      {
+        id: "art-3",
+        kind: "MARKET",
+        badge: "THỊ TRƯỜNG • QUỸ MỞ",
+        badgeClass: "b-green",
+        source: "VnEconomy",
+        date: "21/11/2026 • 17:45",
+        title: "Dòng tiền cá nhân dịch chuyển sang Quỹ mở Trái phiếu & Cân bằng được UBCKNN cấp phép",
+        summary: "Lãi tiết kiệm kỳ hạn 12 tháng quanh 4.7%–5.5%/năm thúc đẩy nhà đầu tư tìm kênh lợi suất 7%–11%/năm minh bạch pháp lý.",
+        facts: [
+          "Theo báo cáo các quỹ mở UBCKNN, tổng giá trị tài sản ròng quỹ trái phiếu tăng 14% so với đầu năm.",
+          "Thuế bán chứng chỉ quỹ hiện hành là 0.1% trên giá trị bán."
+        ],
+        aiGeneral: "Phù hợp phân bổ phần tiền nhàn rỗi trung-dài hạn trên 12 tháng sau khi đã có quỹ dự phòng.",
+        aiPersonalized: "Bạn đang có 50tr tiền nhàn rỗi & khẩu vị Cân bằng: có thể giữ 30tr tiết kiệm dự phòng khẩn cấp, trích 20tr + góp 3tr/tháng vào Quỹ mở Cân bằng trên Phân hệ 2.",
+        indicators: [],
+        rateDelta: 0,
+      }
+    ];
+
+    const LOAN_CATALOG = [
+      { org: "Vietcombank — Vay Tiêu dùng Tín chấp", type: "UNSECURED_LOAN", prov: "CATALOG_VERIFIED", method: "REDUCING_BALANCE", rateType: "PROMO_THEN_FLOATING", rate: 12.9, margin: 3.5, upfrontFeePct: 0, license: "NHNN", src: "vietcombank.com.vn (01/11/2026)" },
+      { org: "ACB — Vay Tín chấp Linh hoạt", type: "UNSECURED_LOAN", prov: "CATALOG_VERIFIED", method: "REDUCING_BALANCE", rateType: "FIXED", rate: 14.5, margin: 0, upfrontFeePct: 0, license: "NHNN", src: "acb.com.vn (05/11/2026)" },
+      { org: "Techcombank — Vay Tiêu dùng Không TSĐB", type: "UNSECURED_LOAN", prov: "CATALOG_VERIFIED", method: "REDUCING_BALANCE", rateType: "FLOATING", rate: 15.2, margin: 4.0, upfrontFeePct: 0, license: "NHNN", src: "techcombank.com (10/11/2026)" },
+      { org: "VPBank — Vay Tín chấp Online", type: "UNSECURED_LOAN", prov: "WEB_REFERENCE", method: "REDUCING_BALANCE", rateType: "FIXED", rate: 17.0, margin: 0, upfrontFeePct: 0.5, license: "NHNN", src: "vpbank.com.vn (Web 22/11/2026)" },
+      { org: "Mcredit — Vay Tiêu dùng Tiền mặt", type: "UNSECURED_LOAN", prov: "CATALOG_VERIFIED", method: "REDUCING_BALANCE", rateType: "FIXED", rate: 26.5, margin: 0, upfrontFeePct: 1.5, license: "NHNN (CTTC)", src: "mcredit.com.vn (01/11/2026)" },
+      { org: "Home Credit — Vay Tiền mặt Chuẩn", type: "UNSECURED_LOAN", prov: "CATALOG_VERIFIED", method: "REDUCING_BALANCE", rateType: "FIXED", rate: 28.0, margin: 0, upfrontFeePct: 0, license: "NHNN (CTTC)", src: "homecredit.vn (01/11/2026)" },
+      { org: "BIDV — Vay Thế chấp BĐS / Tài sản", type: "SECURED_LOAN", prov: "CATALOG_VERIFIED", method: "REDUCING_BALANCE", rateType: "PROMO_THEN_FLOATING", rate: 7.5, margin: 3.2, upfrontFeePct: 0, license: "NHNN", src: "bidv.com.vn (01/11/2026)" },
+      { org: "MBBank — Vay Thế chấp Cố định 24T", type: "SECURED_LOAN", prov: "CATALOG_VERIFIED", method: "REDUCING_BALANCE", rateType: "FIXED", rate: 8.4, margin: 0, upfrontFeePct: 0, license: "NHNN", src: "mbbank.com.vn (12/11/2026)" },
+    ];
+
+    const INVEST_CATALOG = [
+      { org: "Tiết kiệm Online Vietcombank / BIDV", risk: "CONSERVATIVE", prov: "CATALOG_VERIFIED", rate: 5.0, sigma: 0, sellFeePct: 0, taxPct: 0 },
+      { org: "Túi Thần Tài / Ví Tích lũy Chuẩn", risk: "CONSERVATIVE", prov: "CATALOG_VERIFIED", rate: 5.5, sigma: 0, sellFeePct: 0, taxPct: 0 },
+      { org: "Quỹ Trái phiếu VCBF-FIF (UBCKNN)", risk: "CONSERVATIVE", prov: "CATALOG_VERIFIED", rate: 7.6, sigma: 1.2, sellFeePct: 0.3, taxPct: 0.1 },
+      { org: "Quỹ Cân bằng VCBF-TBF (UBCKNN)", risk: "BALANCED", prov: "CATALOG_VERIFIED", rate: 10.0, sigma: 3.5, sellFeePct: 0.5, taxPct: 0.1 },
+      { org: "Quỹ Cổ phiếu VinaCapital VESAF (UBCKNN)", risk: "GROWTH", prov: "CATALOG_VERIFIED", rate: 13.5, sigma: 6.5, sellFeePct: 0.5, taxPct: 0.1 },
+    ];
+
+    const FORENSIC_SAMPLES = {
+      case1: {
+        name: "Bẫy Lỗi 102 + VietQR Cá nhân",
+        claimedEntity: "Công ty Tài chính ABC Việt Nam (Không phép NHNN)",
+        qrRaw: "00020101021238540010A00000072701240006970422011009876543210208QRIBFTTA5303704540725000005802VN62250821PHI GIAI NGAN LOI 1026304CA92",
+        visionBeneficiary: "NGUYEN VAN HUNG (Tài khoản CÁ NHÂN)",
+        text: "Hợp đồng vay 50.000.000đ lãi chỉ 0.9%/tháng trong 24 tháng. Khách hàng NGUYEN VAN A (CCCD 079095001234, SĐT 0901234567) cần chuyển 2.500.000đ phí bảo hiểm mở khóa giải ngân do hệ thống báo LỖI 102 sai một chữ số tài khoản. Vui lòng quét mã VietQR trên ảnh để hoàn tất, công ty sẽ hoàn 100% cùng tiền vay.",
+        nominalAmt: 50000000,
+        upfrontFee: 5000000,
+        flatMonthlyPct: 0.9,
+        term: 24,
+        score: 95,
+        verdict: "HIGH_RISK",
+        override: true,
+        findings: [
+          { code: "RULE_01_UPFRONT_FEE_QR", sev: "CRITICAL", pts: "+85đ", title: "Yêu cầu nộp phí giải ngân trước qua QR", quote: "...cần chuyển 2.500.000đ phí bảo hiểm mở khóa giải ngân..." },
+          { code: "RULE_02_ERROR_102_FREEZE_TRAP", sev: "CRITICAL", pts: "+90đ", title: "Kịch bản Lỗi 102 đóng băng khoản vay", quote: "...hệ thống báo LỖI 102 sai một chữ số tài khoản..." },
+          { code: "RULE_03_ENTITY_MISMATCH", sev: "CRITICAL", pts: "+75đ", title: "Lệch thực thể: Hợp đồng Công ty vs QR Cá nhân (QRIBFTTA)", quote: "Pháp nhân: Công ty Tài chính ABC <-> QR MB BIN 970422 (NGUYEN VAN HUNG)" },
+          { code: "RULE_05_NCSC_THREAT_MATCH", sev: "CRITICAL", pts: "+90đ", title: "Trùng chỉ dấu cảnh báo NCSC Phân hệ 1", quote: "Khớp threat_indicator: 'lỗi 102 / đóng băng khoản vay'" },
+          { code: "RULE_06_FLAT_RATE_AND_USURY_APR", sev: "HIGH", pts: "+45đ", title: "Bẫy lãi phẳng 0.9%/th + Phí ẩn 5tr -> APR thực 30.74%/năm", quote: "Lãi quảng cáo 0.9%/tháng nhưng thực nhận 45.000.000đ" },
+        ],
+      },
+      case2: {
+        name: "Lãi phẳng 0.9%/th + Phí ẩn 5 triệu",
+        claimedEntity: "Công ty Hỗ trợ Tài chính Nhanh",
+        qrRaw: "",
+        visionBeneficiary: "Không kèm VietQR thu phí trước",
+        text: "Cho vay 50.000.000đ kỳ hạn 24 tháng. Lãi suất phẳng ưu đãi chỉ 0.9%/tháng. Phí dịch vụ hồ sơ và bảo hiểm trừ trực tiếp khi giải ngân là 5.000.000đ, khách hàng thực nhận 45.000.000đ.",
+        nominalAmt: 50000000,
+        upfrontFee: 5000000,
+        flatMonthlyPct: 0.9,
+        term: 24,
+        score: 72,
+        verdict: "HIGH_RISK",
+        override: false,
+        findings: [
+          { code: "RULE_04_UNLICENSED_OR_IMPERSONATION", sev: "HIGH", pts: "+40đ", title: "Đơn vị không có trong danh mục cấp phép NHNN", quote: "Công ty Hỗ trợ Tài chính Nhanh không thuộc danh sách Ngân hàng/CTTC NHNN" },
+          { code: "RULE_06_FLAT_RATE_AND_USURY_APR", sev: "HIGH", pts: "+50đ", title: "Lãi phẳng + Phí trừ trước đội APR thực lên 30.74%/năm (vượt trần 20% BLDS 2015)", quote: "Thực nhận 45.000.000đ, trả 2.533.333đ/tháng trong 24 tháng -> EAR 35.47%" },
+        ],
+      },
+      case3: {
+        name: "Hợp đồng Ngân hàng Chính thống",
+        claimedEntity: "Ngân hàng TMCP Á Châu (ACB)",
+        qrRaw: "",
+        visionBeneficiary: "Không yêu cầu chuyển tiền trước",
+        text: "Thông báo phê duyệt khoản vay tín chấp 50.000.000đ tại Ngân hàng TMCP Á Châu (ACB), kỳ hạn 24 tháng, lãi suất 14.5%/năm tính trên dư nợ giảm dần. Giải ngân trực tiếp 100% số tiền vào tài khoản chính chủ của khách hàng, không thu phí trước.",
+        nominalAmt: 50000000,
+        upfrontFee: 0,
+        flatMonthlyPct: 0,
+        reducingRateYr: 14.5,
+        term: 24,
+        score: 12,
+        verdict: "SAFE",
+        override: false,
+        findings: [],
+      }
+    };
+
+    // ============================================================
+    // 2. DETERMINISTIC FINANCIAL MATH + EMVCO VIETQR PARSER
+    // ============================================================
+    const fmtVND = (n) => Math.round(n).toLocaleString("vi-VN") + " đ";
+
+    function calcEMI(principal, annualPct, months) {
+      const r = (annualPct / 100) / 12;
+      const emi = r === 0 ? principal / months : principal * (r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
+      const emiR = Math.round(emi);
+      let bal = principal, totInt = 0, totPay = 0;
+      const rows = [];
+      for (let m = 1; m <= months; m++) {
+        const interest = Math.round(bal * r);
+        let prin, pay;
+        if (m === months) { prin = bal; pay = prin + interest; bal = 0; }
+        else { pay = emiR; prin = pay - interest; bal -= prin; }
+        totInt += interest; totPay += pay;
+        rows.push({ m, pay, prin, interest, bal });
+      }
+      return { emi: emiR, totInt, totPay, rows };
+    }
+
+    function solveAPRFromCashflow(pNet, monthlyPay, months) {
+      let r = 0.02;
+      for (let i = 0; i < 60; i++) {
+        let f = pNet, df = 0;
+        for (let t = 1; t <= months; t++) {
+          const disc = Math.pow(1 + r, t);
+          f -= monthlyPay / disc;
+          df += (t * monthlyPay) / Math.pow(1 + r, t + 1);
+        }
+        if (Math.abs(f) < 1e-8 || Math.abs(df) < 1e-10) break;
+        const next = r - f / df;
+        if (next <= -0.95 || next > 5) break;
+        r = next;
+      }
+      return { apr: r * 12 * 100, ear: (Math.pow(1 + r, 12) - 1) * 100 };
+    }
+
+    function parseVietQR(raw) {
+      if (!raw || raw.trim().length < 20) return null;
+      const s = raw.trim();
+      const map = {};
+      let i = 0;
+      while (i + 4 <= s.length) {
+        const tag = s.slice(i, i + 2);
+        const len = parseInt(s.slice(i + 2, i + 4), 10);
+        if (Number.isNaN(len) || i + 4 + len > s.length) break;
+        map[tag] = s.slice(i + 4, i + 4 + len);
+        i += 4 + len;
+      }
+      let acqBin = "", acc = "", svc = "";
+      if (map["38"]) {
+        let j = 0, t38 = map["38"];
+        const sub = {};
+        while (j + 4 <= t38.length) {
+          const t = t38.slice(j, j + 2), l = parseInt(t38.slice(j + 2, j + 4), 10);
+          sub[t] = t38.slice(j + 4, j + 4 + l);
+          j += 4 + l;
+        }
+        svc = sub["02"] || "";
+        if (sub["01"]) {
+          let k = 0, b = sub["01"];
+          while (k + 4 <= b.length) {
+            const t = b.slice(k, k + 2), l = parseInt(b.slice(k + 2, k + 4), 10);
+            if (t === "00") acqBin = b.slice(k + 4, k + 4 + l);
+            if (t === "01") acc = b.slice(k + 4, k + 4 + l);
+            k += 4 + l;
+          }
+        }
+      }
+      const binNames = { "970422": "MBBank", "970436": "Vietcombank", "970415": "VietinBank", "970407": "Techcombank" };
+      let purpose = "";
+      if (map["62"] && map["62"].length > 4) purpose = map["62"].slice(4);
+      const maskedAcc = acc.length > 4 ? acc.slice(0, 3) + "****" + acc.slice(-3) : acc;
+      return {
+        acqBin,
+        bankName: binNames[acqBin] || "Ngân hàng BIN " + acqBin,
+        maskedAcc,
+        serviceCode: svc || "UNKNOWN",
+        amount: map["54"] ? Number(map["54"]) : null,
+        purpose,
+        crcValid: Boolean(map["63"] && map["63"].length === 4),
+      };
+    }
+
+    function maskPII(txt) {
+      return txt
+        .replace(/\b0\d{9}\b/g, (m) => m.slice(0, 3) + "****" + m.slice(-3))
+        .replace(/\b\d{12}\b/g, (m) => m.slice(0, 3) + "******" + m.slice(-3));
+    }
+
+    // ============================================================
+    // 3. NAVIGATION & ACCESSIBLE TABS + VALIDATION
+    // ============================================================
+    function navigate(screenId) {
+      state.activeScreen = screenId;
+      document.querySelectorAll(".screen").forEach((el) => el.classList.toggle("active", el.id === screenId));
+      document.querySelectorAll("[data-nav]").forEach((btn) => {
+        const match = btn.dataset.nav === screenId ||
+          (screenId === "SCR-03" && btn.dataset.nav === "SCR-02") ||
+          (screenId === "SCR-05" && btn.dataset.nav === "SCR-04") ||
+          (screenId === "SCR-07" && btn.dataset.nav === "SCR-06");
+        if (btn.classList.contains("nav-btn") || btn.closest(".mobile-bar")) {
+          if (match) btn.setAttribute("aria-current", "page");
+          else btn.removeAttribute("aria-current");
+        }
+      });
+      if (screenId === "SCR-02") renderRadarFeed();
+      if (screenId === "SCR-03") renderRadarDetail();
+      if (screenId === "SCR-05") renderResults();
+      if (screenId === "SCR-08") renderHistory();
+      if (screenId === "SCR-09") renderAdmin();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    document.addEventListener("click", (e) => {
+      const navBtn = e.target.closest("[data-nav]");
+      if (navBtn) navigate(navBtn.dataset.nav);
+    });
+
+    // Brand & 3-State Color-Scheme Switcher (System / Light / Dark per dark-mode-toggle)
+    function syncThemeButtons() {
+      const currentScheme = document.querySelector('meta[name="color-scheme"]').content || "light dark";
+      const currentBrand = document.documentElement.dataset.brand || "rose";
+      document.querySelectorAll("[data-scheme-pick]").forEach((b) => b.classList.toggle("active", b.dataset.schemePick === currentScheme));
+      document.querySelectorAll("[data-brand-pick]").forEach((b) => b.classList.toggle("active", b.dataset.brandPick === currentBrand));
+    }
+    document.querySelectorAll("[data-scheme-pick]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const val = btn.dataset.schemePick;
+        document.querySelector('meta[name="color-scheme"]').content = val;
+        try {
+          if (val === "light dark") localStorage.removeItem("fc-color-scheme");
+          else localStorage.setItem("fc-color-scheme", val);
+        } catch (e) {}
+        syncThemeButtons();
+      });
+    });
+    document.querySelectorAll("[data-brand-pick]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const brand = btn.dataset.brandPick;
+        document.documentElement.dataset.brand = brand;
+        try { localStorage.setItem("fc-brand", brand); } catch (e) {}
+        syncThemeButtons();
+      });
+    });
+    syncThemeButtons();
+
+    // Accessible Tabs (pattern from tabs guide)
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => {
+        const sel = i === idx;
+        t.setAttribute("aria-selected", sel ? "true" : "false");
+        panels[i].hidden = !sel;
+      });
+    }
+    tabs.forEach((t, idx) => {
+      t.addEventListener("click", () => selectTab(idx));
+      t.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowRight") { e.preventDefault(); selectTab((idx + 1) % tabs.length); tabs[(idx + 1) % tabs.length].focus(); }
+        if (e.key === "ArrowLeft") { e.preventDefault(); selectTab((idx - 1 + tabs.length) % tabs.length); tabs[(idx - 1 + tabs.length) % tabs.length].focus(); }
+      });
+    });
+
+    // Dialog light-dismiss fallback for browsers without closedby + returnValue reset
+    document.querySelectorAll("dialog").forEach((dlg) => {
+      dlg.addEventListener("close", () => { dlg.returnValue = ""; });
+      if (!("closedBy" in HTMLDialogElement.prototype)) {
+        let downOut = false;
+        const out = (ev) => {
+          const r = dlg.getBoundingClientRect();
+          return ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom;
+        };
+        dlg.addEventListener("pointerdown", (ev) => { downOut = out(ev); });
+        dlg.addEventListener("pointerup", (ev) => { if (downOut && out(ev)) dlg.close(); });
+      }
+    });
+
+    // Validate-after-interaction ARIA sync
+    if (!CSS.supports("selector(:user-invalid)")) {
+      document.addEventListener("blur", (e) => {
+        const el = e.target;
+        if (!el.matches?.("input")) return;
+        const ok = el.validity.valid;
+        el.classList.toggle("user-invalid-fallback", !ok);
+        el.classList.toggle("user-valid-fallback", ok);
+        el.setAttribute("aria-invalid", ok ? "false" : "true");
+      }, true);
+    }
+
+    // ============================================================
+    // 4. RENDERING PHÂN HỆ 1 (RADAR)
+    // ============================================================
+    function renderRadarFeed() {
+      const errBan = document.getElementById("radar-error-banner");
+      errBan.style.display = state.sourceErrorSimulated ? "block" : "none";
+      const list = RADAR_ITEMS.filter((it) => state.radarFilter === "ALL" || it.kind === state.radarFilter);
+      document.getElementById("radar-feed-list").innerHTML = list.map((it) => `
+        <article class="card" style="margin-bottom:0; display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <div style="display:flex; justify-content:space-between; gap:8px; margin-bottom:6px;">
+              <span class="badge ${it.badgeClass}">${it.badge}</span>
+              <span style="font-size:11.5px; color:var(--text-muted);">${it.date}</span>
+            </div>
+            <h3 style="margin:0 0 6px 0; font-size:15px;">${it.title}</h3>
+            <p style="margin:0 0 8px 0; font-size:13px; color:var(--text-muted);">${it.summary}</p>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border-soft); padding-top:8px;">
+            <span style="font-size:12px; font-weight:600;">${it.source}</span>
+            <button type="button" class="btn btn-sm btn-primary" onclick="openRadarDetail('${it.id}')">Phân tích tác động ➔</button>
+          </div>
+        </article>
+      `).join("");
+    }
+
+    window.openRadarDetail = (id) => { state.selectedArticleId = id; navigate("SCR-03"); };
+
+    document.getElementById("toggle-source-error").addEventListener("change", (e) => {
+      state.sourceErrorSimulated = e.target.checked;
+      renderRadarFeed();
+    });
+
+    document.querySelectorAll("[data-rfilter]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("[data-rfilter]").forEach((b) => b.classList.remove("btn-primary"));
+        btn.classList.add("btn-primary");
+        state.radarFilter = btn.dataset.rfilter;
+        renderRadarFeed();
+      });
+    });
+
+    function renderRadarDetail() {
+      const it = RADAR_ITEMS.find((x) => x.id === state.selectedArticleId) || RADAR_ITEMS[0];
+      const hasP = state.profile.hasProfile;
+      const aiText = hasP ? it.aiPersonalized : it.aiGeneral;
+      const modeBadge = hasP
+        ? '<span class="badge b-purple">Nhánh R07: Cá nhân hóa theo Hồ sơ</span>'
+        : '<span class="badge b-amber">Nhánh R07: Tổng quát (Chưa có hồ sơ)</span>';
+
+      document.getElementById("radar-detail-container").innerHTML = `
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
+            <span class="badge ${it.badgeClass}">${it.badge}</span>
+            <span style="font-size:12.5px; color:var(--text-muted);">${it.source} • ${it.date}</span>
+          </div>
+          <h1 style="margin:4px 0 8px 0; font-size:19px;">${it.title}</h1>
+          <div class="grid-2" style="margin-top:12px;">
+            <div style="background:var(--bg-subtle); padding:14px; border-radius:8px; border:1px solid var(--border-soft);">
+              <h3 style="margin:0 0 8px 0; font-size:14.5px;">Cột 1: Dữ kiện gốc từ bài báo (Fact)</h3>
+              <ul style="margin:0; padding-left:18px; font-size:13px;">
+                ${it.facts.map((f) => `<li>${f}</li>`).join("")}
+              </ul>
+              ${it.indicators.length ? `<div style="margin-top:10px;"><strong style="font-size:12.5px;">Chỉ dấu đã đẩy sang Phân hệ 3:</strong><ul>${it.indicators.map(x => `<li><code>${x}</code></li>`).join("")}</ul></div>` : ""}
+            </div>
+            <div style="background:var(--purple-soft); padding:14px; border-radius:8px; border:1px solid var(--purple);">
+              <div style="margin-bottom:6px;">${modeBadge}</div>
+              <h3 style="margin:0 0 8px 0; font-size:14.5px;">Cột 2: Nhận định &amp; Tác động Ví tiền (AI)</h3>
+              <p style="margin:0 0 12px 0; font-size:13.5px;">${aiText}</p>
+              ${!hasP ? `<button type="button" class="btn btn-sm" onclick="navigate('SCR-08')" style="margin-bottom:8px;">Điền nhanh Hồ sơ để cá nhân hóa ➔</button>` : ""}
+              <button type="button" class="btn btn-primary" onclick="jumpRadarToSurvey(${it.rateDelta})">Mô phỏng tác động lên Khoản vay / Tiền gửi (Cầu nối 1) ➔</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    window.jumpRadarToSurvey = (delta) => {
+      state.surveyMode = "LOAN";
+      state.manualMode = false;
+      state.shockDelta = delta || -1.0;
+      document.getElementById("shock-slider").value = state.shockDelta;
+      navigate("SCR-05");
+    };
+
+    // ============================================================
+    // 5. RENDERING PHÂN HỆ 2 (SURVEY, MATH, DTI, RATE SHOCK)
+    // ============================================================
+    document.getElementById("btn-quick-survey").addEventListener("click", () => {
+      state.surveyMode = "LOAN";
+      state.manualMode = false;
+      state.loanParams.amount = Number(document.getElementById("quick-amount").value) || 50000000;
+      state.loanParams.term = Number(document.getElementById("quick-term").value) || 24;
+      document.getElementById("loan-amount").value = state.loanParams.amount;
+      document.getElementById("loan-term").value = state.loanParams.term;
+      navigate("SCR-05");
+    });
+
+    document.getElementById("form-loan-survey").addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!e.target.checkValidity()) { e.target.reportValidity(); return; }
+      const entity = document.getElementById("loan-check-entity").value.trim();
+      const trustBox = document.getElementById("trust-filter-block");
+      if (entity && /app|nhanh|fx|bao lời|tín dụng|24h|sàn/i.test(entity)) {
+        trustBox.style.display = "block";
+        trustBox.innerHTML = `
+          <strong>Trust Filter (Chủ đề 3) ĐÃ CHẶN "${entity}":</strong> Đơn vị này không nằm trong danh sách cấp phép của NHNN/UBCKNN và có dấu hiệu tín dụng đen / sàn ảo.
+          <div style="margin-top:8px;"><button type="button" class="btn btn-sm btn-danger" onclick="navigate('SCR-06')">Chuyển sang Phân hệ 3 để Giám định hợp đồng/QR ➔</button></div>
+        `;
+        return;
+      }
+      trustBox.style.display = "none";
+      state.surveyMode = "LOAN";
+      state.manualMode = false;
+      state.loanParams = {
+        amount: Number(document.getElementById("loan-amount").value),
+        term: Number(document.getElementById("loan-term").value),
+        type: document.getElementById("loan-type").value,
+        webFallback: document.getElementById("loan-web-fallback").checked,
+      };
+      state.historyCalcs.unshift(`Khảo sát Vay ${fmtVND(state.loanParams.amount)} / ${state.loanParams.term} tháng`);
+      navigate("SCR-05");
+    });
+
+    document.getElementById("form-invest-survey").addEventListener("submit", (e) => {
+      e.preventDefault();
+      state.surveyMode = "INVEST";
+      state.investParams = {
+        c0: Number(document.getElementById("inv-c0").value) || 0,
+        pmt: Number(document.getElementById("inv-pmt").value) || 0,
+        term: Number(document.getElementById("inv-term").value) || 12,
+        risk: document.getElementById("inv-risk").value,
+      };
+      state.historyCalcs.unshift(`Khảo sát Đầu tư C0=${fmtVND(state.investParams.c0)}, Góp=${fmtVND(state.investParams.pmt)}/th`);
+      navigate("SCR-05");
+    });
+
+    document.getElementById("btn-run-manual").addEventListener("click", () => {
+      state.surveyMode = "LOAN";
+      state.manualMode = true;
+      navigate("SCR-05");
+    });
+
+    document.getElementById("shock-slider").addEventListener("input", (e) => {
+      state.shockDelta = Number(e.target.value);
+      renderResults();
+    });
+
+    function renderResults() {
+      const loanView = document.getElementById("scr5-loan-view");
+      const invView = document.getElementById("scr5-invest-view");
+
+      if (state.surveyMode === "INVEST") {
+        loanView.style.display = "none";
+        invView.style.display = "block";
+        document.getElementById("scr5-title").textContent = "Kết quả Khảo sát Tích lũy & Đầu tư An toàn";
+        document.getElementById("scr5-sub").textContent = `Vốn đầu ${fmtVND(state.investParams.c0)} + Góp ${fmtVND(state.investParams.pmt)}/th trong ${state.investParams.term} tháng • Chỉ giữ kênh được NHNN/UBCKNN cấp phép.`;
+        renderInvestResults();
+        return;
+      }
+
+      loanView.style.display = "block";
+      invView.style.display = "none";
+
+      let items = [];
+      if (state.manualMode) {
+        const aAmt = Number(document.getElementById("man-a-amt").value) || 50000000;
+        const aTerm = Number(document.getElementById("man-a-term").value) || 24;
+        const aRate = Number(document.getElementById("man-a-rate").value) || 14.5;
+        const aFee = Number(document.getElementById("man-a-fee").value) || 0;
+        const calA = calcEMI(aAmt, aRate, aTerm);
+        const aprA = solveAPRFromCashflow(aAmt - aFee, calA.emi, aTerm);
+        items.push({
+          org: "Phương án A (Nhập tay — Dư nợ giảm dần)", prov: "MANUAL", rateType: "FIXED",
+          netDisbursed: aAmt - aFee, monthly: calA.emi, totCost: calA.totInt + aFee, apr: aprA.apr, rows: calA.rows
+        });
+
+        const bAmt = Number(document.getElementById("man-b-amt").value) || 50000000;
+        const bTerm = Number(document.getElementById("man-b-term").value) || 24;
+        const bFlatM = Number(document.getElementById("man-b-rate").value) || 0.9;
+        const bFee = Number(document.getElementById("man-b-fee").value) || 5000000;
+        const payB = Math.round(bAmt / bTerm + bAmt * (bFlatM / 100));
+        const aprB = solveAPRFromCashflow(bAmt - bFee, payB, bTerm);
+        const rowsB = Array.from({ length: bTerm }, (_, idx) => ({
+          m: idx + 1, pay: payB, prin: Math.round(bAmt / bTerm), interest: Math.round(bAmt * (bFlatM / 100)),
+          bal: Math.max(0, bAmt - Math.round((bAmt / bTerm) * (idx + 1)))
+        }));
+        items.push({
+          org: `Phương án B (Nhập tay — Lãi phẳng ${bFlatM}%/th)`, prov: "MANUAL", rateType: "FIXED",
+          netDisbursed: bAmt - bFee, monthly: payB, totCost: payB * bTerm - (bAmt - bFee), apr: aprB.apr, rows: rowsB
+        });
+        document.getElementById("scr5-title").textContent = "Kết quả So sánh Thủ công A vs B (US-lo2)";
+      } else {
+        const { amount, term, type, webFallback } = state.loanParams;
+        const filtered = LOAN_CATALOG.filter((p) => p.type === type && (webFallback || p.prov === "CATALOG_VERIFIED"));
+        items = filtered.map((p) => {
+          const appliedRate = p.rateType === "FIXED" ? p.rate : Math.max(2, p.rate + state.shockDelta);
+          const cal = calcEMI(amount, appliedRate, term);
+          const fee = Math.round(amount * (p.upfrontFeePct / 100));
+          const netDisbursed = amount - fee;
+          const aprObj = solveAPRFromCashflow(netDisbursed, cal.emi, term);
+          return {
+            org: p.org, prov: p.prov, rateType: p.rateType, src: p.src,
+            netDisbursed, monthly: cal.emi, totCost: cal.totInt + fee, apr: aprObj.apr, rows: cal.rows
+          };
+        }).sort((a, b) => a.apr - b.apr);
+        document.getElementById("scr5-title").textContent = `Khảo sát ${items.length} Bên Hợp pháp (${fmtVND(amount)} • ${term} tháng)`;
+      }
+
+      // DTI calculation using active profile and best item
+      const best = items[state.selectedScheduleIdx] || items[0];
+      const inc = state.profile.hasProfile ? state.profile.income : 0;
+      const dtiBox = document.getElementById("dti-summary-box");
+      if (inc > 0 && best) {
+        const dti = ((state.profile.debt + best.monthly) / inc) * 100;
+        const disp = inc - state.profile.expense - state.profile.debt - best.monthly;
+        let bandCls = "b-green", bandLbl = "AN TOÀN (< 35%)";
+        if (dti > 50) { bandCls = "b-red"; bandLbl = "VƯỢT NGƯỠNG (> 50% — Cảnh báo đỏ)"; }
+        else if (dti >= 45) { bandCls = "b-red"; bandLbl = "ÁP LỰC CAO (45–50%)"; }
+        else if (dti >= 35) { bandCls = "b-amber"; bandLbl = "CÂN NHẮC (35–45%)"; }
+        dtiBox.innerHTML = `
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+            <strong style="font-size:22px;">${dti.toFixed(1)}%</strong>
+            <span class="badge ${bandCls}">${bandLbl}</span>
+          </div>
+          <div style="font-size:13px;">Thu nhập: <strong>${fmtVND(inc)}</strong> • Nợ cũ + Khoản mới: <strong>${fmtVND(state.profile.debt + best.monthly)}</strong>/th</div>
+          <div style="font-size:13px;">Dư tiền sinh hoạt còn lại: <strong>${fmtVND(disp)}</strong>/tháng</div>
+        `;
+      } else {
+        dtiBox.innerHTML = `<div class="alert-banner">Chưa có Hồ sơ Thu nhập (R07). <button type="button" class="btn btn-sm" onclick="navigate('SCR-08')">Nhập ngay để tính DTI</button></div>`;
+      }
+
+      // Shock UI text
+      document.getElementById("shock-val-lbl").textContent = `${state.shockDelta >= 0 ? "+" : ""}${state.shockDelta.toFixed(1)}%/năm`;
+      document.getElementById("shock-impact-text").textContent =
+        "Thanh trượt chỉ tác động tới các gói Lãi suất thả nổi / Hết ưu đãi (US-lo4); gói Lãi cố định hoàn toàn được giữ nguyên.";
+
+      // Comparison Table
+      document.getElementById("loan-compare-tbody").innerHTML = items.map((it, idx) => {
+        const pBadge = it.prov === "CATALOG_VERIFIED"
+          ? `<span class="badge b-green">Đã chuẩn hóa</span>`
+          : (it.prov === "WEB_REFERENCE" ? `<span class="badge b-amber">Tham khảo web</span>` : `<span class="badge b-purple">Nhập tay</span>`);
+        const dtiCell = inc > 0 ? `${(((state.profile.debt + it.monthly) / inc) * 100).toFixed(1)}%` : "—";
+        return `
+          <tr>
+            <th>${it.org}<div style="font-size:11px; color:var(--text-muted); font-weight:400;">${it.rateType === "FIXED" ? "Lãi cố định" : "Ưu đãi / Thả nổi"} ${it.src ? "• " + it.src : ""}</div></th>
+            <td data-label="Nguồn">${pBadge}</td>
+            <td data-label="Thực nhận">${fmtVND(it.netDisbursed)}</td>
+            <td data-label="Trả/tháng"><strong>${fmtVND(it.monthly)}</strong></td>
+            <td data-label="Tổng lãi+phí">${fmtVND(it.totCost)}</td>
+            <td data-label="APR thực"><span class="badge b-blue">${it.apr.toFixed(2)}%/năm</span></td>
+            <td data-label="DTI">${dtiCell}</td>
+            <td data-label="Lịch"><button type="button" class="btn btn-sm" onclick="selectSchedule(${idx})">${idx === state.selectedScheduleIdx ? "Đang xem" : "Xem lịch"}</button></td>
+          </tr>
+        `;
+      }).join("");
+
+      // AI Explain
+      document.getElementById("ai-loan-explain").textContent = items.length >= 2
+        ? `So sánh giữa "${items[0].org}" (APR thực ${items[0].apr.toFixed(2)}%/năm, tổng chi phí ${fmtVND(items[0].totCost)}) và "${items[1].org}" (APR thực ${items[1].apr.toFixed(2)}%/năm, tổng chi phí ${fmtVND(items[1].totCost)}): Phương án đứng đầu giúp tiết kiệm ${fmtVND(Math.abs(items[1].totCost - items[0].totCost))} tổng chi phí. Lưu ý kiểm tra phí tất toán sớm và không đánh giá chỉ dựa vào lãi suất niêm yết bề mặt.`
+        : "Đang hiển thị kết quả tính toán xác định.";
+
+      // Schedule Table
+      if (best) {
+        document.getElementById("schedule-title").textContent = `Bảng Lịch Thanh toán Từng tháng — ${best.org}`;
+        document.getElementById("schedule-tbody").innerHTML = best.rows.map((r) => `
+          <tr>
+            <th>Tháng ${r.m}</th>
+            <td data-label="Tổng trả">${fmtVND(r.pay)}</td>
+            <td data-label="Gốc">${fmtVND(r.prin)}</td>
+            <td data-label="Lãi + Phí">${fmtVND(r.interest)}</td>
+            <td data-label="Dư nợ">${fmtVND(r.bal)}</td>
+          </tr>
+        `).join("");
+      }
+    }
+
+    window.selectSchedule = (idx) => { state.selectedScheduleIdx = idx; renderResults(); };
+
+    function renderInvestResults() {
+      const { c0, pmt, term } = state.investParams;
+      const contrib = c0 + pmt * term;
+      const calcFund = (annualPct, sellFeePct, taxPct) => {
+        const rm = (annualPct / 100) / 12;
+        const gross = rm === 0 ? contrib : c0 * Math.pow(1 + rm, term) + pmt * ((Math.pow(1 + rm, term) - 1) / rm);
+        const fee = Math.round(gross * (sellFeePct / 100));
+        const tax = Math.round(gross * (taxPct / 100));
+        const net = Math.round(gross) - fee - tax;
+        return { gross: Math.round(gross), cost: fee + tax, net, profit: net - contrib };
+      };
+
+      document.getElementById("invest-tbody").innerHTML = INVEST_CATALOG.map((p) => {
+        const base = calcFund(p.rate, p.sellFeePct, p.taxPct);
+        return `
+          <tr>
+            <th>${p.org}</th>
+            <td data-label="Nguồn"><span class="badge b-green">Đã chuẩn hóa</span></td>
+            <td data-label="Lãi kỳ vọng">${p.rate}%/năm</td>
+            <td data-label="Tổng nạp">${fmtVND(contrib)}</td>
+            <td data-label="Phí + Thuế">${fmtVND(base.cost)}</td>
+            <td data-label="Giá trị ròng"><strong>${fmtVND(base.net)}</strong></td>
+            <td data-label="Lãi ròng"><span class="badge b-green">+${fmtVND(base.profit)}</span></td>
+          </tr>
+        `;
+      }).join("");
+
+      // Inline SVG 3 Scenarios for Balanced Fund (r=10%, sigma=3.5%)
+      const pCons = calcFund(6.5, 0.5, 0.1).net;
+      const pBase = calcFund(10.0, 0.5, 0.1).net;
+      const pBull = calcFund(13.5, 0.5, 0.1).net;
+      const maxV = pBull * 1.1;
+      const hCons = Math.round((pCons / maxV) * 120), hBase = Math.round((pBase / maxV) * 120), hBull = Math.round((pBull / maxV) * 120);
+      document.getElementById("invest-svg-chart").innerHTML = `
+        <svg viewBox="0 0 640 180" style="width:100%; max-width:640px; height:auto; display:block;">
+          <rect x="40" y="${140 - hCons}" width="110" height="${hCons}" rx="6" fill="#94a3b8"/>
+          <text x="95" y="${132 - hCons}" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">${fmtVND(pCons)}</text>
+          <text x="95" y="162" text-anchor="middle" font-size="12" fill="currentColor">Thận trọng (6.5%)</text>
+
+          <rect x="240" y="${140 - hBase}" width="110" height="${hBase}" rx="6" fill="var(--brand)"/>
+          <text x="295" y="${132 - hBase}" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">${fmtVND(pBase)}</text>
+          <text x="295" y="162" text-anchor="middle" font-size="12" fill="currentColor">Cơ sở (10.0%)</text>
+
+          <rect x="440" y="${140 - hBull}" width="110" height="${hBull}" rx="6" fill="var(--green)"/>
+          <text x="495" y="${132 - hBull}" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">${fmtVND(pBull)}</text>
+          <text x="495" y="162" text-anchor="middle" font-size="12" fill="currentColor">Tích cực (13.5%)</text>
+        </svg>
+      `;
+    }
+
+    // ============================================================
+    // 6. RENDERING PHÂN HỆ 3 (FORENSIC AUDITOR — MŨI NHỌN)
+    // ============================================================
+    document.getElementById("f-files").addEventListener("change", (e) => {
+      const files = [...e.target.files];
+      document.getElementById("f-selected-info").textContent = files.length
+        ? `Đã chọn ${files.length} tệp: ${files.map(f => f.name).join(", ")} (Sẽ tự xóa sau trích xuất)`
+        : "Chưa chọn tệp nào";
+    });
+
+    function runForensicCase(sampleKey) {
+      const s = FORENSIC_SAMPLES[sampleKey];
+      document.getElementById("f-qr-raw").value = s.qrRaw;
+      document.getElementById("f-text").value = s.text;
+      state.lastAudit = { ...s };
+      state.historyAudits.unshift(`${s.name} — ${s.verdict} (${s.score}/100)`);
+      renderForensicReport();
+      navigate("SCR-07");
+    }
+
+    document.querySelectorAll("[data-sample]").forEach((btn) => {
+      btn.addEventListener("click", () => runForensicCase(btn.dataset.sample));
+    });
+    document.getElementById("hero-demo-case1").addEventListener("click", () => runForensicCase("case1"));
+
+    document.getElementById("btn-run-forensic").addEventListener("click", () => {
+      const rawTxt = document.getElementById("f-text").value.trim();
+      const qrRaw = document.getElementById("f-qr-raw").value.trim();
+      if (!rawTxt && !qrRaw) {
+        alert("Vui lòng chọn 1 Case mẫu hoặc nhập văn bản / chuỗi VietQR để giám định.");
+        return;
+      }
+      // Run lightweight deterministic keyword scan on custom text
+      const findings = [];
+      let score = 10, override = false;
+      if (/lỗi 102|đóng băng|sai một chữ số/i.test(rawTxt)) {
+        override = true; score = Math.max(score, 90);
+        findings.push({ code: "RULE_02_ERROR_102_FREEZE_TRAP", sev: "CRITICAL", pts: "+90đ", title: "Phát hiện kịch bản Lỗi 102 / Đóng băng tài khoản", quote: rawTxt.slice(0, 120) });
+      }
+      if (/phí giải ngân|phí bảo hiểm|nộp trước|chuyển cọc/i.test(rawTxt) || qrRaw) {
+        override = true; score = Math.max(score, 85);
+        findings.push({ code: "RULE_01_UPFRONT_FEE_QR", sev: "CRITICAL", pts: "+85đ", title: "Yêu cầu nộp phí trước giải ngân / qua mã QR", quote: rawTxt.slice(0, 120) || "Kèm mã VietQR thu phí trước" });
+      }
+      if (/bao lời|cam kết lợi nhuận|15%|30%/i.test(rawTxt)) {
+        override = true; score = Math.max(score, 85);
+        findings.push({ code: "RULE_07_PONZI_UNREALISTIC_RETURN", sev: "CRITICAL", pts: "+85đ", title: "Cam kết lợi nhuận phi lý (Dấu hiệu Ponzi)", quote: rawTxt.slice(0, 120) });
+      }
+      state.lastAudit = {
+        name: "Hồ sơ người dùng tải lên",
+        claimedEntity: "Đơn vị cần xác minh",
+        qrRaw,
+        visionBeneficiary: qrRaw ? "Đọc từ ảnh QR (Tài khoản cá nhân)" : "Không có ảnh QR",
+        text: rawTxt,
+        nominalAmt: 50000000, upfrontFee: override ? 2500000 : 0, flatMonthlyPct: 0.9, term: 24,
+        score,
+        verdict: score >= 70 ? "HIGH_RISK" : (score >= 30 ? "CAUTION" : "SAFE"),
+        override,
+        findings,
+      };
+      renderForensicReport();
+      navigate("SCR-07");
+    });
+
+    function renderForensicReport() {
+      const a = state.lastAudit || FORENSIC_SAMPLES.case1;
+      const qr = parseVietQR(a.qrRaw);
+      const maskedTxt = maskPII(a.text);
+      const pNet = a.nominalAmt - a.upfrontFee;
+      let aprStr = "14.50%/năm (Đúng dư nợ giảm dần)";
+      if (a.flatMonthlyPct > 0) {
+        const pay = Math.round(a.nominalAmt / a.term + a.nominalAmt * (a.flatMonthlyPct / 100));
+        const res = solveAPRFromCashflow(pNet, pay, a.term);
+        aprStr = `${res.apr.toFixed(2)}%/năm (EAR ${res.ear.toFixed(2)}% — Lãi quảng cáo chỉ ${a.flatMonthlyPct}%/tháng!)`;
+      }
+      const verdictText = a.verdict === "HIGH_RISK"
+        ? "NGUY HIỂM CAO — DẤU HIỆU LỪA ĐẢO"
+        : (a.verdict === "CAUTION" ? "CẦN THẬN TRỌNG" : "AN TOÀN (CHƯA THẤY CỜ ĐỎ)");
+
+      const evidenceMd = `# BÁO CÁO GIÁM ĐỊNH FINCOPILOT AI\n- Phán quyết: ${verdictText} (${a.score}/100)\n- Pháp nhân tự xưng: ${a.claimedEntity}\n- VietQR giải mã: ${qr ? `${qr.bankName} (BIN ${qr.acqBin}) | STK ${qr.maskedAcc} | Dịch vụ ${qr.serviceCode} | Tiền ${qr.amount ? fmtVND(qr.amount) : 'Không cố định'}` : 'Không có QR'}\n- Tên chủ TK (Vision): ${a.visionBeneficiary}\n- Tiền thực nhận: ${fmtVND(pNet)} / Danh nghĩa ${fmtVND(a.nominalAmt)}\n- APR thực quy đổi: ${aprStr}\n- Vi phạm:\n${a.findings.map(f => `  * [${f.sev}] ${f.code}: ${f.title} ("${f.quote}")`).join("\n")}\n- Văn bản đã che PII: ${maskedTxt}`;
+      document.getElementById("evidence-markdown-box").textContent = evidenceMd;
+
+      document.getElementById("forensic-report-root").innerHTML = `
+        <div class="verdict-banner ${a.verdict}">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div>
+              <div style="font-size:12px; font-weight:700; opacity:0.9;">PHÁN QUYẾT GIÁM ĐỊNH ĐA TẦNG ${a.override ? "• DETERMINISTIC OVERRIDE (CẤM AI HẠ MỨC)" : ""}</div>
+              <h1 style="margin:2px 0; font-size:22px;">${verdictText}</h1>
+            </div>
+            <div style="font-size:28px; font-weight:800;">${a.score}/100</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3 style="margin:0 0 8px 0; font-size:15px;">1. Giải mã VietQR (EMVCo/NAPAS 247) &amp; Đối chiếu Thực thể</h3>
+            ${qr ? `
+              <ul style="margin:0; padding-left:18px; font-size:13px;">
+                <li><strong>Pháp nhân tự xưng:</strong> ${a.claimedEntity}</li>
+                <li><strong>Ngân hàng thụ hưởng:</strong> ${qr.bankName} (BIN <code>${qr.acqBin}</code>)</li>
+                <li><strong>Số tài khoản (đã che):</strong> <code>${qr.maskedAcc}</code> • CRC-16: ${qr.crcValid ? '<span class="badge b-green">Hợp lệ</span>' : 'Lỗi'}</li>
+                <li><strong>Loại dịch vụ QR:</strong> <code>${qr.serviceCode}</code> (Chuyển khoản Cá nhân 24/7)</li>
+                <li><strong>Số tiền QR yêu cầu:</strong> ${qr.amount ? `<strong>${fmtVND(qr.amount)}</strong>` : "Không cố định"} • Nội dung: <code>${qr.purpose}</code></li>
+                <li><strong>Tên chủ TK (AI Vision đọc từ ảnh):</strong> <strong style="color:var(--red);">${a.visionBeneficiary}</strong></li>
+              </ul>
+            ` : `<p style="margin:0; font-size:13px; color:var(--text-muted);">Hồ sơ này không đính kèm ảnh mã VietQR. Đang đối chiếu theo văn bản &amp; pháp nhân.</p>`}
+          </div>
+
+          <div class="card">
+            <h3 style="margin:0 0 8px 0; font-size:15px;">2. Bóc tách Toán học Xác định (P_net &amp; APR Thực)</h3>
+            <ul style="margin:0; padding-left:18px; font-size:13px;">
+              <li><strong>Khoản vay danh nghĩa:</strong> ${fmtVND(a.nominalAmt)}</li>
+              <li><strong>Phí thu trước / giữ lại:</strong> ${fmtVND(a.upfrontFee)}</li>
+              <li><strong>Tiền thực nhận (P_net):</strong> <strong>${fmtVND(pNet)}</strong></li>
+              <li><strong>Lãi suất thực quy đổi (APR):</strong> <strong style="color:${a.verdict === "SAFE" ? "var(--green)" : "var(--red)"};">${aprStr}</strong></li>
+              <li><strong>Bảo mật PII:</strong> File ảnh/PDF gốc đã tự xóa • Văn bản đã che PII: <code>${maskedTxt.slice(0, 95)}...</code></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin:0 0 10px 0; font-size:15px;">3. Kết quả Kiểm định 7 Luật Cứng Việt Nam (${a.findings.length} Vi phạm)</h3>
+          ${a.findings.length ? a.findings.map((f) => `
+            <div style="border:1px solid var(--border-soft); border-radius:8px; padding:10px 12px; margin-bottom:8px;">
+              <div style="display:flex; justify-content:space-between; gap:8px;">
+                <strong><code>${f.code}</code> — ${f.title}</strong>
+                <span class="badge ${f.sev === "CRITICAL" ? "b-red" : "b-amber"}">${f.sev} (${f.pts})</span>
+              </div>
+              <div class="quote-box">Trích dẫn gốc: "${f.quote}"</div>
+            </div>
+          `).join("") : `<div class="alert-banner green">Không phát hiện vi phạm nào trong 7 Luật Cứng lừa đảo. Hãy vẫn kiểm tra lại DTI trên Phân hệ 2 trước khi ký.</div>`}
+
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
+            <button type="button" class="btn" command="show-modal" commandfor="dlg-evidence">Xuất Báo cáo Bằng chứng (PDF / MD)</button>
+            <button type="button" class="btn btn-primary" onclick="handoffToSurvey(${a.nominalAmt}, ${a.term})">Khảo sát &amp; Tính nguồn vay hợp pháp thay thế (1-Click sang P2) ➔</button>
+          </div>
+        </div>
+
+        ${a.verdict === "HIGH_RISK" ? `
+          <div class="alert-banner red">
+            <strong>Nếu bạn đã lỡ chuyển tiền:</strong> (1) Khóa ngay thẻ/App ngân hàng nếu lỡ nhập OTP/cài APK lạ, (2) Chụp giữ toàn bộ biên lai &amp; tin nhắn, (3) Trình báo cơ quan Công an gần nhất và gửi cảnh báo tới cổng <code>canhbao.ncsc.gov.vn</code>.
+          </div>
+        ` : ""}
+      `;
+    }
+
+    window.handoffToSurvey = (amt, term) => {
+      state.surveyMode = "LOAN";
+      state.manualMode = false;
+      state.loanParams.amount = amt || 50000000;
+      state.loanParams.term = term || 24;
+      document.getElementById("loan-amount").value = state.loanParams.amount;
+      document.getElementById("loan-term").value = state.loanParams.term;
+      navigate("SCR-05");
+    };
+
+    document.getElementById("btn-download-md").addEventListener("click", () => {
+      const txt = document.getElementById("evidence-markdown-box").textContent;
+      const blob = new Blob([txt], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "FinCopilot_BangChung_GiamDinh.md"; a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // ============================================================
+    // 7. PROFILE, AUTH MERGE & ADMIN DATA OPS (SCR-08, SCR-09)
+    // ============================================================
+    function updateProfileBadge() {
+      const p = state.profile;
+      document.getElementById("topbar-profile-text").textContent = p.hasProfile
+        ? `Hồ sơ R07: Thu nhập ${(p.income/1e6).toFixed(0)}tr • Nợ ${(p.debt/1e6).toFixed(0)}tr`
+        : "Chưa có Hồ sơ R07 (Click để thiết lập)";
+    }
+
+    document.getElementById("form-profile").addEventListener("submit", (e) => {
+      e.preventDefault();
+      state.profile = {
+        hasProfile: true,
+        income: Number(document.getElementById("pf-income").value) || 0,
+        expense: Number(document.getElementById("pf-expense").value) || 0,
+        debt: Number(document.getElementById("pf-debt").value) || 0,
+        savings: Number(document.getElementById("pf-savings").value) || 0,
+        risk: document.getElementById("pf-risk").value,
+        goal: document.getElementById("pf-goal").value,
+      };
+      updateProfileBadge();
+      document.getElementById("live-announcer").textContent = "Đã lưu Hồ sơ tài chính cá nhân.";
+      alert("Đã lưu Hồ sơ Tài chính! Nhánh R07 (Radar) và tỷ lệ DTI (Phân hệ 2) đã tự động cập nhật.");
+    });
+
+    document.getElementById("btn-clear-profile").addEventListener("click", () => {
+      state.profile.hasProfile = false;
+      updateProfileBadge();
+      alert("Đã chuyển về trạng thái Guest chưa có hồ sơ — mở Radar Chi tiết (SCR-03) hoặc SCR-05 để thấy chế độ Tổng quát.");
+    });
+
+    document.getElementById("form-login-demo").addEventListener("submit", (e) => {
+      const dlg = document.getElementById("dlg-login");
+      const btnVal = e.submitter?.value;
+      if (btnVal === "cancel") return;
+      const emailEl = document.getElementById("login-email");
+      if (!emailEl.checkValidity()) { e.preventDefault(); emailEl.reportValidity(); return; }
+      state.loggedInEmail = emailEl.value;
+      const badge = document.getElementById("auth-status-badge");
+      badge.className = "badge b-purple";
+      badge.textContent = `Đã đồng bộ: ${state.loggedInEmail}`;
+      document.getElementById("btn-open-login").textContent = "Tài khoản đã gộp";
+      dlg.close("google");
+    });
+
+    function renderHistory() {
+      document.getElementById("history-audits").innerHTML = state.historyAudits.map(x => `<li>${x}</li>`).join("");
+      document.getElementById("history-calcs").innerHTML = state.historyCalcs.map(x => `<li>${x}</li>`).join("");
+    }
+
+    function renderAdmin() {
+      const srcs = [
+        { name: "CafeF", type: "RSS", trust: "false", time: "22/11/2026 16:00", st: "SUCCESS" },
+        { name: "VnEconomy", type: "RSS", trust: "false", time: "22/11/2026 16:00", st: "SUCCESS" },
+        { name: "Vietstock", type: "RSS", trust: "false", time: "22/11/2026 14:15", st: state.sourceErrorSimulated ? "ERROR" : "SUCCESS" },
+        { name: "NHNN (sbv.gov.vn)", type: "WEB", trust: "true", time: "22/11/2026 15:30", st: "SUCCESS" },
+        { name: "NCSC (canhbao.ncsc.gov.vn)", type: "WEB", trust: "true", time: "22/11/2026 16:00", st: "SUCCESS" },
+      ];
+      document.getElementById("admin-sources-tbody").innerHTML = srcs.map((s) => `
+        <tr>
+          <th>${s.name}</th>
+          <td data-label="Loại">${s.type}</td>
+          <td data-label="Trusted">${s.trust}</td>
+          <td data-label="Lần thành công">${s.time}</td>
+          <td data-label="Trạng thái"><span class="badge ${s.st === "SUCCESS" ? "b-green" : "b-red"}">${s.st}</span></td>
+        </tr>
+      `).join("");
+
+      document.getElementById("admin-products-tbody").innerHTML = LOAN_CATALOG.map((p) => `
+        <tr>
+          <th>${p.org}</th>
+          <td data-label="Cấp phép">${p.license}</td>
+          <td data-label="Loại">${p.type}</td>
+          <td data-label="Lãi niêm yết">${p.rate}%/năm</td>
+          <td data-label="Hiệu lực">${p.src}</td>
+          <td data-label="Trạng thái"><span class="badge ${p.prov === "CATALOG_VERIFIED" ? "b-green" : "b-amber"}">${p.prov}</span></td>
+        </tr>
+      `).join("");
+    }
+
+    document.getElementById("btn-admin-retry").addEventListener("click", () => {
+      state.sourceErrorSimulated = false;
+      renderAdmin();
+    });
+
+    // Polyfill command/commandfor fallback for browsers without Invoker Commands
+    if (!("commandForElement" in HTMLButtonElement.prototype)) {
+      document.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[command='show-modal'][commandfor]");
+        if (btn) document.getElementById(btn.getAttribute("commandfor"))?.showModal();
+      });
+    }
+
+    // Initialize initial views
+    updateProfileBadge();
+    renderRadarFeed();
+  </script>
+</body>
+</html>

@@ -1,0 +1,813 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1420" width="1920" height="1420" style="font-family: 'Segoe UI', Inter, Arial, sans-serif; background:#F8FAFC;">
+
+  <defs>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#2563EB"/>
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7C3AED"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#059669"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#DC2626"/>
+    </marker>
+    <filter id="card-shadow" x="-3%" y="-3%" width="106%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0F172A" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+<rect x="0" y="0" width="1920" height="86" fill="#0F172A"/>
+<rect x="0" y="82" width="1920" height="4" fill="#AE2070"/>
+<text x="36" y="37" fill="#FFFFFF" font-size="22" font-weight="800">FINCOPILOT AI — ENTITY RELATIONSHIP DIAGRAM (ERD 17 BẢNG CHUẨN HÓA)</text>
+<text x="36" y="63" fill="#CBD5E1" font-size="13.5">PostgreSQL 16 • 8 Bảng Kế thừa Phân hệ 1 (ERD.png) + 9 Bảng Mở rộng (Phân hệ 0, 2, 3) • Đồng bộ với sources/erd.dbml</text>
+<rect x="1120" y="25" width="176" height="34" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.5"/>
+<text x="1208" y="46" text-anchor="middle" fill="#0F172A" font-size="11.5" font-weight="700">Cụm 1: Radar (8 bảng cũ)</text>
+<rect x="1320" y="25" width="176" height="34" rx="6" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+<text x="1408" y="46" text-anchor="middle" fill="#0F172A" font-size="11.5" font-weight="700">Cụm 0: Auth/Hồ sơ/Cache (3)</text>
+<rect x="1535" y="25" width="176" height="34" rx="6" fill="#D1FAE5" stroke="#047857" stroke-width="1.5"/>
+<text x="1623" y="46" text-anchor="middle" fill="#0F172A" font-size="11.5" font-weight="700">Cụm 2: Survey &amp; Calc (3)</text>
+<rect x="1730" y="25" width="176" height="34" rx="6" fill="#FEE2E2" stroke="#B91C1C" stroke-width="1.5"/>
+<text x="1818" y="46" text-anchor="middle" fill="#0F172A" font-size="11.5" font-weight="700">Cụm 3: Forensic (3)</text>
+<rect x="36" y="122" width="974" height="706" rx="12" fill="#EFF6FF" stroke="#1D4ED8" stroke-width="2" stroke-dasharray="8 4"/>
+<rect x="48" y="132" width="950" height="28" rx="6" fill="#DBEAFE"/>
+<text x="58" y="151" fill="#1D4ED8" font-size="13" font-weight="800">CỤM 1: PHÂN HỆ 1 — MARKET &amp; THREAT RADAR (8 BẢNG KẾ THỪA TỪ ERD.png)</text>
+<rect x="1046" y="122" width="838" height="336" rx="12" fill="#F5F3FF" stroke="#7C3AED" stroke-width="2" stroke-dasharray="8 4"/>
+<rect x="1058" y="132" width="814" height="28" rx="6" fill="#EDE9FE"/>
+<text x="1068" y="151" fill="#7C3AED" font-size="13" font-weight="800">CỤM 0: PHÂN HỆ 0 — AUTH, HỒ SƠ TÀI CHÍNH &amp; AI CACHE (3 BẢNG MỚI)</text>
+<rect x="1046" y="502" width="838" height="506" rx="12" fill="#ECFDF5" stroke="#047857" stroke-width="2" stroke-dasharray="8 4"/>
+<rect x="1058" y="512" width="814" height="28" rx="6" fill="#D1FAE5"/>
+<text x="1068" y="531" fill="#047857" font-size="13" font-weight="800">CỤM 2: PHÂN HỆ 2 — KHẢO SÁT &amp; TÍNH TOÁN (3 BẢNG MỚI)</text>
+<rect x="36" y="868" width="974" height="494" rx="12" fill="#FEF2F2" stroke="#B91C1C" stroke-width="2" stroke-dasharray="8 4"/>
+<rect x="48" y="878" width="950" height="28" rx="6" fill="#FEE2E2"/>
+<text x="58" y="897" fill="#B91C1C" font-size="13" font-weight="800">CỤM 3: PHÂN HỆ 3 — FORENSIC AUDITOR (3 BẢNG MỚI — MŨI NHỌN MVP)</text>
+<rect x="1046" y="1030" width="838" height="332" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5" filter="url(#card-shadow)"/>
+<rect x="1046" y="1030" width="838" height="38" rx="10" fill="#1E293B"/>
+<text x="1068" y="1054" fill="#FFFFFF" font-size="14" font-weight="700">QUY ƯỚC KIẾN TRÚC DỮ LIỆU &amp; LIÊN KẾT KHÉP KÍN GIỮA 3 PHÂN HỆ</text>
+<text x="1068" y="1094" fill="#AE2070" font-size="12.5" font-weight="700">1. Khử trùng &amp; Độ tươi (Phân hệ 1):</text>
+<text x="1068" y="1112" fill="#334155" font-size="11.8">market_article dùng canonical_url + content_hash chống trùng; nhiều nguồn gộp qua article_source.</text>
+<text x="1068" y="1136" fill="#AE2070" font-size="12.5" font-weight="700">2. Cầu nối R07 &amp; Cache AI:</text>
+<text x="1068" y="1154" fill="#334155" font-size="11.8">article_impact_analyses tham chiếu financial_profiles (NULL nếu Guest chưa điền hồ sơ) để tách dữ kiện vs AI.</text>
+<text x="1068" y="1178" fill="#AE2070" font-size="12.5" font-weight="700">3. Hybrid Catalog &amp; Trust Filter (Phân hệ 2):</text>
+<text x="1068" y="1196" fill="#334155" font-size="11.8">financial_institutions xác minh NHNN/UBCKNN; financial_products lưu source_url, effective_date &amp; data_provenance.</text>
+<text x="1068" y="1220" fill="#AE2070" font-size="12.5" font-weight="700">4. Luồng 2 (NCSC -&gt; Forensic):</text>
+<text x="1068" y="1238" fill="#334155" font-size="11.8">Cảnh báo VERIFIED sinh threat_indicator; forensic_findings tự đối chiếu matched_indicator_id (RULE_05).</text>
+<text x="1068" y="1262" fill="#AE2070" font-size="12.5" font-weight="700">5. Bảo mật PII &amp; Tự hủy File (Phân hệ 3):</text>
+<text x="1068" y="1280" fill="#334155" font-size="11.8">Ảnh/PDF gốc xóa ngay sau trích xuất (lưu mốc source_files_purged_at); raw_text_masked &amp; account_number_masked đã che PII.</text>
+<text x="1068" y="1304" fill="#AE2070" font-size="12.5" font-weight="700">6. Guest-to-User Merge:</text>
+<text x="1068" y="1322" fill="#334155" font-size="11.8">Khi người dùng chọn đăng nhập, dữ liệu theo guest_session_id ở financial_profiles, calculation_sessions, forensic_audits gộp về user_id.</text>
+<path d="M 643 219.0 L 698 219.0" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<rect x="654" y="201.0" width="29.5" height="15" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="658" y="213.0" fill="#2563EB" font-size="11" font-weight="700">1:N</text>
+<path d="M 316 347.0 L 340 347.0 L 340 165 L 672 165 L 672 239.0 L 698 239.0" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<path d="M 368 219.0 L 352 219.0 L 352 461.0 L 368 461.0" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<path d="M 843 338 L 843 366" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<rect x="848" y="341" width="29.5" height="15" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="852" y="353" fill="#2563EB" font-size="11" font-weight="700">1:N</text>
+<path d="M 643 569.0 L 672 569.0 L 672 411.0 L 698 411.0" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<path d="M 643 575.0 L 698 589.0" fill="none" stroke="#2563EB" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<rect x="654" y="579.0" width="29.5" height="15" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="658" y="591.0" fill="#2563EB" font-size="11" font-weight="700">1:N</text>
+<path d="M 1300 219.0 L 1324 239.0" fill="none" stroke="#7C3AED" stroke-width="2" marker-end="url(#arrow-purple)"/>
+<rect x="1299" y="201.0" width="29.5" height="15" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="1303" y="213.0" fill="#7C3AED" font-size="11" font-weight="700">1:1</text>
+<path d="M 1599 219.0 L 1622 259.0" fill="none" stroke="#7C3AED" stroke-width="2" marker-end="url(#arrow-purple)"/>
+<path d="M 505 174 L 505 104 L 1743 104 L 1743 174" fill="none" stroke="#7C3AED" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow-purple)"/>
+<rect x="1056" y="87" width="153.0" height="15" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="1060" y="99" fill="#7C3AED" font-size="11" font-weight="700">article_id (R07 Cache)</text>
+<path d="M 1308 595.0 L 1332 615.0" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arrow-green)"/>
+<rect x="1307" y="577.0" width="29.5" height="15" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="1311" y="589.0" fill="#059669" font-size="11" font-weight="700">1:N</text>
+<path d="M 1182 358 L 1182 472 L 1764 472 L 1764 550" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arrow-green)"/>
+<rect x="1476" y="455" width="55.5" height="15" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="1480" y="467" fill="#059669" font-size="11" font-weight="700">user_id</text>
+<path d="M 1462 418 L 1462 490 L 1720 490 L 1720 550" fill="none" stroke="#059669" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow-green)"/>
+<rect x="1546" y="473" width="114.0" height="15" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="1550" y="485" fill="#059669" font-size="11" font-weight="700">profile_id (DTI)</text>
+<path d="M 351 975.0 L 388 995.0" fill="none" stroke="#DC2626" stroke-width="2" marker-end="url(#arrow-red)"/>
+<rect x="354" y="957.0" width="29.5" height="15" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="358" y="969.0" fill="#DC2626" font-size="11" font-weight="700">1:N</text>
+<path d="M 204 930 L 204 914 L 835 914 L 835 930" fill="none" stroke="#DC2626" stroke-width="2" marker-end="url(#arrow-red)"/>
+<rect x="491" y="897" width="88.0" height="15" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="495" y="909" fill="#DC2626" font-size="11" font-weight="700">1:N findings</text>
+<path d="M 845 648 L 845 848 L 910 848 L 910 930" fill="none" stroke="#DC2626" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow-red)"/>
+<rect x="576" y="831" width="276.5" height="15" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="580" y="843" fill="#DC2626" font-size="11" font-weight="700">Luồng 2: NCSC threat_indicator -&gt; RULE_05</text>
+<path d="M 1064 229.0 L 1028 229.0 L 1028 1384 L 204 1384 L 204 1334" fill="none" stroke="#DC2626" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow-red)"/>
+<rect x="536" y="1366" width="159.5" height="15" rx="3" fill="#FFFFFF" fill-opacity="0.95"/>
+<text x="540" y="1378" fill="#DC2626" font-size="11" font-weight="700">user_id (Optional Auth)</text>
+<g filter="url(#card-shadow)">
+<rect x="56" y="174" width="260" height="104" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 56 181 Q 56 174 63 174 L 309 174 Q 316 174 316 181 L 316 208 L 56 208 Z" fill="#1E40AF"/>
+<text x="68" y="196" fill="#FFFFFF" font-size="13" font-weight="700">schema_migrations</text>
+<rect x="64" y="211" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="74.5" y="221.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="90.0" y="222" fill="#0F172A" font-size="11" font-weight="600">version</text>
+<text x="307" y="222" text-anchor="end" fill="#64748B" font-size="10.2">varchar(100)</text>
+<rect x="57" y="228" width="258" height="20" fill="#F8FAFC"/>
+<rect x="64" y="231" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="241.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="242" fill="#0F172A" font-size="11" font-weight="600">description</text>
+<text x="307" y="242" text-anchor="end" fill="#64748B" font-size="10.2">varchar(200)</text>
+<rect x="64" y="251" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="261.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="262" fill="#0F172A" font-size="11" font-weight="600">applied_at</text>
+<text x="307" y="262" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="56" y="302" width="260" height="284" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 56 309 Q 56 302 63 302 L 309 302 Q 316 302 316 309 L 316 336 L 56 336 Z" fill="#1E40AF"/>
+<text x="68" y="324" fill="#FFFFFF" font-size="13" font-weight="700">market_source</text>
+<rect x="64" y="339" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="74.5" y="349.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="90.0" y="350" fill="#0F172A" font-size="11" font-weight="600">id</text>
+<text x="307" y="350" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="57" y="356" width="258" height="20" fill="#F8FAFC"/>
+<rect x="64" y="359" width="21.0" height="14" rx="3" fill="#FCE7F3"/>
+<text x="74.5" y="369.5" text-anchor="middle" fill="#9D174D" font-size="9" font-weight="700">UK</text>
+<text x="90.0" y="370" fill="#0F172A" font-size="11" font-weight="600">source_key</text>
+<text x="307" y="370" text-anchor="end" fill="#64748B" font-size="10.2">varchar(160)</text>
+<rect x="64" y="379" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="389.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="390" fill="#0F172A" font-size="11" font-weight="600">name</text>
+<text x="307" y="390" text-anchor="end" fill="#64748B" font-size="10.2">varchar(200)</text>
+<rect x="57" y="396" width="258" height="20" fill="#F8FAFC"/>
+<rect x="64" y="399" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="409.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="410" fill="#0F172A" font-size="11" font-weight="600">source_type</text>
+<text x="307" y="410" text-anchor="end" fill="#64748B" font-size="10.2">varchar(24)</text>
+<rect x="64" y="419" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="429.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="430" fill="#0F172A" font-size="11" font-weight="600">endpoint_url</text>
+<text x="307" y="430" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="57" y="436" width="258" height="20" fill="#F8FAFC"/>
+<rect x="64" y="439" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="449.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="450" fill="#0F172A" font-size="11" font-weight="600">is_trusted_for_alerts</text>
+<text x="307" y="450" text-anchor="end" fill="#64748B" font-size="10.2">boolean</text>
+<rect x="64" y="459" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="469.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="470" fill="#0F172A" font-size="11" font-weight="600">is_active</text>
+<text x="307" y="470" text-anchor="end" fill="#64748B" font-size="10.2">boolean</text>
+<rect x="57" y="476" width="258" height="20" fill="#F8FAFC"/>
+<text x="66" y="490" fill="#0F172A" font-size="11" font-weight="600">last_fetch_status</text>
+<text x="307" y="490" text-anchor="end" fill="#64748B" font-size="10.2">varchar(10)</text>
+<text x="66" y="510" fill="#0F172A" font-size="11" font-weight="600">last_attempt_at</text>
+<text x="307" y="510" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+<rect x="57" y="516" width="258" height="20" fill="#F8FAFC"/>
+<text x="66" y="530" fill="#0F172A" font-size="11" font-weight="600">last_success_at</text>
+<text x="307" y="530" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+<rect x="64" y="539" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="549.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="550" fill="#0F172A" font-size="11" font-weight="600">created_at</text>
+<text x="307" y="550" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+<rect x="57" y="556" width="258" height="20" fill="#F8FAFC"/>
+<rect x="64" y="559" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="569.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="570" fill="#0F172A" font-size="11" font-weight="600">updated_at</text>
+<text x="307" y="570" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="368" y="174" width="275" height="224" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 368 181 Q 368 174 375 174 L 636 174 Q 643 174 643 181 L 643 208 L 368 208 Z" fill="#1E40AF"/>
+<text x="380" y="196" fill="#FFFFFF" font-size="13" font-weight="700">market_article</text>
+<rect x="376" y="211" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="386.5" y="221.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="402.0" y="222" fill="#0F172A" font-size="11" font-weight="600">id</text>
+<text x="634" y="222" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="369" y="228" width="273" height="20" fill="#F8FAFC"/>
+<rect x="376" y="231" width="21.0" height="14" rx="3" fill="#FCE7F3"/>
+<text x="386.5" y="241.5" text-anchor="middle" fill="#9D174D" font-size="9" font-weight="700">UK</text>
+<text x="402.0" y="242" fill="#0F172A" font-size="11" font-weight="600">canonical_url</text>
+<text x="634" y="242" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="376" y="251" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="386.5" y="261.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="402.0" y="262" fill="#0F172A" font-size="11" font-weight="600">title</text>
+<text x="634" y="262" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="369" y="268" width="273" height="20" fill="#F8FAFC"/>
+<text x="378" y="282" fill="#0F172A" font-size="11" font-weight="600">published_at</text>
+<text x="634" y="282" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+<rect x="376" y="291" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="386.5" y="301.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="402.0" y="302" fill="#0F172A" font-size="11" font-weight="600">content_hash</text>
+<text x="634" y="302" text-anchor="end" fill="#64748B" font-size="10.2">varchar(64)</text>
+<rect x="369" y="308" width="273" height="20" fill="#F8FAFC"/>
+<rect x="376" y="311" width="21.0" height="14" rx="3" fill="#DBEAFE"/>
+<text x="386.5" y="321.5" text-anchor="middle" fill="#1E40AF" font-size="9" font-weight="700">FK</text>
+<text x="402.0" y="322" fill="#0F172A" font-size="11" font-weight="600">duplicate_of_id</text>
+<text x="634" y="322" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="376" y="331" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="386.5" y="341.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="402.0" y="342" fill="#0F172A" font-size="11" font-weight="600">feed_status</text>
+<text x="634" y="342" text-anchor="end" fill="#64748B" font-size="10.2">varchar(10)</text>
+<rect x="369" y="348" width="273" height="20" fill="#F8FAFC"/>
+<rect x="376" y="351" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="386.5" y="361.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="402.0" y="362" fill="#0F172A" font-size="11" font-weight="600">created_at</text>
+<text x="634" y="362" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+<rect x="376" y="371" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="386.5" y="381.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="402.0" y="382" fill="#0F172A" font-size="11" font-weight="600">updated_at</text>
+<text x="634" y="382" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="368" y="416" width="275" height="84" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 368 423 Q 368 416 375 416 L 636 416 Q 643 416 643 423 L 643 450 L 368 450 Z" fill="#1E40AF"/>
+<text x="380" y="438" fill="#FFFFFF" font-size="13" font-weight="700">article_category</text>
+<rect x="376" y="453" width="40.5" height="14" rx="3" fill="#FEF3C7"/>
+<text x="396.25" y="463.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK,FK</text>
+<text x="421.5" y="464" fill="#0F172A" font-size="11" font-weight="600">article_id</text>
+<text x="634" y="464" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="369" y="470" width="273" height="20" fill="#F8FAFC"/>
+<rect x="376" y="473" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="386.5" y="483.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="402.0" y="484" fill="#0F172A" font-size="11" font-weight="600">category_code</text>
+<text x="634" y="484" text-anchor="end" fill="#64748B" font-size="10.2">varchar(30)</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="368" y="524" width="275" height="244" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 368 531 Q 368 524 375 524 L 636 524 Q 643 524 643 531 L 643 558 L 368 558 Z" fill="#1E40AF"/>
+<text x="380" y="546" fill="#FFFFFF" font-size="13" font-weight="700">threat_alert</text>
+<rect x="376" y="561" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="386.5" y="571.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="402.0" y="572" fill="#0F172A" font-size="11" font-weight="600">id</text>
+<text x="634" y="572" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="369" y="578" width="273" height="20" fill="#F8FAFC"/>
+<rect x="376" y="581" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="386.5" y="591.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="402.0" y="592" fill="#0F172A" font-size="11" font-weight="600">threat_category</text>
+<text x="634" y="592" text-anchor="end" fill="#64748B" font-size="10.2">varchar(40)</text>
+<rect x="376" y="601" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="386.5" y="611.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="402.0" y="612" fill="#0F172A" font-size="11" font-weight="600">tactic_summary</text>
+<text x="634" y="612" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="369" y="618" width="273" height="20" fill="#F8FAFC"/>
+<rect x="376" y="621" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="386.5" y="631.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="402.0" y="632" fill="#0F172A" font-size="11" font-weight="600">prevention_guidance</text>
+<text x="634" y="632" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="376" y="641" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="386.5" y="651.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="402.0" y="652" fill="#0F172A" font-size="11" font-weight="600">verification_status</text>
+<text x="634" y="652" text-anchor="end" fill="#64748B" font-size="10.2">varchar(20)</text>
+<rect x="369" y="658" width="273" height="20" fill="#F8FAFC"/>
+<text x="378" y="672" fill="#0F172A" font-size="11" font-weight="600">issued_at</text>
+<text x="634" y="672" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+<text x="378" y="692" fill="#0F172A" font-size="11" font-weight="600">published_at</text>
+<text x="634" y="692" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+<rect x="369" y="698" width="273" height="20" fill="#F8FAFC"/>
+<text x="378" y="712" fill="#0F172A" font-size="11" font-weight="600">verified_at</text>
+<text x="634" y="712" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+<rect x="376" y="721" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="386.5" y="731.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="402.0" y="732" fill="#0F172A" font-size="11" font-weight="600">created_at</text>
+<text x="634" y="732" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+<rect x="369" y="738" width="273" height="20" fill="#F8FAFC"/>
+<rect x="376" y="741" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="386.5" y="751.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="402.0" y="752" fill="#0F172A" font-size="11" font-weight="600">updated_at</text>
+<text x="634" y="752" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="698" y="174" width="290" height="164" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 698 181 Q 698 174 705 174 L 981 174 Q 988 174 988 181 L 988 208 L 698 208 Z" fill="#1E40AF"/>
+<text x="710" y="196" fill="#FFFFFF" font-size="13" font-weight="700">article_source</text>
+<rect x="706" y="211" width="40.5" height="14" rx="3" fill="#FEF3C7"/>
+<text x="726.25" y="221.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK,FK</text>
+<text x="751.5" y="222" fill="#0F172A" font-size="11" font-weight="600">article_id</text>
+<text x="979" y="222" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="699" y="228" width="288" height="20" fill="#F8FAFC"/>
+<rect x="706" y="231" width="40.5" height="14" rx="3" fill="#FEF3C7"/>
+<text x="726.25" y="241.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK,FK</text>
+<text x="751.5" y="242" fill="#0F172A" font-size="11" font-weight="600">source_id</text>
+<text x="979" y="242" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="706" y="251" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="716.5" y="261.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="732.0" y="262" fill="#0F172A" font-size="11" font-weight="600">source_url</text>
+<text x="979" y="262" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="699" y="268" width="288" height="20" fill="#F8FAFC"/>
+<rect x="706" y="271" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="716.5" y="281.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="732.0" y="282" fill="#0F172A" font-size="11" font-weight="600">normalized_source_url</text>
+<text x="979" y="282" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="706" y="291" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="716.5" y="301.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="732.0" y="302" fill="#0F172A" font-size="11" font-weight="600">first_seen_at</text>
+<text x="979" y="302" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+<rect x="699" y="308" width="288" height="20" fill="#F8FAFC"/>
+<rect x="706" y="311" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="716.5" y="321.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="732.0" y="322" fill="#0F172A" font-size="11" font-weight="600">last_seen_at</text>
+<text x="979" y="322" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="698" y="366" width="290" height="124" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 698 373 Q 698 366 705 366 L 981 366 Q 988 366 988 373 L 988 400 L 698 400 Z" fill="#1E40AF"/>
+<text x="710" y="388" fill="#FFFFFF" font-size="13" font-weight="700">threat_evidence</text>
+<rect x="706" y="403" width="40.5" height="14" rx="3" fill="#FEF3C7"/>
+<text x="726.25" y="413.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK,FK</text>
+<text x="751.5" y="414" fill="#0F172A" font-size="11" font-weight="600">threat_alert_id</text>
+<text x="979" y="414" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="699" y="420" width="288" height="20" fill="#F8FAFC"/>
+<rect x="706" y="423" width="40.5" height="14" rx="3" fill="#FEF3C7"/>
+<text x="726.25" y="433.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK,FK</text>
+<text x="751.5" y="434" fill="#0F172A" font-size="11" font-weight="600">article_id</text>
+<text x="979" y="434" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="706" y="443" width="40.5" height="14" rx="3" fill="#FEF3C7"/>
+<text x="726.25" y="453.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK,FK</text>
+<text x="751.5" y="454" fill="#0F172A" font-size="11" font-weight="600">source_id</text>
+<text x="979" y="454" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="699" y="460" width="288" height="20" fill="#F8FAFC"/>
+<rect x="706" y="463" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="716.5" y="473.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="732.0" y="474" fill="#0F172A" font-size="11" font-weight="600">added_at</text>
+<text x="979" y="474" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="698" y="524" width="290" height="124" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 698 531 Q 698 524 705 524 L 981 524 Q 988 524 988 531 L 988 558 L 698 558 Z" fill="#1E40AF"/>
+<text x="710" y="546" fill="#FFFFFF" font-size="13" font-weight="700">threat_indicator</text>
+<rect x="706" y="561" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="716.5" y="571.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="732.0" y="572" fill="#0F172A" font-size="11" font-weight="600">id</text>
+<text x="979" y="572" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="699" y="578" width="288" height="20" fill="#F8FAFC"/>
+<rect x="706" y="581" width="21.0" height="14" rx="3" fill="#DBEAFE"/>
+<text x="716.5" y="591.5" text-anchor="middle" fill="#1E40AF" font-size="9" font-weight="700">FK</text>
+<text x="732.0" y="592" fill="#0F172A" font-size="11" font-weight="600">threat_alert_id</text>
+<text x="979" y="592" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="706" y="601" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="716.5" y="611.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="732.0" y="612" fill="#0F172A" font-size="11" font-weight="600">indicator_text</text>
+<text x="979" y="612" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="699" y="618" width="288" height="20" fill="#F8FAFC"/>
+<rect x="706" y="621" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="716.5" y="631.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="732.0" y="632" fill="#0F172A" font-size="11" font-weight="600">indicator_type</text>
+<text x="979" y="632" text-anchor="end" fill="#64748B" font-size="10.2">varchar(50)</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="1064" y="174" width="236" height="184" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 1064 181 Q 1064 174 1071 174 L 1293 174 Q 1300 174 1300 181 L 1300 208 L 1064 208 Z" fill="#6D28D9"/>
+<text x="1076" y="196" fill="#FFFFFF" font-size="13" font-weight="700">users</text>
+<rect x="1072" y="211" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="1082.5" y="221.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="1098.0" y="222" fill="#0F172A" font-size="11" font-weight="600">id</text>
+<text x="1291" y="222" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="1065" y="228" width="234" height="20" fill="#F8FAFC"/>
+<rect x="1072" y="231" width="21.0" height="14" rx="3" fill="#FCE7F3"/>
+<text x="1082.5" y="241.5" text-anchor="middle" fill="#9D174D" font-size="9" font-weight="700">UK</text>
+<text x="1098.0" y="242" fill="#0F172A" font-size="11" font-weight="600">email</text>
+<text x="1291" y="242" text-anchor="end" fill="#64748B" font-size="10.2">varchar(255)</text>
+<text x="1074" y="262" fill="#0F172A" font-size="11" font-weight="600">full_name</text>
+<text x="1291" y="262" text-anchor="end" fill="#64748B" font-size="10.2">varchar(150)</text>
+<rect x="1065" y="268" width="234" height="20" fill="#F8FAFC"/>
+<rect x="1072" y="271" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1082.5" y="281.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1098.0" y="282" fill="#0F172A" font-size="11" font-weight="600">auth_provider</text>
+<text x="1291" y="282" text-anchor="end" fill="#64748B" font-size="10.2">varchar(30)</text>
+<text x="1074" y="302" fill="#0F172A" font-size="11" font-weight="600">provider_user_id</text>
+<text x="1291" y="302" text-anchor="end" fill="#64748B" font-size="10.2">varchar(255)</text>
+<rect x="1065" y="308" width="234" height="20" fill="#F8FAFC"/>
+<text x="1074" y="322" fill="#0F172A" font-size="11" font-weight="600">password_hash</text>
+<text x="1291" y="322" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="1072" y="331" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1082.5" y="341.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1098.0" y="342" fill="#0F172A" font-size="11" font-weight="600">created_at / updated_at</text>
+<text x="1291" y="342" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="1324" y="174" width="275" height="244" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 1324 181 Q 1324 174 1331 174 L 1592 174 Q 1599 174 1599 181 L 1599 208 L 1324 208 Z" fill="#6D28D9"/>
+<text x="1336" y="196" fill="#FFFFFF" font-size="13" font-weight="700">financial_profiles</text>
+<rect x="1332" y="211" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="1342.5" y="221.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="1358.0" y="222" fill="#0F172A" font-size="11" font-weight="600">id</text>
+<text x="1590" y="222" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="1325" y="228" width="273" height="20" fill="#F8FAFC"/>
+<rect x="1332" y="231" width="40.5" height="14" rx="3" fill="#DBEAFE"/>
+<text x="1352.25" y="241.5" text-anchor="middle" fill="#1E40AF" font-size="9" font-weight="700">UK,FK</text>
+<text x="1377.5" y="242" fill="#0F172A" font-size="11" font-weight="600">user_id</text>
+<text x="1590" y="242" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="1332" y="251" width="21.0" height="14" rx="3" fill="#FCE7F3"/>
+<text x="1342.5" y="261.5" text-anchor="middle" fill="#9D174D" font-size="9" font-weight="700">UK</text>
+<text x="1358.0" y="262" fill="#0F172A" font-size="11" font-weight="600">guest_session_id</text>
+<text x="1590" y="262" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="1325" y="268" width="273" height="20" fill="#F8FAFC"/>
+<text x="1334" y="282" fill="#0F172A" font-size="11" font-weight="600">monthly_income_vnd</text>
+<text x="1590" y="282" text-anchor="end" fill="#64748B" font-size="10.2">numeric(18,2)</text>
+<text x="1334" y="302" fill="#0F172A" font-size="11" font-weight="600">monthly_expense_vnd</text>
+<text x="1590" y="302" text-anchor="end" fill="#64748B" font-size="10.2">numeric(18,2)</text>
+<rect x="1325" y="308" width="273" height="20" fill="#F8FAFC"/>
+<text x="1334" y="322" fill="#0F172A" font-size="11" font-weight="600">existing_debt_payment_vnd</text>
+<text x="1590" y="322" text-anchor="end" fill="#64748B" font-size="10.2">numeric(18,2)</text>
+<text x="1334" y="342" fill="#0F172A" font-size="11" font-weight="600">liquid_savings_vnd</text>
+<text x="1590" y="342" text-anchor="end" fill="#64748B" font-size="10.2">numeric(18,2)</text>
+<rect x="1325" y="348" width="273" height="20" fill="#F8FAFC"/>
+<rect x="1332" y="351" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1342.5" y="361.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1358.0" y="362" fill="#0F172A" font-size="11" font-weight="600">risk_appetite</text>
+<text x="1590" y="362" text-anchor="end" fill="#64748B" font-size="10.2">varchar(20)</text>
+<rect x="1332" y="371" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1342.5" y="381.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1358.0" y="382" fill="#0F172A" font-size="11" font-weight="600">primary_goal</text>
+<text x="1590" y="382" text-anchor="end" fill="#64748B" font-size="10.2">varchar(30)</text>
+<rect x="1325" y="388" width="273" height="20" fill="#F8FAFC"/>
+<rect x="1332" y="391" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1342.5" y="401.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1358.0" y="402" fill="#0F172A" font-size="11" font-weight="600">created_at / updated_at</text>
+<text x="1590" y="402" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="1622" y="174" width="242" height="244" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 1622 181 Q 1622 174 1629 174 L 1857 174 Q 1864 174 1864 181 L 1864 208 L 1622 208 Z" fill="#6D28D9"/>
+<text x="1634" y="196" fill="#FFFFFF" font-size="13" font-weight="700">article_impact_analyses</text>
+<rect x="1630" y="211" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="1640.5" y="221.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="1656.0" y="222" fill="#0F172A" font-size="11" font-weight="600">id</text>
+<text x="1855" y="222" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="1623" y="228" width="240" height="20" fill="#F8FAFC"/>
+<rect x="1630" y="231" width="21.0" height="14" rx="3" fill="#DBEAFE"/>
+<text x="1640.5" y="241.5" text-anchor="middle" fill="#1E40AF" font-size="9" font-weight="700">FK</text>
+<text x="1656.0" y="242" fill="#0F172A" font-size="11" font-weight="600">article_id</text>
+<text x="1855" y="242" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="1630" y="251" width="21.0" height="14" rx="3" fill="#DBEAFE"/>
+<text x="1640.5" y="261.5" text-anchor="middle" fill="#1E40AF" font-size="9" font-weight="700">FK</text>
+<text x="1656.0" y="262" fill="#0F172A" font-size="11" font-weight="600">profile_id</text>
+<text x="1855" y="262" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="1623" y="268" width="240" height="20" fill="#F8FAFC"/>
+<rect x="1630" y="271" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1640.5" y="281.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1656.0" y="282" fill="#0F172A" font-size="11" font-weight="600">analysis_mode</text>
+<text x="1855" y="282" text-anchor="end" fill="#64748B" font-size="10.2">varchar(20)</text>
+<rect x="1630" y="291" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1640.5" y="301.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1656.0" y="302" fill="#0F172A" font-size="11" font-weight="600">extracted_facts_json</text>
+<text x="1855" y="302" text-anchor="end" fill="#64748B" font-size="10.2">jsonb</text>
+<rect x="1623" y="308" width="240" height="20" fill="#F8FAFC"/>
+<rect x="1630" y="311" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1640.5" y="321.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1656.0" y="322" fill="#0F172A" font-size="11" font-weight="600">ai_assessment_json</text>
+<text x="1855" y="322" text-anchor="end" fill="#64748B" font-size="10.2">jsonb</text>
+<text x="1632" y="342" fill="#0F172A" font-size="11" font-weight="600">suggested_rate_delta</text>
+<text x="1855" y="342" text-anchor="end" fill="#64748B" font-size="10.2">numeric(6,3)</text>
+<rect x="1623" y="348" width="240" height="20" fill="#F8FAFC"/>
+<rect x="1630" y="351" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1640.5" y="361.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1656.0" y="362" fill="#0F172A" font-size="11" font-weight="600">llm_provider</text>
+<text x="1855" y="362" text-anchor="end" fill="#64748B" font-size="10.2">varchar(40)</text>
+<rect x="1630" y="371" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1640.5" y="381.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1656.0" y="382" fill="#0F172A" font-size="11" font-weight="600">llm_model</text>
+<text x="1855" y="382" text-anchor="end" fill="#64748B" font-size="10.2">varchar(80)</text>
+<rect x="1623" y="388" width="240" height="20" fill="#F8FAFC"/>
+<rect x="1630" y="391" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1640.5" y="401.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1656.0" y="402" fill="#0F172A" font-size="11" font-weight="600">created_at</text>
+<text x="1855" y="402" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="1064" y="550" width="244" height="244" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 1064 557 Q 1064 550 1071 550 L 1301 550 Q 1308 550 1308 557 L 1308 584 L 1064 584 Z" fill="#065F46"/>
+<text x="1076" y="572" fill="#FFFFFF" font-size="13" font-weight="700">financial_institutions</text>
+<rect x="1072" y="587" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="1082.5" y="597.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="1098.0" y="598" fill="#0F172A" font-size="11" font-weight="600">id</text>
+<text x="1299" y="598" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="1065" y="604" width="242" height="20" fill="#F8FAFC"/>
+<rect x="1072" y="607" width="21.0" height="14" rx="3" fill="#FCE7F3"/>
+<text x="1082.5" y="617.5" text-anchor="middle" fill="#9D174D" font-size="9" font-weight="700">UK</text>
+<text x="1098.0" y="618" fill="#0F172A" font-size="11" font-weight="600">code</text>
+<text x="1299" y="618" text-anchor="end" fill="#64748B" font-size="10.2">varchar(50)</text>
+<rect x="1072" y="627" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1082.5" y="637.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1098.0" y="638" fill="#0F172A" font-size="11" font-weight="600">name</text>
+<text x="1299" y="638" text-anchor="end" fill="#64748B" font-size="10.2">varchar(200)</text>
+<rect x="1065" y="644" width="242" height="20" fill="#F8FAFC"/>
+<rect x="1072" y="647" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1082.5" y="657.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1098.0" y="658" fill="#0F172A" font-size="11" font-weight="600">institution_type</text>
+<text x="1299" y="658" text-anchor="end" fill="#64748B" font-size="10.2">varchar(30)</text>
+<rect x="1072" y="667" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1082.5" y="677.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1098.0" y="678" fill="#0F172A" font-size="11" font-weight="600">license_issuer</text>
+<text x="1299" y="678" text-anchor="end" fill="#64748B" font-size="10.2">varchar(30)</text>
+<rect x="1065" y="684" width="242" height="20" fill="#F8FAFC"/>
+<rect x="1072" y="687" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1082.5" y="697.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1098.0" y="698" fill="#0F172A" font-size="11" font-weight="600">license_number</text>
+<text x="1299" y="698" text-anchor="end" fill="#64748B" font-size="10.2">varchar(100)</text>
+<rect x="1072" y="707" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1082.5" y="717.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1098.0" y="718" fill="#0F172A" font-size="11" font-weight="600">official_website</text>
+<text x="1299" y="718" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="1065" y="724" width="242" height="20" fill="#F8FAFC"/>
+<text x="1074" y="738" fill="#0F172A" font-size="11" font-weight="600">vietqr_bin</text>
+<text x="1299" y="738" text-anchor="end" fill="#64748B" font-size="10.2">varchar(12)</text>
+<rect x="1072" y="747" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1082.5" y="757.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1098.0" y="758" fill="#0F172A" font-size="11" font-weight="600">trust_status</text>
+<text x="1299" y="758" text-anchor="end" fill="#64748B" font-size="10.2">varchar(20)</text>
+<rect x="1065" y="764" width="242" height="20" fill="#F8FAFC"/>
+<rect x="1072" y="767" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1082.5" y="777.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1098.0" y="778" fill="#0F172A" font-size="11" font-weight="600">created_at / updated_at</text>
+<text x="1299" y="778" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="1332" y="550" width="265" height="364" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 1332 557 Q 1332 550 1339 550 L 1590 550 Q 1597 550 1597 557 L 1597 584 L 1332 584 Z" fill="#065F46"/>
+<text x="1344" y="572" fill="#FFFFFF" font-size="13" font-weight="700">financial_products</text>
+<rect x="1340" y="587" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="1350.5" y="597.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="1366.0" y="598" fill="#0F172A" font-size="11" font-weight="600">id</text>
+<text x="1588" y="598" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="1333" y="604" width="263" height="20" fill="#F8FAFC"/>
+<rect x="1340" y="607" width="21.0" height="14" rx="3" fill="#DBEAFE"/>
+<text x="1350.5" y="617.5" text-anchor="middle" fill="#1E40AF" font-size="9" font-weight="700">FK</text>
+<text x="1366.0" y="618" fill="#0F172A" font-size="11" font-weight="600">institution_id</text>
+<text x="1588" y="618" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="1340" y="627" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1350.5" y="637.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1366.0" y="638" fill="#0F172A" font-size="11" font-weight="600">product_category</text>
+<text x="1588" y="638" text-anchor="end" fill="#64748B" font-size="10.2">varchar(30)</text>
+<rect x="1333" y="644" width="263" height="20" fill="#F8FAFC"/>
+<rect x="1340" y="647" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1350.5" y="657.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1366.0" y="658" fill="#0F172A" font-size="11" font-weight="600">product_name</text>
+<text x="1588" y="658" text-anchor="end" fill="#64748B" font-size="10.2">varchar(200)</text>
+<rect x="1340" y="667" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1350.5" y="677.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1366.0" y="678" fill="#0F172A" font-size="11" font-weight="600">calc_method / rate_type</text>
+<text x="1588" y="678" text-anchor="end" fill="#64748B" font-size="10.2">varchar</text>
+<rect x="1333" y="684" width="263" height="20" fill="#F8FAFC"/>
+<rect x="1340" y="687" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1350.5" y="697.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1366.0" y="698" fill="#0F172A" font-size="11" font-weight="600">nominal_rate_min / max</text>
+<text x="1588" y="698" text-anchor="end" fill="#64748B" font-size="10.2">numeric</text>
+<text x="1342" y="718" fill="#0F172A" font-size="11" font-weight="600">promo_months / margin</text>
+<text x="1588" y="718" text-anchor="end" fill="#64748B" font-size="10.2">int / num</text>
+<rect x="1333" y="724" width="263" height="20" fill="#F8FAFC"/>
+<rect x="1340" y="727" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1350.5" y="737.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1366.0" y="738" fill="#0F172A" font-size="11" font-weight="600">upfront_fee / monthly_fee</text>
+<text x="1588" y="738" text-anchor="end" fill="#64748B" font-size="10.2">num</text>
+<text x="1342" y="758" fill="#0F172A" font-size="11" font-weight="600">early_settlement_fee_rate</text>
+<text x="1588" y="758" text-anchor="end" fill="#64748B" font-size="10.2">numeric</text>
+<rect x="1333" y="764" width="263" height="20" fill="#F8FAFC"/>
+<rect x="1340" y="767" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1350.5" y="777.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1366.0" y="778" fill="#0F172A" font-size="11" font-weight="600">min / max_amount_vnd</text>
+<text x="1588" y="778" text-anchor="end" fill="#64748B" font-size="10.2">numeric</text>
+<rect x="1340" y="787" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1350.5" y="797.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1366.0" y="798" fill="#0F172A" font-size="11" font-weight="600">min / max_term_months</text>
+<text x="1588" y="798" text-anchor="end" fill="#64748B" font-size="10.2">int</text>
+<rect x="1333" y="804" width="263" height="20" fill="#F8FAFC"/>
+<rect x="1340" y="807" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1350.5" y="817.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1366.0" y="818" fill="#0F172A" font-size="11" font-weight="600">source_url</text>
+<text x="1588" y="818" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="1340" y="827" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1350.5" y="837.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1366.0" y="838" fill="#0F172A" font-size="11" font-weight="600">effective_date</text>
+<text x="1588" y="838" text-anchor="end" fill="#64748B" font-size="10.2">date</text>
+<rect x="1333" y="844" width="263" height="20" fill="#F8FAFC"/>
+<rect x="1340" y="847" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1350.5" y="857.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1366.0" y="858" fill="#0F172A" font-size="11" font-weight="600">data_provenance</text>
+<text x="1588" y="858" text-anchor="end" fill="#64748B" font-size="10.2">varchar(20)</text>
+<rect x="1340" y="867" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1350.5" y="877.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1366.0" y="878" fill="#0F172A" font-size="11" font-weight="600">is_active</text>
+<text x="1588" y="878" text-anchor="end" fill="#64748B" font-size="10.2">boolean</text>
+<rect x="1333" y="884" width="263" height="20" fill="#F8FAFC"/>
+<rect x="1340" y="887" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1350.5" y="897.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1366.0" y="898" fill="#0F172A" font-size="11" font-weight="600">created_at / updated_at</text>
+<text x="1588" y="898" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="1620" y="550" width="244" height="304" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 1620 557 Q 1620 550 1627 550 L 1857 550 Q 1864 550 1864 557 L 1864 584 L 1620 584 Z" fill="#065F46"/>
+<text x="1632" y="572" fill="#FFFFFF" font-size="13" font-weight="700">calculation_sessions</text>
+<rect x="1628" y="587" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="1638.5" y="597.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="1654.0" y="598" fill="#0F172A" font-size="11" font-weight="600">id</text>
+<text x="1855" y="598" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="1621" y="604" width="242" height="20" fill="#F8FAFC"/>
+<rect x="1628" y="607" width="21.0" height="14" rx="3" fill="#DBEAFE"/>
+<text x="1638.5" y="617.5" text-anchor="middle" fill="#1E40AF" font-size="9" font-weight="700">FK</text>
+<text x="1654.0" y="618" fill="#0F172A" font-size="11" font-weight="600">user_id</text>
+<text x="1855" y="618" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<text x="1630" y="638" fill="#0F172A" font-size="11" font-weight="600">guest_session_id</text>
+<text x="1855" y="638" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="1621" y="644" width="242" height="20" fill="#F8FAFC"/>
+<rect x="1628" y="647" width="21.0" height="14" rx="3" fill="#DBEAFE"/>
+<text x="1638.5" y="657.5" text-anchor="middle" fill="#1E40AF" font-size="9" font-weight="700">FK</text>
+<text x="1654.0" y="658" fill="#0F172A" font-size="11" font-weight="600">profile_id</text>
+<text x="1855" y="658" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="1628" y="667" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1638.5" y="677.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1654.0" y="678" fill="#0F172A" font-size="11" font-weight="600">session_mode</text>
+<text x="1855" y="678" text-anchor="end" fill="#64748B" font-size="10.2">varchar(30)</text>
+<rect x="1621" y="684" width="242" height="20" fill="#F8FAFC"/>
+<rect x="1628" y="687" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1638.5" y="697.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1654.0" y="698" fill="#0F172A" font-size="11" font-weight="600">input_params_json</text>
+<text x="1855" y="698" text-anchor="end" fill="#64748B" font-size="10.2">jsonb</text>
+<rect x="1628" y="707" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1638.5" y="717.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1654.0" y="718" fill="#0F172A" font-size="11" font-weight="600">math_results_json</text>
+<text x="1855" y="718" text-anchor="end" fill="#64748B" font-size="10.2">jsonb</text>
+<rect x="1621" y="724" width="242" height="20" fill="#F8FAFC"/>
+<text x="1630" y="738" fill="#0F172A" font-size="11" font-weight="600">dti_ratio_pct</text>
+<text x="1855" y="738" text-anchor="end" fill="#64748B" font-size="10.2">numeric(6,2)</text>
+<text x="1630" y="758" fill="#0F172A" font-size="11" font-weight="600">dti_risk_band</text>
+<text x="1855" y="758" text-anchor="end" fill="#64748B" font-size="10.2">varchar(20)</text>
+<rect x="1621" y="764" width="242" height="20" fill="#F8FAFC"/>
+<text x="1630" y="778" fill="#0F172A" font-size="11" font-weight="600">rate_shock_delta</text>
+<text x="1855" y="778" text-anchor="end" fill="#64748B" font-size="10.2">numeric(6,3)</text>
+<text x="1630" y="798" fill="#0F172A" font-size="11" font-weight="600">ai_explanation_json</text>
+<text x="1855" y="798" text-anchor="end" fill="#64748B" font-size="10.2">jsonb</text>
+<rect x="1621" y="804" width="242" height="20" fill="#F8FAFC"/>
+<text x="1630" y="818" fill="#0F172A" font-size="11" font-weight="600">llm_provider</text>
+<text x="1855" y="818" text-anchor="end" fill="#64748B" font-size="10.2">varchar(40)</text>
+<rect x="1628" y="827" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="1638.5" y="837.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="1654.0" y="838" fill="#0F172A" font-size="11" font-weight="600">created_at</text>
+<text x="1855" y="838" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="56" y="930" width="295" height="404" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 56 937 Q 56 930 63 930 L 344 930 Q 351 930 351 937 L 351 964 L 56 964 Z" fill="#991B1B"/>
+<text x="68" y="952" fill="#FFFFFF" font-size="13" font-weight="700">forensic_audits</text>
+<rect x="64" y="967" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="74.5" y="977.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="90.0" y="978" fill="#0F172A" font-size="11" font-weight="600">id</text>
+<text x="342" y="978" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="57" y="984" width="293" height="20" fill="#F8FAFC"/>
+<rect x="64" y="987" width="21.0" height="14" rx="3" fill="#DBEAFE"/>
+<text x="74.5" y="997.5" text-anchor="middle" fill="#1E40AF" font-size="9" font-weight="700">FK</text>
+<text x="90.0" y="998" fill="#0F172A" font-size="11" font-weight="600">user_id</text>
+<text x="342" y="998" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<text x="66" y="1018" fill="#0F172A" font-size="11" font-weight="600">guest_session_id</text>
+<text x="342" y="1018" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="57" y="1024" width="293" height="20" fill="#F8FAFC"/>
+<text x="66" y="1038" fill="#0F172A" font-size="11" font-weight="600">claimed_entity_name</text>
+<text x="342" y="1038" text-anchor="end" fill="#64748B" font-size="10.2">varchar(200)</text>
+<rect x="64" y="1047" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="1057.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="1058" fill="#0F172A" font-size="11" font-weight="600">input_channels</text>
+<text x="342" y="1058" text-anchor="end" fill="#64748B" font-size="10.2">jsonb</text>
+<rect x="57" y="1064" width="293" height="20" fill="#F8FAFC"/>
+<text x="66" y="1078" fill="#0F172A" font-size="11" font-weight="600">raw_text_masked</text>
+<text x="342" y="1078" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="64" y="1087" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="1097.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="1098" fill="#0F172A" font-size="11" font-weight="600">extracted_claims_json</text>
+<text x="342" y="1098" text-anchor="end" fill="#64748B" font-size="10.2">jsonb</text>
+<rect x="57" y="1104" width="293" height="20" fill="#F8FAFC"/>
+<text x="66" y="1118" fill="#0F172A" font-size="11" font-weight="600">principal_nominal_vnd</text>
+<text x="342" y="1118" text-anchor="end" fill="#64748B" font-size="10.2">numeric(18,2)</text>
+<text x="66" y="1138" fill="#0F172A" font-size="11" font-weight="600">principal_net_vnd</text>
+<text x="342" y="1138" text-anchor="end" fill="#64748B" font-size="10.2">numeric(18,2)</text>
+<rect x="57" y="1144" width="293" height="20" fill="#F8FAFC"/>
+<text x="66" y="1158" fill="#0F172A" font-size="11" font-weight="600">quoted_rate_pct</text>
+<text x="342" y="1158" text-anchor="end" fill="#64748B" font-size="10.2">numeric(7,4)</text>
+<text x="66" y="1178" fill="#0F172A" font-size="11" font-weight="600">effective_apr_pct</text>
+<text x="342" y="1178" text-anchor="end" fill="#64748B" font-size="10.2">numeric(8,4)</text>
+<rect x="57" y="1184" width="293" height="20" fill="#F8FAFC"/>
+<rect x="64" y="1187" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="1197.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="1198" fill="#0F172A" font-size="11" font-weight="600">risk_score</text>
+<text x="342" y="1198" text-anchor="end" fill="#64748B" font-size="10.2">int</text>
+<rect x="64" y="1207" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="1217.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="1218" fill="#0F172A" font-size="11" font-weight="600">verdict_level</text>
+<text x="342" y="1218" text-anchor="end" fill="#64748B" font-size="10.2">varchar(20)</text>
+<rect x="57" y="1224" width="293" height="20" fill="#F8FAFC"/>
+<rect x="64" y="1227" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="1237.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="1238" fill="#0F172A" font-size="11" font-weight="600">deterministic_override</text>
+<text x="342" y="1238" text-anchor="end" fill="#64748B" font-size="10.2">boolean</text>
+<rect x="64" y="1247" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="1257.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="1258" fill="#0F172A" font-size="11" font-weight="600">ai_explanation_text</text>
+<text x="342" y="1258" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="57" y="1264" width="293" height="20" fill="#F8FAFC"/>
+<rect x="64" y="1267" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="1277.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="1278" fill="#0F172A" font-size="11" font-weight="600">llm_provider</text>
+<text x="342" y="1278" text-anchor="end" fill="#64748B" font-size="10.2">varchar(40)</text>
+<rect x="64" y="1287" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="1297.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="1298" fill="#0F172A" font-size="11" font-weight="600">source_files_purged_at</text>
+<text x="342" y="1298" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+<rect x="57" y="1304" width="293" height="20" fill="#F8FAFC"/>
+<rect x="64" y="1307" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="74.5" y="1317.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="90.0" y="1318" fill="#0F172A" font-size="11" font-weight="600">created_at</text>
+<text x="342" y="1318" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="388" y="930" width="275" height="304" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 388 937 Q 388 930 395 930 L 656 930 Q 663 930 663 937 L 663 964 L 388 964 Z" fill="#991B1B"/>
+<text x="400" y="952" fill="#FFFFFF" font-size="13" font-weight="700">forensic_qr_payloads</text>
+<rect x="396" y="967" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="406.5" y="977.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="422.0" y="978" fill="#0F172A" font-size="11" font-weight="600">id</text>
+<text x="654" y="978" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="389" y="984" width="273" height="20" fill="#F8FAFC"/>
+<rect x="396" y="987" width="21.0" height="14" rx="3" fill="#DBEAFE"/>
+<text x="406.5" y="997.5" text-anchor="middle" fill="#1E40AF" font-size="9" font-weight="700">FK</text>
+<text x="422.0" y="998" fill="#0F172A" font-size="11" font-weight="600">audit_id</text>
+<text x="654" y="998" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="396" y="1007" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="406.5" y="1017.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="422.0" y="1018" fill="#0F172A" font-size="11" font-weight="600">raw_qr_string</text>
+<text x="654" y="1018" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="389" y="1024" width="273" height="20" fill="#F8FAFC"/>
+<text x="398" y="1038" fill="#0F172A" font-size="11" font-weight="600">acq_bin</text>
+<text x="654" y="1038" text-anchor="end" fill="#64748B" font-size="10.2">varchar(12)</text>
+<text x="398" y="1058" fill="#0F172A" font-size="11" font-weight="600">bank_name</text>
+<text x="654" y="1058" text-anchor="end" fill="#64748B" font-size="10.2">varchar(120)</text>
+<rect x="389" y="1064" width="273" height="20" fill="#F8FAFC"/>
+<text x="398" y="1078" fill="#0F172A" font-size="11" font-weight="600">account_number_masked</text>
+<text x="654" y="1078" text-anchor="end" fill="#64748B" font-size="10.2">varchar(64)</text>
+<text x="398" y="1098" fill="#0F172A" font-size="11" font-weight="600">service_code</text>
+<text x="654" y="1098" text-anchor="end" fill="#64748B" font-size="10.2">varchar(30)</text>
+<rect x="389" y="1104" width="273" height="20" fill="#F8FAFC"/>
+<text x="398" y="1118" fill="#0F172A" font-size="11" font-weight="600">qr_amount_vnd</text>
+<text x="654" y="1118" text-anchor="end" fill="#64748B" font-size="10.2">numeric(18,2)</text>
+<text x="398" y="1138" fill="#0F172A" font-size="11" font-weight="600">purpose_text</text>
+<text x="654" y="1138" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="389" y="1144" width="273" height="20" fill="#F8FAFC"/>
+<rect x="396" y="1147" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="406.5" y="1157.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="422.0" y="1158" fill="#0F172A" font-size="11" font-weight="600">crc_valid</text>
+<text x="654" y="1158" text-anchor="end" fill="#64748B" font-size="10.2">boolean</text>
+<text x="398" y="1178" fill="#0F172A" font-size="11" font-weight="600">vision_beneficiary_name</text>
+<text x="654" y="1178" text-anchor="end" fill="#64748B" font-size="10.2">varchar(150)</text>
+<rect x="389" y="1184" width="273" height="20" fill="#F8FAFC"/>
+<rect x="396" y="1187" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="406.5" y="1197.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="422.0" y="1198" fill="#0F172A" font-size="11" font-weight="600">entity_mismatch_flag</text>
+<text x="654" y="1198" text-anchor="end" fill="#64748B" font-size="10.2">boolean</text>
+<rect x="396" y="1207" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="406.5" y="1217.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="422.0" y="1218" fill="#0F172A" font-size="11" font-weight="600">created_at</text>
+<text x="654" y="1218" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+<g filter="url(#card-shadow)">
+<rect x="700" y="930" width="290" height="244" rx="7" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+<path d="M 700 937 Q 700 930 707 930 L 983 930 Q 990 930 990 937 L 990 964 L 700 964 Z" fill="#991B1B"/>
+<text x="712" y="952" fill="#FFFFFF" font-size="13" font-weight="700">forensic_findings</text>
+<rect x="708" y="967" width="21.0" height="14" rx="3" fill="#FEF3C7"/>
+<text x="718.5" y="977.5" text-anchor="middle" fill="#92400E" font-size="9" font-weight="700">PK</text>
+<text x="734.0" y="978" fill="#0F172A" font-size="11" font-weight="600">id</text>
+<text x="981" y="978" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="701" y="984" width="288" height="20" fill="#F8FAFC"/>
+<rect x="708" y="987" width="21.0" height="14" rx="3" fill="#DBEAFE"/>
+<text x="718.5" y="997.5" text-anchor="middle" fill="#1E40AF" font-size="9" font-weight="700">FK</text>
+<text x="734.0" y="998" fill="#0F172A" font-size="11" font-weight="600">audit_id</text>
+<text x="981" y="998" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="708" y="1007" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="718.5" y="1017.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="734.0" y="1018" fill="#0F172A" font-size="11" font-weight="600">rule_code</text>
+<text x="981" y="1018" text-anchor="end" fill="#64748B" font-size="10.2">varchar(50)</text>
+<rect x="701" y="1024" width="288" height="20" fill="#F8FAFC"/>
+<rect x="708" y="1027" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="718.5" y="1037.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="734.0" y="1038" fill="#0F172A" font-size="11" font-weight="600">severity</text>
+<text x="981" y="1038" text-anchor="end" fill="#64748B" font-size="10.2">varchar(20)</text>
+<rect x="708" y="1047" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="718.5" y="1057.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="734.0" y="1058" fill="#0F172A" font-size="11" font-weight="600">score_impact</text>
+<text x="981" y="1058" text-anchor="end" fill="#64748B" font-size="10.2">int</text>
+<rect x="701" y="1064" width="288" height="20" fill="#F8FAFC"/>
+<rect x="708" y="1067" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="718.5" y="1077.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="734.0" y="1078" fill="#0F172A" font-size="11" font-weight="600">title</text>
+<text x="981" y="1078" text-anchor="end" fill="#64748B" font-size="10.2">varchar(200)</text>
+<rect x="708" y="1087" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="718.5" y="1097.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="734.0" y="1098" fill="#0F172A" font-size="11" font-weight="600">description</text>
+<text x="981" y="1098" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="701" y="1104" width="288" height="20" fill="#F8FAFC"/>
+<rect x="708" y="1107" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="718.5" y="1117.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="734.0" y="1118" fill="#0F172A" font-size="11" font-weight="600">evidence_quote</text>
+<text x="981" y="1118" text-anchor="end" fill="#64748B" font-size="10.2">text</text>
+<rect x="708" y="1127" width="21.0" height="14" rx="3" fill="#DBEAFE"/>
+<text x="718.5" y="1137.5" text-anchor="middle" fill="#1E40AF" font-size="9" font-weight="700">FK</text>
+<text x="734.0" y="1138" fill="#0F172A" font-size="11" font-weight="600">matched_indicator_id</text>
+<text x="981" y="1138" text-anchor="end" fill="#64748B" font-size="10.2">uuid</text>
+<rect x="701" y="1144" width="288" height="20" fill="#F8FAFC"/>
+<rect x="708" y="1147" width="21.0" height="14" rx="3" fill="#E2E8F0"/>
+<text x="718.5" y="1157.5" text-anchor="middle" fill="#475569" font-size="9" font-weight="700">NN</text>
+<text x="734.0" y="1158" fill="#0F172A" font-size="11" font-weight="600">created_at</text>
+<text x="981" y="1158" text-anchor="end" fill="#64748B" font-size="10.2">timestamptz</text>
+</g>
+</svg>
