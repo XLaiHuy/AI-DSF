@@ -41,6 +41,68 @@ describe('Universal QR risk context', () => {
   })
 })
 
+describe('Forensic audit lookups', () => {
+  it('reuses the institution catalog for five minutes and bounds both verified indicator queries', async () => {
+    const prisma = new PrismaService()
+    const institutions = vi.spyOn(prisma.financialInstitution, 'findMany').mockResolvedValue([])
+    const indicators = vi.spyOn(prisma.threatIndicator, 'findMany').mockResolvedValue([])
+    vi.spyOn(prisma.forensicAudit, 'create').mockResolvedValue({} as Awaited<ReturnType<typeof prisma.forensicAudit.create>>)
+    const config = new ConfigService()
+    const ai = new AiGatewayService(config)
+    vi.spyOn(ai, 'generateWithProvider').mockRejectedValue(new Error('offline'))
+    vi.spyOn(ai, 'classifyForensicIntent').mockResolvedValue(null)
+    const service = new ForensicService(prisma, ai, config)
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(0)
+    try {
+      indicators.mockResolvedValueOnce([{ id: auditId, indicatorType: 'DOMAIN', indicatorText: 'example.test', threatAlertId: auditId }])
+      const audit = await service.audit(session, {
+        rawQrString: '2|99|0901234567|NGUYEN VAN A|a@example.test|transfer_myqr',
+        rawText: 'Gọi +84 912 345 678 hoặc vào https://pay.example.test/path và Alert.Example.org.',
+      }, [])
+      expect(audit.findings).toContainEqual(expect.objectContaining({ ruleCode: 'RULE_05_NCSC_THREAT_MATCH', matchedIndicatorId: auditId }))
+
+      const exactFilters = indicators.mock.calls.flatMap(([query]) => query?.where?.OR ?? [])
+      for (const [indicatorType, values] of [
+        ['BANK_ACCOUNT', ['0901234567']],
+        ['PHONE', ['0901234567', '0912345678']],
+        ['DOMAIN', ['pay.example.test', 'example.test', 'alert.example.org']],
+      ] as const) {
+        expect(exactFilters).toContainEqual(expect.objectContaining({
+          indicatorType, indicatorText: expect.objectContaining({ in: expect.arrayContaining([...values]) }),
+        }))
+      }
+      expect(indicators).toHaveBeenCalledTimes(2)
+      for (const [query] of indicators.mock.calls) {
+        expect(query?.where?.threatAlert).toEqual({ verificationStatus: 'VERIFIED' })
+        expect(query?.take).toBeGreaterThan(0)
+        expect(query?.take).toBeLessThanOrEqual(500)
+      }
+      expect(indicators).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ indicatorType: { in: ['KEYWORD', 'QR_PATTERN'] } }),
+        take: 500,
+        orderBy: expect.arrayContaining([{ threatAlert: { createdAt: 'desc' } }]),
+      }))
+
+      indicators.mockClear()
+      clock.mockReturnValue(299_999)
+      await service.audit(session, { rawQrString: 'https://qr.example.net/verify' }, [])
+      expect(indicators.mock.calls.flatMap(([query]) => query?.where?.OR ?? [])).toContainEqual(expect.objectContaining({
+        indicatorType: 'DOMAIN',
+        indicatorText: expect.objectContaining({ in: expect.arrayContaining(['qr.example.net', 'example.net']) }),
+      }))
+      expect(institutions).toHaveBeenCalledTimes(1)
+
+      indicators.mockClear()
+      clock.mockReturnValue(300_000)
+      await service.audit(session, { claimedEntityName: 'Test Entity' }, [])
+      expect(institutions).toHaveBeenCalledTimes(2)
+      expect(indicators).toHaveBeenCalledTimes(1)
+    } finally {
+      clock.mockRestore()
+    }
+  })
+})
+
 describe('Forensic follow-up chat', () => {
   it('checks owner before making an outbound call', async () => {
     const prisma = new PrismaService()

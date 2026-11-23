@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import type { Prisma } from '@prisma/client'
 import {
   AI_TASK_SCHEMAS, ForensicAuditListResponseSchema, ForensicAuditResponseSchema,
   ForensicFollowUpResponseSchema, ForensicQrMetadataSchema,
@@ -13,8 +14,11 @@ import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { extractAuditEvidence, type Upload } from './forensic-extraction'
 import { deterministicNarrative, followUpAnchor } from './forensic-narrative'
 import { evaluateHardRules } from './hard-rules.engine'
-import { normalizeVietnamese } from './data/trusted-institutions'
+import { normalizeVietnamese, type CatalogInstitution } from './data/trusted-institutions'
 import { maskedQrLink, maskForensicText } from './qr-evidence'
+import { threatIndicatorFilters } from './threat-indicator-lookup'
+
+const institutionCacheTtlMs = 5 * 60_000
 
 const reportExtras = ForensicAuditResponseSchema.pick({
   mathBreakdown: true, handoffPayload: true, immediateActions: true, intentSignals: true, entityLicense: true, meta: true,
@@ -39,11 +43,45 @@ function beneficiaryLabel(name: string | null) {
 
 @Injectable()
 export class ForensicService {
+  private institutionCache?: { rows: CatalogInstitution[]; expiresAt: number }
+  private institutionRefresh?: Promise<CatalogInstitution[]>
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiGatewayService,
     private readonly config: ConfigService,
   ) {}
+
+  private async loadInstitutions() {
+    const cached = this.institutionCache
+    if (cached && cached.expiresAt > Date.now()) return cached.rows
+    this.institutionRefresh ??= this.prisma.financialInstitution.findMany({
+      select: { code: true, name: true, licenseIssuer: true, trustStatus: true, vietqrBin: true },
+    }).then((rows) => {
+      this.institutionCache = { rows, expiresAt: Date.now() + institutionCacheTtlMs }
+      return rows
+    }).finally(() => { this.institutionRefresh = undefined })
+    return this.institutionRefresh
+  }
+
+  private async loadThreatIndicators(evidence: Awaited<ReturnType<typeof extractAuditEvidence>>) {
+    const filters = threatIndicatorFilters(evidence)
+    const threatAlert = { verificationStatus: 'VERIFIED' }
+    const query = {
+      select: { id: true, indicatorText: true, indicatorType: true },
+      orderBy: [{ threatAlert: { createdAt: 'desc' } }, { id: 'desc' }],
+      take: 500,
+    } satisfies Prisma.ThreatIndicatorFindManyArgs
+    const [exact, patterns] = await Promise.all([
+      filters.length ? this.prisma.threatIndicator.findMany({
+        ...query, where: { threatAlert, OR: filters },
+      }) : [],
+      this.prisma.threatIndicator.findMany({
+        ...query, where: { threatAlert, indicatorType: { in: ['KEYWORD', 'QR_PATTERN'] } },
+      }),
+    ])
+    return [...exact, ...patterns]
+  }
 
   async audit(session: SessionContext, fields: ForensicAuditFields, files: readonly Upload[]) {
     if (!files.length && !fields.rawText && !fields.rawQrString && !fields.claimedEntityName) {
@@ -58,13 +96,8 @@ export class ForensicService {
       limit.parse(this.config.get('PDF_MAX_PAGES', '5')))
     const sourceFilesPurgedAt = new Date()
     const [indicators, institutions] = await Promise.all([
-      this.prisma.threatIndicator.findMany({
-        where: { threatAlert: { verificationStatus: 'VERIFIED' } },
-        select: { id: true, indicatorText: true, indicatorType: true },
-      }),
-      this.prisma.financialInstitution.findMany({
-        select: { code: true, name: true, licenseIssuer: true, trustStatus: true, vietqrBin: true },
-      }),
+      this.loadThreatIndicators(evidence),
+      this.loadInstitutions(),
     ])
     const rules = evaluateHardRules({
       evidence: evidence.evidence,

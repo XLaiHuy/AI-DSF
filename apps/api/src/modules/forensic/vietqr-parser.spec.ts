@@ -41,6 +41,17 @@ describe('universal QR parsing', () => {
     expect(parseAnyQr(corrupted)).toMatchObject({ qrScheme: 'VIETQR_NAPAS', crcValid: false })
   })
 
+  it.each(['0800', '0805ABC'])('accepts VietQR with malformed additional data %s', (extra) => {
+    const raw = emv(qr1.slice(6, qr1.indexOf('6225')), tlv('62', extra))
+    const expected = { account: '0987654321', amountVnd: '2500000', purpose: null, crcValid: true }
+    expect(parseVietQr(raw)).toMatchObject(expected)
+    expect(parseAnyQr(raw)).toMatchObject({ ...expected, qrScheme: 'VIETQR_NAPAS' })
+
+    const tampered = raw.slice(0, -1) + (raw.endsWith('0') ? '1' : '0')
+    expect(parseVietQr(tampered)).toMatchObject({ ...expected, crcValid: false })
+    expect(parseAnyQr(tampered)).toMatchObject({ qrScheme: 'VIETQR_NAPAS', purpose: null, crcValid: false })
+  })
+
   it('identifies the native MoMo transfer and extracts its recipient', () => {
     expect(parseAnyQr(momo)).toMatchObject({
       qrScheme: 'EWALLET_VN', providerLabel: 'MoMo', account: '0901000001',

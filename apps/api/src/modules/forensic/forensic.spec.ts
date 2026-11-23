@@ -1,10 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { ConfigService } from '@nestjs/config'
+import sharp from 'sharp'
 import { prepareZXingModule, writeBarcode } from 'zxing-wasm/writer'
 import { maskAccount, maskPii } from '../../common/pii-masker'
+import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { validateFiles } from './file-guard'
+import { extractAuditEvidence } from './forensic-extraction'
 import { calculateFlatRateApr, evaluateHardRules, findLoanTerms } from './hard-rules.engine'
 import { extractPdf } from './pdf-extractor'
+import * as pdfExtractor from './pdf-extractor'
 import { decodeVietQr, parseVietQr } from './vietqr-parser'
 
 const QR1 = '00020101021238540010A00000072701240006970422011009876543210208QRIBFTTA5303704540725000005802VN62250821PHI GIAI NGAN LOI 1026304CA92'
@@ -202,6 +207,51 @@ function makePdf(content: string, count = 1): Buffer {
   body += 'trailer\n<< /Size ' + (objects.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF\n'
   return Buffer.from(body)
 }
+
+describe('Vision image preparation', () => {
+  it('caps rasterized pages and sends at most eight resized JPEGs, then wipes the buffers', async () => {
+    const photo = sharp({ create: { width: 1800, height: 1500, channels: 3, background: 'white' } })
+    const files = [
+      { buffer: await photo.clone().png().toBuffer() },
+      { buffer: await photo.clone().jpeg().toBuffer() },
+      { buffer: makePdf('BT /F1 12 Tf 20 80 Td (first) Tj ET', 5) },
+      { buffer: makePdf('BT /F1 12 Tf 20 80 Td (second) Tj ET', 5) },
+      { buffer: makePdf('BT /F1 12 Tf 20 80 Td (last) Tj ET') },
+    ]
+    const extract = vi.spyOn(pdfExtractor, 'extractPdf')
+    const ai = new AiGatewayService(new ConfigService())
+    vi.spyOn(ai, 'classifyForensicIntent').mockResolvedValue(null)
+    const sent: Uint8Array[] = []
+    const metadata: sharp.Metadata[] = []
+    vi.spyOn(ai, 'generateWithProvider').mockImplementation(async (_task, _schema, input) => {
+      for (const image of input.images ?? []) {
+        if (typeof image === 'string') throw new Error('Expected an image buffer')
+        sent.push(image)
+        metadata.push(await sharp(image).metadata())
+      }
+      throw new Error('offline')
+    })
+    try {
+      const evidence = await extractAuditEvidence(ai, {}, files, 20, 5)
+      expect(evidence.rawText).toContain('last')
+      expect(evidence.visionDegraded).toBe(true)
+      const pdfs: Awaited<ReturnType<typeof extractPdf>>[] = await Promise.all(extract.mock.results.map(({ value }) => value))
+      expect(pdfs.map(({ images }) => images.length)).toEqual([5, 3, 0])
+      expect(metadata).toHaveLength(8)
+      expect(metadata.slice(0, 2)).toEqual(Array.from({ length: 2 }, () => expect.objectContaining({ width: 1400, height: 1167 })))
+      for (const image of metadata) {
+        expect(image.format).toBe('jpeg')
+        expect(image.width).toBeLessThanOrEqual(1400)
+        expect(image.height).toBeLessThanOrEqual(1400)
+      }
+      for (const buffer of [...sent, ...files.map(({ buffer }) => buffer), ...pdfs.flatMap(({ images }) => images)]) {
+        expect(buffer.every((byte) => byte === 0)).toBe(true)
+      }
+    } finally {
+      extract.mockRestore()
+    }
+  })
+})
 
 describe('PDF extraction', () => {
   it('extracts digital text and rasterizes a sparse scan using canvas', async () => {

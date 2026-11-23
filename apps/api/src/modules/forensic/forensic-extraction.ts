@@ -1,5 +1,6 @@
 import { AI_TASK_SCHEMAS, type AiTaskOutput, type ForensicAuditFields } from '@fincopilot/shared-types'
 import Decimal from 'decimal.js'
+import sharp from 'sharp'
 import type { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { validateFiles } from './file-guard'
 import { findLoanTerms, type LoanTerms } from './hard-rules.engine'
@@ -9,6 +10,22 @@ import { decodeAnyQrs, parseAnyQr } from './vietqr-parser'
 
 type Vision = AiTaskOutput<'FORENSIC_VISION_EXTRACT'>
 export type Upload = { buffer: Buffer }
+const maxRasterizedPages = 8
+
+async function prepareVisionImages(buffers: readonly Buffer[], maxImages = 8) {
+  const images: Buffer[] = []
+  for (const buffer of buffers.slice(0, maxImages)) {
+    try {
+      const image = await sharp(buffer, { limitInputPixels: 25_000_000 })
+        .rotate().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true })
+        .flatten({ background: 'white' }).jpeg({ quality: 80, mozjpeg: true }).toBuffer()
+      images.push(image)
+    } catch {
+      // Keep the remaining images and text available when an image cannot be decoded.
+    }
+  }
+  return images
+}
 
 function namedBeneficiary(text: string): string | null {
   const candidate = /(?:tài khoản cá nhân|chủ tài khoản)\s*:?\s*([^\n,.!?;()]{3,150})/iu.exec(text)?.[1].trim()
@@ -23,6 +40,7 @@ export async function extractAuditEvidence(
   pdfMaxPages: number,
 ) {
   const derivedImages: Buffer[] = []
+  let visionImages: Buffer[] = []
   try {
     const kinds = validateFiles(files, uploadMaxMb)
     const images = files.filter((_, index) => kinds[index] !== 'PDF').map(({ buffer }) => buffer)
@@ -32,18 +50,19 @@ export async function extractAuditEvidence(
       ? parseAnyQr(fields.rawText) : null
     const [qrExtraction, pdfExtraction] = await Promise.allSettled([
       Promise.all(images.map((image) => decodeAnyQrs(image).catch(() => []))),
-      Promise.allSettled(pdfs.map(async ({ buffer }) => {
-        const result = await extractPdf(buffer, pdfMaxPages)
-        derivedImages.push(...result.images)
-        return result.text
-      })),
+      (async () => {
+        const text: string[] = []
+        for (const { buffer } of pdfs) {
+          const result = await extractPdf(buffer, pdfMaxPages, maxRasterizedPages - derivedImages.length)
+          derivedImages.push(...result.images)
+          text.push(result.text)
+        }
+        return text
+      })(),
     ])
     if (qrExtraction.status === 'rejected') throw qrExtraction.reason
     if (pdfExtraction.status === 'rejected') throw pdfExtraction.reason
-    const pdfText = pdfExtraction.value.map((result) => {
-      if (result.status === 'rejected') throw result.reason
-      return result.value
-    })
+    const pdfText = pdfExtraction.value
     const pdfQrs = await Promise.all(derivedImages.map((image) => decodeAnyQrs(image).catch(() => [])))
     const decodedQrs = [...qrExtraction.value.flat(), ...pdfQrs.flat()]
     const qrs = [...new Map([manualQr, pastedQr?.qrScheme !== 'UNKNOWN' ? pastedQr : null, ...decodedQrs]
@@ -54,17 +73,21 @@ export async function extractAuditEvidence(
     const aiText = maskForensicText(rawText)
     const allImages = [...images, ...derivedImages]
     const visionNeeded = allImages.length > 0 || aiText.length > 0
+    visionImages = await prepareVisionImages(allImages)
     const visionTask = 'FORENSIC_VISION_EXTRACT'
-    const [vision, intentSignals] = await Promise.all([
-      visionNeeded
+    const [visionResult, intentResult] = await Promise.allSettled([
+      visionImages.length > 0 || aiText.length > 0
         ? ai.generateWithProvider(visionTask, AI_TASK_SCHEMAS[visionTask], {
           text: aiText || 'Trích dữ kiện từ các ảnh được cung cấp.',
-          images: allImages,
-        }).catch(() => null)
+          images: visionImages,
+        })
         : null,
       ai.classifyForensicIntent(maskForensicText([rawText, ...qrPurposes].join('\n')).slice(0, 12_000)),
     ])
-    const supportsQuote = (quote: string) => allImages.length > 0 || aiText.includes(quote)
+    if (intentResult.status === 'rejected') throw intentResult.reason
+    const intentSignals = intentResult.value
+    const vision = visionResult.status === 'fulfilled' ? visionResult.value : null
+    const supportsQuote = (quote: string) => visionImages.length > 0 || aiText.includes(quote)
     const facts = vision?.output
     const beneficiary = facts?.visionBeneficiaryName
     const beneficiaryName = namedBeneficiary(rawText) ?? (beneficiary && supportsQuote(beneficiary.evidenceQuote) &&
@@ -102,6 +125,7 @@ export async function extractAuditEvidence(
       visionDegraded: visionNeeded && !vision,
     }
   } finally {
+    for (const image of visionImages) image.fill(0)
     for (const { buffer } of files) buffer.fill(0)
     for (const image of derivedImages) image.fill(0)
   }

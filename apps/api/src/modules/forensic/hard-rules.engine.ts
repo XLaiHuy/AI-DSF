@@ -140,6 +140,24 @@ function isPaymentQr(qr: RuleQr) {
   return qr.crcValid || qr.qrScheme === 'EWALLET_VN'
 }
 
+export function normalizeIndicatorPhone(phone: string) {
+  return phone.replace(/\D/g, '').replace(/^(?:0084|84)(?=\d{9}$)/, '0')
+}
+
+export function indicatorPhoneTokens(text: string) {
+  return text.match(/(?<!\d)(?:0|\+84|0084)(?:[ .-]?\d){9}(?!\d)/g) ?? []
+}
+
+export function indicatorUrlHost(url: string) {
+  return URL.parse(url)?.hostname.replace(/\.$/, '')
+}
+
+export function indicatorTextHosts(text: string) {
+  const urls = /https?:\/\/[^\s<>"'()[\]]+/gi
+  const hostnameTokens = text.replace(urls, '').toLowerCase().match(/(?<![a-z0-9-])[a-z0-9-]+(?:\.[a-z0-9-]+)+/g) ?? []
+  return [...(text.match(urls) ?? []).map(indicatorUrlHost).filter((host) => host !== undefined), ...hostnameTokens]
+}
+
 function matchIndicator(indicator: Indicator, qrPayloads: readonly RuleQr[], quotes: readonly string[]): string | undefined {
   const value = indicator.indicatorText.trim()
   if (!value) return undefined
@@ -154,28 +172,21 @@ function matchIndicator(indicator: Indicator, qrPayloads: readonly RuleQr[], quo
       return quotes.find((quote) => inText.test(quote))
     }
     case 'PHONE': {
-      const normalizePhone = (phone: string) => phone.replace(/\D/g, '').replace(/^(?:0084|84)(?=\d{9}$)/, '0')
-      const phone = normalizePhone(value)
+      const phone = normalizeIndicatorPhone(value)
       if (!/^0\d{9}$/.test(phone)) return undefined
       const walletPhone = qrPayloads.find((qr) => qr.qrScheme === 'EWALLET_VN' &&
-        qr.account && normalizePhone(qr.account) === phone)?.account
+        qr.account && normalizeIndicatorPhone(qr.account) === phone)?.account
       if (walletPhone) return walletPhone
-      return quotes.find((quote) => (quote.match(/(?<!\d)(?:0|\+84|0084)(?:[ .-]?\d){9}(?!\d)/g) ?? [])
-        .some((token) => normalizePhone(token) === phone))
+      return quotes.find((quote) => indicatorPhoneTokens(quote).some((token) => normalizeIndicatorPhone(token) === phone))
     }
     case 'DOMAIN': {
       const domain = value.toLowerCase().replace(/^https?:\/\//, '').split(/[/:?#]/)[0].replace(/\.$/, '')
       if (!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(domain)) return undefined
       const matchesHost = (host: string) => host === domain || host.endsWith('.' + domain)
       const decodedLink = qrPayloads.find((qr) => qr.targetUrl &&
-        matchesHost(URL.parse(qr.targetUrl)?.hostname.replace(/\.$/, '') ?? ''))?.targetUrl
+        matchesHost(indicatorUrlHost(qr.targetUrl) ?? ''))?.targetUrl
       if (decodedLink) return decodedLink
-      const urls = /https?:\/\/[^\s<>"'()[\]]+/gi
-      return quotes.find((quote) =>
-        (quote.match(urls) ?? []).some((url) => {
-          const hostname = URL.parse(url)?.hostname.replace(/\.$/, '')
-          return hostname !== undefined && matchesHost(hostname)
-        }) || (quote.replace(urls, '').toLowerCase().match(/[a-z0-9-]+(?:\.[a-z0-9-]+)+/g) ?? []).some(matchesHost))
+      return quotes.find((quote) => indicatorTextHosts(quote).some(matchesHost))
     }
     case 'KEYWORD': {
       const keyword = normalizeVietnamese(value)

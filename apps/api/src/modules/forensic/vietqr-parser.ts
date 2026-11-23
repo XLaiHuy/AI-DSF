@@ -99,7 +99,7 @@ function parseNapas(payload: string, fields: Map<string, string>, crcValid: bool
   if (!/^\d{6}$/.test(acqBin) || !/^[A-Z0-9]{1,32}$/i.test(account)) return null
   const extra = parseTlv(fields.get('62') ?? '')
   const amountVnd = fields.get('54') ?? null
-  if (!extra || (amountVnd !== null && !/^\d{1,13}(?:\.\d{1,2})?$/.test(amountVnd))) return null
+  if (amountVnd !== null && !/^\d{1,13}(?:\.\d{1,2})?$/.test(amountVnd)) return null
 
   return {
     raw: payload,
@@ -108,7 +108,7 @@ function parseNapas(payload: string, fields: Map<string, string>, crcValid: bool
     account,
     serviceCode: service === 'QRIBFTTA' || service === 'QRIBFTTC' ? service : 'MERCHANT',
     amountVnd,
-    purpose: extra.get('08') ?? null,
+    purpose: extra?.get('08') ?? null,
     crcValid,
   }
 }
