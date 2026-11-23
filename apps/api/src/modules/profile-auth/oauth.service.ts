@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { safeReturnTo } from '@fincopilot/shared-types'
 import { z } from 'zod'
 
 const providers = {
@@ -29,6 +30,14 @@ export type OAuthIdentity = {
 }
 
 const nonce = z.string().regex(/^[\w-]{43}$/)
+const stateCookieSchema = z.strictObject({
+  provider: OAuthProviderSchema,
+  state: nonce,
+  verifier: nonce,
+  issuedAt: z.number().int().nonnegative(),
+  returnTo: z.string(),
+})
+type StateCookie = z.infer<typeof stateCookieSchema>
 const email = z.string().trim().toLowerCase().pipe(z.email().max(254))
 const name = z.string().transform((text) => text.trim().slice(0, 150) || null).nullish()
 const tokenResponse = z.object({ access_token: z.string().min(1) })
@@ -52,7 +61,7 @@ export class OAuthService {
     return { google: Boolean(this.credentials('google')), github: Boolean(this.credentials('github')) }
   }
 
-  start(provider: OAuthProvider) {
+  start(provider: OAuthProvider, requestedReturnTo?: unknown) {
     const credentials = this.credentials(provider)
     if (!credentials) throw new ServiceUnavailableException()
     const state = randomBytes(32).toString('base64url')
@@ -67,19 +76,35 @@ export class OAuthService {
       code_challenge: createHash('sha256').update(verifier).digest('base64url'),
       code_challenge_method: 'S256',
     }).toString()
-    return { url: url.toString(), cookieValue: `${provider}.${state}.${verifier}.${Date.now()}` }
+    return {
+      url: url.toString(),
+      cookieValue: Buffer.from(JSON.stringify({
+        provider, state, verifier, issuedAt: Date.now(), returnTo: safeReturnTo(requestedReturnTo),
+      } satisfies StateCookie)).toString('base64url'),
+    }
   }
 
-  verifyState(provider: OAuthProvider, suppliedState: unknown, cookieValue: string | null): string {
-    const [cookieProvider, state, verifier, timestamp] = cookieValue?.split('.') ?? []
+  readStateCookie(provider: OAuthProvider, cookieValue: string | null): StateCookie | null {
+    if (!cookieValue) return null
+    let decoded: unknown
+    try {
+      decoded = JSON.parse(Buffer.from(cookieValue, 'base64url').toString('utf8'))
+    } catch {
+      return null
+    }
+    const result = stateCookieSchema.safeParse(decoded)
+    if (!result.success || result.data.provider !== provider) return null
+    const age = Date.now() - result.data.issuedAt
+    if (age < 0 || age > oauthLifetimeSeconds * 1000) return null
+    return { ...result.data, returnTo: safeReturnTo(result.data.returnTo) }
+  }
+
+  verifyState(suppliedState: unknown, cookie: StateCookie | null): string {
     const parsedState = nonce.safeParse(suppliedState)
-    const age = Date.now() - Number(timestamp)
-    if (cookieProvider !== provider || !nonce.safeParse(state).success || !nonce.safeParse(verifier).success
-      || !parsedState.success || !Number.isFinite(age) || age < 0 || age > oauthLifetimeSeconds * 1000
-      || !timingSafeEqual(Buffer.from(state), Buffer.from(parsedState.data))) {
+    if (!cookie || !parsedState.success || !timingSafeEqual(Buffer.from(cookie.state), Buffer.from(parsedState.data))) {
       throw new UnauthorizedException()
     }
-    return verifier
+    return cookie.verifier
   }
 
   async exchange(provider: OAuthProvider, code: string, verifier: string): Promise<OAuthIdentity> {

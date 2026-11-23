@@ -1,11 +1,11 @@
 import { AI_TASK_SCHEMAS, type AiTaskOutput, type ForensicAuditFields } from '@fincopilot/shared-types'
 import Decimal from 'decimal.js'
-import { maskPii } from '../../common/pii-masker'
 import type { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { validateFiles } from './file-guard'
 import { findLoanTerms, type LoanTerms } from './hard-rules.engine'
 import { extractPdf } from './pdf-extractor'
-import { decodeVietQr, parseVietQr } from './vietqr-parser'
+import { maskForensicText } from './qr-evidence'
+import { decodeAnyQrs, parseAnyQr } from './vietqr-parser'
 
 type Vision = AiTaskOutput<'FORENSIC_VISION_EXTRACT'>
 export type Upload = { buffer: Buffer }
@@ -27,9 +27,11 @@ export async function extractAuditEvidence(
     const kinds = validateFiles(files, uploadMaxMb)
     const images = files.filter((_, index) => kinds[index] !== 'PDF').map(({ buffer }) => buffer)
     const pdfs = files.filter((_, index) => kinds[index] === 'PDF')
-    const manualQr = fields.rawQrString && parseVietQr(fields.rawQrString)
+    const manualQr = fields.rawQrString ? parseAnyQr(fields.rawQrString) : null
+    const pastedQr = fields.rawText && fields.rawText.length <= 4096 && !fields.rawText.includes('\n')
+      ? parseAnyQr(fields.rawText) : null
     const [qrExtraction, pdfExtraction] = await Promise.allSettled([
-      Promise.all(images.map((image) => decodeVietQr(image).catch(() => null))),
+      Promise.all(images.map((image) => decodeAnyQrs(image).catch(() => []))),
       Promise.allSettled(pdfs.map(async ({ buffer }) => {
         const result = await extractPdf(buffer, pdfMaxPages)
         derivedImages.push(...result.images)
@@ -42,11 +44,14 @@ export async function extractAuditEvidence(
       if (result.status === 'rejected') throw result.reason
       return result.value
     })
-    const qrs = [...new Map([manualQr || null, ...qrExtraction.value]
+    const pdfQrs = await Promise.all(derivedImages.map((image) => decodeAnyQrs(image).catch(() => [])))
+    const decodedQrs = [...qrExtraction.value.flat(), ...pdfQrs.flat()]
+    const qrs = [...new Map([manualQr, pastedQr?.qrScheme !== 'UNKNOWN' ? pastedQr : null, ...decodedQrs]
       .filter((qr) => qr !== null).map((qr) => [qr.raw, qr])).values()]
     const qrPurposes = qrs.flatMap((qr) => qr.crcValid && qr.purpose ? [qr.purpose] : [])
-    const rawText = [fields.rawText, ...pdfText].filter(Boolean).join('\n').slice(0, 50_000)
-    const aiText = maskPii(rawText)
+    const rawText = [pastedQr && pastedQr.qrScheme !== 'UNKNOWN' ? undefined : fields.rawText, ...pdfText]
+      .filter(Boolean).join('\n').slice(0, 50_000)
+    const aiText = maskForensicText(rawText)
     const allImages = [...images, ...derivedImages]
     const visionNeeded = allImages.length > 0 || aiText.length > 0
     const visionTask = 'FORENSIC_VISION_EXTRACT'
@@ -57,7 +62,7 @@ export async function extractAuditEvidence(
           images: allImages,
         }).catch(() => null)
         : null,
-      ai.classifyForensicIntent(maskPii([rawText, ...qrPurposes].join('\n')).slice(0, 12_000)),
+      ai.classifyForensicIntent(maskForensicText([rawText, ...qrPurposes].join('\n')).slice(0, 12_000)),
     ])
     const supportsQuote = (quote: string) => allImages.length > 0 || aiText.includes(quote)
     const facts = vision?.output
@@ -65,8 +70,11 @@ export async function extractAuditEvidence(
     const beneficiaryName = namedBeneficiary(rawText) ?? (beneficiary && supportsQuote(beneficiary.evidenceQuote) &&
       beneficiary.evidenceQuote.includes(beneficiary.value) ? beneficiary.value.trim() : null)
     const entity = facts?.claimedEntityName
+    const organizationContext = /công ty|tổ chức|ngân hàng|công an|cơ quan|quỹ đầu tư|đại diện|nhân viên|bên cho vay|bên cho mượn/iu
+    const payeeLabel = /tài khoản cá nhân|ngân hàng (?:của |bên )?(?:nhận|thụ hưởng)|tên ngân hàng|logo ví/iu
     const extractedEntity = entity && supportsQuote(entity.evidenceQuote) &&
-      entity.evidenceQuote.includes(entity.value) ? entity.value : null
+      entity.evidenceQuote.includes(entity.value) && organizationContext.test(entity.evidenceQuote) &&
+      !payeeLabel.test(entity.evidenceQuote) ? entity.value : null
     const quotes = facts
       ? facts.redFlagPhrases.map(({ evidenceQuote }) => evidenceQuote)
         .concat(facts.upfrontFees.map(({ evidenceQuote }) => evidenceQuote))
@@ -86,7 +94,7 @@ export async function extractAuditEvidence(
         ...(fields.rawText || fields.rawQrString || fields.claimedEntityName ? ['TEXT'] : []),
         ...(pdfs.length ? ['PDF'] : []),
         ...(images.length ? ['CHAT_IMAGE'] : []),
-        ...(qrExtraction.value.some((qr) => qr?.crcValid) ? ['VIETQR_IMAGE'] : []),
+        ...(decodedQrs.some((qr) => qr.qrScheme === 'VIETQR_NAPAS') ? ['VIETQR_IMAGE'] : []),
       ])],
       loan: findLoanTerms(rawText) ?? (facts ? visualLoanTerms(facts, supportsQuote) : null),
       intentSignals,

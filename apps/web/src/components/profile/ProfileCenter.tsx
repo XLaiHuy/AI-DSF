@@ -8,7 +8,7 @@ import { profileQuery, sessionQuery } from '@/lib/workspace-data'
 import { AccountPanel, AccountStatus } from './AccountPanel'
 import { FinancialProfileForm } from './FinancialProfileForm'
 
-export function ProfileCenter({ notice }: { notice: string }) {
+export function ProfileCenter({ notice, returnTo }: { notice: string; returnTo: string }) {
   const session = useQuery(sessionQuery)
   const profile = useQuery({ ...profileQuery, enabled: session.isSuccess })
   const [saved, setSaved] = useState(false)
@@ -39,7 +39,7 @@ export function ProfileCenter({ notice }: { notice: string }) {
         )}
         {session.isSuccess && (
           <aside className="min-w-0 space-y-5">
-            {session.data.kind === 'guest' && <AccountPanel session={session.data} />}
+            {session.data.kind === 'guest' && <AccountPanel session={session.data} returnTo={returnTo} />}
             <AuditHistory />
           </aside>
         )}

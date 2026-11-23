@@ -72,7 +72,8 @@ function QuickSurvey() {
         <h2 className="text-lg font-semibold">Khảo sát nhanh khoản vay</h2>
         <p className="text-sm leading-relaxed text-muted-foreground">Chọn số tiền và kỳ hạn để bắt đầu so sánh phương án vay.</p>
       </div>
-      <form className="grid gap-4" onSubmit={submit}>
+      <form action={ROUTES.survey} className="grid gap-4" onSubmit={submit}>
+        <input type="hidden" name="mode" value="loan" />
         <div className="grid gap-3 min-[440px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           <div className="grid gap-2">
             <Label htmlFor="quick-amount">Số tiền (VNĐ)</Label>

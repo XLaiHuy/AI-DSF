@@ -35,6 +35,8 @@ export const SessionMode = z.enum(['LOAN_SURVEY', 'INVESTMENT_SURVEY', 'MANUAL_C
 export const InputChannel = z.enum(['CHAT_IMAGE', 'PDF', 'VIETQR_IMAGE', 'TEXT'])
 export const FindingSeverity = z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])
 export const QrServiceCode = z.enum(['QRIBFTTA', 'QRIBFTTC', 'MERCHANT'])
+export const QrScheme = z.enum(['VIETQR_NAPAS', 'EWALLET_VN', 'EMVCO_INTL', 'URL_LINK', 'CRYPTO_WALLET', 'UNKNOWN'])
+export type QrScheme = z.infer<typeof QrScheme>
 export const VerificationStatus = z.enum(['UNVERIFIED', 'VERIFIED'])
 
 export type AuthProvider = z.infer<typeof AuthProvider>

@@ -11,6 +11,29 @@ export const ROUTES = {
   admin: '/admin',
 } as const
 
+export function safeReturnTo(value: unknown): string {
+  if (typeof value !== 'string' || value.length > 768 || !value.startsWith('/')) return ROUTES.profile
+  const unsafe = /^(?:\/\/)|[\\\x00-\x1f\x7f]/u
+  const origin = 'https://internal.invalid'
+  let candidate = value
+  // Check encoded path separators too, since proxies and routers can decode them.
+  for (let iteration = 0; iteration < 4; iteration += 1) {
+    if (unsafe.test(candidate)) return ROUTES.profile
+    const url = new URL(candidate, origin)
+    if (url.origin !== origin || url.pathname.startsWith('//')) return ROUTES.profile
+    const path = candidate.split(/[?#]/u, 1)[0]
+    if (!path.includes('%')) return value
+    try {
+      const decoded = decodeURIComponent(path)
+      if (decoded === path) return value
+      candidate = decoded
+    } catch {
+      return ROUTES.profile
+    }
+  }
+  return ROUTES.profile
+}
+
 const termQuery = z.string().regex(/^[1-9]\d*$/).transform((term) => Number(term)).pipe(z.number().int().positive())
 const loanFields = { amount: positiveDecimal, term: z.number().int().positive() }
 const radarHandoff = z.strictObject({ shockDelta: decimalString, articleId: z.string().min(1) })

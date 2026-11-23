@@ -16,13 +16,14 @@ const verdictTone = {
 }
 const severityLabel = { CRITICAL: 'Nghiêm trọng', HIGH: 'Cao', MEDIUM: 'Trung bình', LOW: 'Thấp' }
 const licenseStatus = { LICENSED: 'Có giấy phép', SUSPENDED: 'Đang bị đình chỉ', BLACKLISTED: 'Trong danh sách cảnh báo' }
-function VerdictHero({ audit }: { audit: ForensicAuditResponse }) {
+function VerdictHero({ audit, inline }: { audit: ForensicAuditResponse; inline: boolean }) {
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
     heading.current?.focus()
   }, [])
 
   const Icon = audit.verdictLevel === 'SAFE' ? ShieldCheck : AlertTriangle
+  const Heading = inline ? 'h2' : 'h1'
   const [summary, ...explanationParagraphs] = audit.aiNarrative.split('\n\n')
   const explanation = explanationParagraphs.join('\n\n').trim()
 
@@ -30,9 +31,9 @@ function VerdictHero({ audit }: { audit: ForensicAuditResponse }) {
     <header className={cn('grid items-start gap-5 rounded-xl border p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_12rem]', verdictTone[audit.verdictLevel])}>
       <div className="flex items-start gap-3">
         <Icon size={28} className="mt-1 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-        <h1 ref={heading} tabIndex={-1} className="scroll-mt-24 text-balance text-3xl font-bold tracking-tight sm:text-4xl">
+        <Heading ref={heading} tabIndex={-1} className="scroll-mt-24 text-balance text-3xl font-bold tracking-tight sm:text-4xl">
           {verdictLabels[audit.verdictLevel]}
-        </h1>
+        </Heading>
       </div>
       <div className="space-y-2 lg:row-span-2 lg:border-s lg:border-current/20 lg:ps-5">
         <p id="risk-score-label" className="text-sm font-medium">Điểm rủi ro</p>
@@ -63,25 +64,54 @@ function VerdictHero({ audit }: { audit: ForensicAuditResponse }) {
   )
 }
 
-function QrTable({ qr, index }: { qr: ForensicAuditResponse['qrPayloads'][number]; index: number }) {
+const qrSchemes = {
+  VIETQR_NAPAS: 'VietQR NAPAS',
+  EWALLET_VN: 'Ví điện tử Việt Nam',
+  EMVCO_INTL: 'EMVCo quốc tế',
+  URL_LINK: 'Đường dẫn QR',
+  CRYPTO_WALLET: 'Ví Crypto',
+  UNKNOWN: 'Chưa rõ định dạng',
+}
+
+function QrTable({ qr, index, suspiciousLink }: {
+  qr: ForensicAuditResponse['qrPayloads'][number]
+  index: number
+  suspiciousLink: boolean
+}) {
+  const scheme = qr.qrScheme ?? 'VIETQR_NAPAS'
   const values: [string, ReactNode][] = [
-    ['Ngân hàng / BIN', <>{qr.bankName ?? 'Chưa xác định'} {qr.acqBin && <span className="font-numeric whitespace-nowrap text-muted-foreground">({qr.acqBin})</span>}</>],
-    ['Tài khoản nhận', <span className="font-numeric">{qr.accountNumberMasked ?? '—'}</span>],
+    ['Định dạng', <Badge variant={suspiciousLink || scheme === 'CRYPTO_WALLET' ? 'warning' : 'info'} className="whitespace-normal">{qrSchemes[scheme]}</Badge>],
+  ]
+  if (qr.providerLabel) values.push(['Nhà cung cấp', qr.providerLabel])
+  if (qr.bankName || qr.acqBin) values.push(['Ngân hàng / BIN', <>{qr.bankName} {qr.acqBin && <span className="font-numeric whitespace-nowrap text-muted-foreground">({qr.acqBin})</span>}</>])
+  if (qr.accountNumberMasked) values.push([scheme === 'CRYPTO_WALLET' ? 'Địa chỉ ví đã che' : 'Tài khoản nhận', <span className="font-numeric">{qr.accountNumberMasked}</span>])
+  if (qr.serviceCode) values.push(
     ['Loại mã', qr.serviceCode === 'QRIBFTTA'
       ? <Badge variant={qr.entityMismatchFlag ? 'warning' : 'info'} className="whitespace-normal">QRIBFTTA · Chuyển theo số tài khoản</Badge>
-      : qr.serviceCode ?? '—'],
-    ['Số tiền', <span className="font-numeric">{formatVnd(qr.qrAmountVnd)}</span>],
-    ['Nội dung', qr.purposeText ?? '—'],
-    ['Chủ tài khoản đọc được', qr.visionBeneficiaryName ?? 'Chưa xác định'],
-    ['Kiểm tra mã (CRC)', <Badge variant={qr.crcValid ? 'safe' : 'danger'}>{qr.crcValid ? 'Hợp lệ' : 'Không hợp lệ'}</Badge>],
-    ['Đối chiếu người nhận', qr.entityMismatchFlag
-      ? <Badge variant="danger" className="whitespace-normal">Có dấu hiệu lệch pháp nhân</Badge>
-      : 'Chưa phát hiện lệch pháp nhân'],
-  ]
+      : qr.serviceCode],
+  )
+  if (qr.amount != null || qr.qrAmountVnd != null) {
+    const amount = qr.amount != null && qr.currencyCode !== 'VND'
+      ? [qr.amount, qr.currencyCode].filter(Boolean).join(' ') : formatVnd(qr.amount ?? qr.qrAmountVnd)
+    values.push(['Số tiền', <span className="font-numeric">{amount}</span>])
+  }
+  if (qr.currencyCode || qr.countryCode) values.push(['Tiền tệ / Quốc gia', [qr.currencyCode, qr.countryCode].filter(Boolean).join(' · ')])
+  if (qr.merchantName) values.push(['Tên đơn vị nhận tiền', qr.merchantName])
+  if (qr.visionBeneficiaryName) values.push(['Chủ tài khoản đọc được', qr.visionBeneficiaryName])
+  if (qr.purposeText) values.push(['Nội dung', qr.purposeText])
+  if (qr.walletNetwork) values.push(['Mạng ví', qr.walletNetwork])
+  if (qr.targetUrl) values.push(['Địa chỉ trong mã', <div className="space-y-1.5">
+    <p dir="ltr" className="text-start text-foreground [overflow-wrap:anywhere]">{qr.targetUrl}</p>
+    {suspiciousLink && <p className="font-semibold text-verdict-danger">Đường dẫn có dấu hiệu rủi ro. Không mở hoặc nhập thông tin.</p>}
+  </div>])
+  if (scheme === 'VIETQR_NAPAS' || scheme === 'EMVCO_INTL') {
+    values.push(['Kiểm tra mã (CRC)', <Badge variant={qr.crcValid ? 'safe' : 'danger'}>{qr.crcValid ? 'Hợp lệ' : 'Không hợp lệ'}</Badge>])
+  }
+  if (qr.entityMismatchFlag) values.push(['Đối chiếu người nhận', <Badge variant="danger" className="whitespace-normal">Có dấu hiệu lệch pháp nhân</Badge>])
 
   return (
     <table className="w-full table-fixed border-collapse text-sm">
-      <caption className="pb-2 text-start font-semibold">Mã VietQR {index + 1}</caption>
+      <caption className="pb-2 text-start font-semibold">Mã QR {index + 1}</caption>
       <thead className="sr-only">
         <tr><th scope="col">Thông tin</th><th scope="col">Kết quả</th></tr>
       </thead>
@@ -102,8 +132,8 @@ function EntityAndQr({ audit }: { audit: ForensicAuditResponse }) {
 
   return (
     <section aria-labelledby="entity-check-heading" className="min-w-0 space-y-4">
-      <h2 id="entity-check-heading" className="text-lg font-semibold tracking-tight">Đối chiếu pháp nhân và VietQR</h2>
-      <dl className="grid gap-3 rounded-lg bg-muted p-4">
+      <h2 id="entity-check-heading" className="text-lg font-semibold tracking-tight">Đối chiếu người nhận và mã QR</h2>
+      {audit.claimedEntityName && <dl className="grid gap-3 rounded-lg bg-muted p-4">
         <div>
           <dt className="text-sm text-muted-foreground">Đơn vị tự xưng</dt>
           <dd className="text-sm font-semibold [overflow-wrap:anywhere]">{audit.claimedEntityName ?? 'Chưa xác định'}</dd>
@@ -114,10 +144,16 @@ function EntityAndQr({ audit }: { audit: ForensicAuditResponse }) {
             {license ? license.issuer + ' · ' + licenseStatus[license.status] : 'Chưa tìm thấy bản ghi để đối chiếu'}
           </dd>
         </div>
-      </dl>
+      </dl>}
       {audit.qrPayloads.length ? (
-        <div className="space-y-5">{audit.qrPayloads.map((qr, index) => <QrTable key={index} qr={qr} index={index} />)}</div>
-      ) : <p className="text-sm text-muted-foreground">Chưa có mã VietQR được giải mã từ dữ liệu này.</p>}
+        <div className="space-y-5">{audit.qrPayloads.map((qr, index) => (
+          <QrTable key={index} qr={qr} index={index} suspiciousLink={Boolean(qr.targetUrl && (
+            /\.apk(?:$|[?#])/i.test(qr.targetUrl) || audit.findings.some(({ ruleCode, evidenceQuote }) =>
+              (ruleCode.startsWith('RULE_09') || ruleCode.startsWith('RULE_05')) && Boolean(qr.targetUrl && evidenceQuote.includes(qr.targetUrl)),
+            )
+          ))} />
+        ))}</div>
+      ) : <p className="text-sm text-muted-foreground">Chưa đọc được mã QR từ nội dung bạn gửi.</p>}
     </section>
   )
 }
@@ -191,7 +227,7 @@ function Findings({ findings }: { findings: ForensicAuditResponse['findings'] })
   )
 }
 
-export function ForensicReport({ audit }: { audit: ForensicAuditResponse }) {
+export function ForensicReport({ audit, inline = false }: { audit: ForensicAuditResponse; inline?: boolean }) {
   const handoff = audit.handoffPayload
   const surveyHref = handoff && /[1-9]/.test(handoff.suggestedAmountVnd) ? handoffRoutes.forensicToSurvey({
     amount: handoff.suggestedAmountVnd, term: handoff.suggestedTermMonths, auditId: audit.auditId,
@@ -199,7 +235,7 @@ export function ForensicReport({ audit }: { audit: ForensicAuditResponse }) {
 
   return (
     <article className="space-y-5">
-      <VerdictHero audit={audit} />
+      <VerdictHero audit={audit} inline={inline} />
       {audit.immediateActions.length > 0 && (
         <Card className="p-5 sm:p-6">
           <fieldset className="min-w-0">

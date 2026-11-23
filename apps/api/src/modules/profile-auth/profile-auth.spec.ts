@@ -8,6 +8,7 @@ import { authCookie, guestCookie, GuestSessionGuard, sessionCookieOptions } from
 import type { PrismaService } from '../../common/prisma.service'
 import { OAuthService } from './oauth.service'
 import { hashPassword, verifyPassword } from './password'
+import { ProfileAuthController } from './profile-auth.controller'
 import { ProfileAuthService } from './profile-auth.service'
 
 const userId = '3ad68bc9-30d7-4560-a2b0-45bffed1a07e'
@@ -40,9 +41,79 @@ describe('OAuth state', () => {
     expect(params.get('redirect_uri')).toBe('http://localhost:3000/api/v1/auth/google/callback')
     expect(params.get('code_challenge_method')).toBe('S256')
     expect(params.get('code_challenge')).toMatch(/^[\w-]{43}$/)
-    expect(service.verifyState('google', params.get('state'), cookieValue)).toMatch(/^[\w-]{43}$/)
-    expect(() => service.verifyState('github', params.get('state'), cookieValue)).toThrow(UnauthorizedException)
-    expect(() => service.verifyState('google', 'mismatch', cookieValue)).toThrow(UnauthorizedException)
+    const pending = service.readStateCookie('google', cookieValue)
+    expect(service.verifyState(params.get('state'), pending)).toMatch(/^[\w-]{43}$/)
+    expect(service.readStateCookie('github', cookieValue)).toBeNull()
+    expect(() => service.verifyState('mismatch', pending)).toThrow(UnauthorizedException)
+  })
+
+  it('sends a 302 error redirect through Fastify even when the route starts at 200', async () => {
+    const app = Fastify()
+    const jwt = new JwtService({ secret: 'test-signing-secret' })
+    const profiles = { oauthLogin: vi.fn() } as unknown as ProfileAuthService
+    const controller = new ProfileAuthController(profiles, service, jwt)
+    try {
+      await app.register(cookie, { secret: 'test-signing-secret' })
+      app.get<{ Querystring: { state?: string; code?: string } }>('/api/v1/auth/google/callback', (request, reply) => {
+        return controller.oauthCallback('google', request.query.code, request.query.state, request, reply.code(200))
+      })
+      const response = await app.inject('/api/v1/auth/google/callback?state=bad&code=bad')
+      expect(response.statusCode).toBe(302)
+      expect(response.headers.location).toBe('http://localhost:3000/profile?login=error')
+      expect(response.headers['referrer-policy']).toBe('no-referrer')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it.each(['//example.invalid', 'https://example.invalid', '/\\example.invalid', '/bad\r\npath'])(
+    'defaults unsafe OAuth destinations to /profile (%s)',
+    (returnTo) => {
+      const { cookieValue } = service.start('google', returnTo)
+      expect(service.readStateCookie('google', cookieValue)?.returnTo).toBe('/profile')
+    },
+  )
+
+  it.each(['success', 'conflict', 'error'] as const)('preserves the signed destination on OAuth %s', async (outcome) => {
+    const secret = 'test-signing-secret'
+    const app = Fastify()
+    const jwt = new JwtService({ secret })
+    const exchange = vi.spyOn(service, 'exchange').mockResolvedValue({
+      provider: 'GOOGLE', subject: '42', email: 'test@example.test', name: null,
+    })
+    const oauthLogin = vi.fn()
+    if (outcome === 'conflict') oauthLogin.mockRejectedValue(new ConflictException())
+    else oauthLogin.mockResolvedValue({ id: userId })
+    const controller = new ProfileAuthController({ oauthLogin } as unknown as ProfileAuthService, service, jwt)
+    try {
+      await app.register(cookie, { secret })
+      app.get<{ Querystring: { returnTo?: string } }>('/api/v1/auth/google/url', (request, reply) => {
+        return controller.oauthUrl('google', request.query.returnTo, reply)
+      })
+      app.get<{ Querystring: { state?: string; code?: string } }>('/api/v1/auth/google/callback', (request, reply) => {
+        return controller.oauthCallback('google', request.query.code, request.query.state, request, reply.code(200))
+      })
+
+      const returnTo = '/forensic?claimedEntity=MB#report'
+      const issued = await app.inject('/api/v1/auth/google/url?' + new URLSearchParams({ returnTo }))
+      const stateCookie = issued.cookies.find(({ name }) => name === 'oauth_state')
+      expect(stateCookie).toMatchObject({ httpOnly: true, sameSite: 'Lax', path: '/api/v1/auth/google/callback' })
+      const params = new URL(issued.json<{ url: string }>().url).searchParams
+      const state = outcome === 'error' ? 'invalid' : params.get('state') ?? ''
+      const response = await app.inject({
+        url: '/api/v1/auth/google/callback?' + new URLSearchParams({ state, code: 'synthetic-code' }),
+        cookies: { oauth_state: stateCookie?.value ?? '' },
+      })
+      expect(response.statusCode).toBe(302)
+      expect(response.headers.location).toBe(outcome === 'success'
+        ? 'http://localhost:3000/forensic?claimedEntity=MB&login=success#report'
+        : 'http://localhost:3000/profile?' + new URLSearchParams({ login: outcome, returnTo }))
+      expect(response.cookies.find(({ name }) => name === 'oauth_state')?.maxAge).toBe(0)
+      if (outcome === 'error') expect(exchange).not.toHaveBeenCalled()
+    } finally {
+      exchange.mockRestore()
+      await app.close()
+    }
   })
 
   afterEach(() => vi.unstubAllGlobals())

@@ -11,18 +11,15 @@ function configuredLimit(value: string | undefined, fallback: number) {
 }
 
 export default async function ForensicPage({ searchParams }: { searchParams: Promise<RouteSearchParams> }) {
-  const { claimedEntity, from } = parseForensicHandoff(await searchParams)
+  const { claimedEntity } = parseForensicHandoff(await searchParams)
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       <header className="space-y-2">
         <h1 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl">Giám định tài chính</h1>
         <p className="max-w-[65ch] text-sm leading-relaxed text-muted-foreground sm:text-base">
-          Đối chiếu hợp đồng, tin nhắn và mã VietQR với 11 quy tắc phát hiện dấu hiệu lừa đảo.
+          Kiểm tra mã QR, hợp đồng và tin nhắn trước khi giao dịch.
         </p>
-        {from === 'trust-filter' && claimedEntity && (
-          <p className="text-sm text-primary">Đã điền đơn vị cần kiểm tra từ Khảo sát.</p>
-        )}
       </header>
       <ForensicWorkbench
         key={claimedEntity}

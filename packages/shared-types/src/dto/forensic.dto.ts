@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { FindingSeverity, QrServiceCode, RuleCode, VerdictLevel } from '../enums'
+import { FindingSeverity, QrScheme, QrServiceCode, RuleCode, VerdictLevel } from '../enums'
 import { decimalString, nonnegativeDecimal } from './decimal'
 
 export const ForensicAuditFieldsSchema = z.strictObject({
@@ -16,6 +16,17 @@ export const ForensicIntentSignalsSchema = z.strictObject({
   urgentCoercionProb: z.number().min(0).max(1),
 })
 export type ForensicIntentSignals = z.infer<typeof ForensicIntentSignalsSchema>
+
+export const ForensicQrMetadataSchema = z.strictObject({
+  qrScheme: QrScheme.optional(),
+  providerLabel: z.string().nullable().optional(),
+  currencyCode: z.string().nullable().optional(),
+  countryCode: z.string().nullable().optional(),
+  targetUrl: z.string().nullable().optional(),
+  walletNetwork: z.string().nullable().optional(),
+  merchantName: z.string().nullable().optional(),
+  amount: nonnegativeDecimal.nullable().optional(),
+})
 
 export const ForensicAuditResponseSchema = z.strictObject({
   auditId: z.guid(),
@@ -41,6 +52,7 @@ export const ForensicAuditResponseSchema = z.strictObject({
     crcValid: z.boolean(),
     visionBeneficiaryName: z.string().nullable(),
     entityMismatchFlag: z.boolean(),
+    ...ForensicQrMetadataSchema.shape,
   })),
   findings: z.array(z.strictObject({
     ruleCode: RuleCode,
@@ -81,3 +93,19 @@ export const ForensicAuditListResponseSchema = z.strictObject({
   audits: z.array(ForensicAuditSummarySchema),
 })
 export type ForensicAuditListResponse = z.infer<typeof ForensicAuditListResponseSchema>
+
+export const ForensicChatTurnSchema = z.strictObject({
+  role: z.enum(['user', 'assistant']),
+  content: z.string().trim().min(1).max(4000),
+})
+export const ForensicFollowUpRequestSchema = z.strictObject({
+  question: z.string().trim().min(1).max(2000),
+  history: z.array(ForensicChatTurnSchema).max(6).optional(),
+})
+export const ForensicFollowUpResponseSchema = z.strictObject({
+  answer: z.string(),
+  meta: z.strictObject({ llmProvider: z.string().nullable(), degradedMode: z.boolean() }),
+})
+export type ForensicChatTurn = z.infer<typeof ForensicChatTurnSchema>
+export type ForensicFollowUpRequest = z.infer<typeof ForensicFollowUpRequestSchema>
+export type ForensicFollowUpResponse = z.infer<typeof ForensicFollowUpResponseSchema>

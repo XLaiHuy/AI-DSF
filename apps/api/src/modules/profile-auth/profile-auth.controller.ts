@@ -83,9 +83,10 @@ export class ProfileAuthController {
   @Get('auth/:provider/url')
   oauthUrl(
     @Param('provider', new ZodValidationPipe(OAuthProviderSchema)) provider: OAuthProvider,
+    @Query('returnTo') returnTo: unknown,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
-    const { url, cookieValue } = this.oauth.start(provider)
+    const { url, cookieValue } = this.oauth.start(provider, returnTo)
     reply.setCookie(oauthCookie, cookieValue, {
       ...sessionCookieOptions, path: oauthCallbackPath(provider), maxAge: oauthLifetimeSeconds,
     })
@@ -104,18 +105,25 @@ export class ProfileAuthController {
     const cookie = request.cookies[oauthCookie]
     const unsigned = cookie ? request.unsignCookie(cookie) : null
     reply.clearCookie(oauthCookie, { ...sessionCookieOptions, path: oauthCallbackPath(provider) })
+    const pending = this.oauth.readStateCookie(provider, unsigned?.valid ? unsigned.value : null)
+    const returnTo = pending?.returnTo ?? '/profile'
 
     try {
-      const verifier = this.oauth.verifyState(provider, state, unsigned?.valid ? unsigned.value : null)
+      const verifier = this.oauth.verifyState(state, pending)
       const code = oauthCode.safeParse(queryCode)
       if (!code.success) throw new UnauthorizedException()
       const identity = await this.oauth.exchange(provider, code.data, verifier)
       const user = await this.profiles.oauthLogin(identity, request.guestSessionId)
       await this.setAuthCookie(reply, user)
-      return reply.redirect(new URL('/profile?login=success', this.oauth.appOrigin).toString())
+      const target = new URL(returnTo, this.oauth.appOrigin)
+      target.searchParams.set('login', 'success')
+      return reply.redirect(target.toString(), 302)
     } catch (error) {
       const status = error instanceof ConflictException ? 'conflict' : 'error'
-      return reply.redirect(new URL(`/profile?login=${status}`, this.oauth.appOrigin).toString())
+      const target = new URL('/profile', this.oauth.appOrigin)
+      target.searchParams.set('login', status)
+      if (returnTo !== '/profile') target.searchParams.set('returnTo', returnTo)
+      return reply.redirect(target.toString(), 302)
     }
   }
 

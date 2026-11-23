@@ -1,10 +1,11 @@
 import type { Metadata } from 'next'
+import { safeReturnTo } from '@fincopilot/shared-types'
 import { ProfileCenter } from '@/components/profile/ProfileCenter'
 
 export const metadata: Metadata = { title: 'Hồ sơ tài chính' }
 
-export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ login?: string; logout?: string }> }) {
-  const { login, logout } = await searchParams
+export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ login?: string; logout?: string; returnTo?: string | string[] }> }) {
+  const { login, logout, returnTo } = await searchParams
   const notice = login === 'success' ? 'Đã đăng nhập.'
     : login === 'conflict' ? 'Email này đã được đăng ký bằng phương thức khác. Hãy đăng nhập bằng phương thức đã sử dụng.'
       : login === 'error' ? 'Đăng nhập chưa hoàn tất. Vui lòng thử lại.'
@@ -18,7 +19,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           Theo dõi thu nhập, nghĩa vụ trả nợ và lưu lại các báo cáo giám định của bạn.
         </p>
       </header>
-      <ProfileCenter notice={notice} />
+      <ProfileCenter notice={notice} returnTo={safeReturnTo(returnTo)} />
     </div>
   )
 }

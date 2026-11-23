@@ -1,6 +1,6 @@
 'use client'
 
-import { AuthLoginSchema, AuthRegisterSchema, ROUTES, type AuthSessionResponse } from '@fincopilot/shared-types'
+import { AuthLoginSchema, AuthRegisterSchema, ROUTES, safeReturnTo, type AuthSessionResponse } from '@fincopilot/shared-types'
 import { Github, LockKeyhole, LogIn, LogOut } from 'lucide-react'
 import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { z } from 'zod'
@@ -15,11 +15,12 @@ type OAuthProvider = 'google' | 'github'
 const oauthUrlResponse = z.strictObject({ url: z.url({ protocol: /^https$/ }) })
 
 function EmailAuth({
-  busy, changeBusy, reportError,
+  busy, changeBusy, reportError, returnTo,
 }: {
   busy: boolean
   changeBusy: (busy: boolean) => void
   reportError: (error: string) => void
+  returnTo: string
 }) {
   const [mode, setMode] = useState<AuthMode>('login')
   const loginTab = useRef<HTMLButtonElement>(null)
@@ -60,7 +61,8 @@ function EmailAuth({
     reportError('')
     try {
       await apiClient.post('/auth/' + mode, parsed.data)
-      window.location.replace(ROUTES.profile + '?login=success')
+      const destination = safeReturnTo(returnTo)
+      window.location.replace(destination === ROUTES.profile ? ROUTES.profile + '?login=success' : destination)
     } catch (error) {
       reportError(requestError(error, 'Chưa thể xác thực tài khoản. Vui lòng thử lại.'))
       changeBusy(false)
@@ -181,7 +183,7 @@ export function AccountStatus({ session }: { session: AuthSessionResponse }) {
   )
 }
 
-export function AccountPanel({ session }: { session: Extract<AuthSessionResponse, { kind: 'guest' }> }) {
+export function AccountPanel({ session, returnTo }: { session: Extract<AuthSessionResponse, { kind: 'guest' }>; returnTo: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -189,7 +191,8 @@ export function AccountPanel({ session }: { session: Extract<AuthSessionResponse
     setBusy(true)
     setError('')
     try {
-      const { url } = await apiClient.get('/auth/' + provider + '/url', { schema: oauthUrlResponse, cache: 'no-store' })
+      const query = new URLSearchParams({ returnTo: safeReturnTo(returnTo) })
+      const { url } = await apiClient.get('/auth/' + provider + '/url?' + query, { schema: oauthUrlResponse, cache: 'no-store' })
       window.location.assign(url)
     } catch (cause) {
       setError(requestError(cause, 'Chưa thể kết nối với nhà cung cấp đăng nhập. Vui lòng thử lại.'))
@@ -203,7 +206,7 @@ export function AccountPanel({ session }: { session: Extract<AuthSessionResponse
         <h2 id="account-sign-in" tabIndex={-1} className="scroll-mt-24 text-lg font-semibold tracking-tight">
           Đăng nhập tài khoản
         </h2>
-        <EmailAuth busy={busy} changeBusy={setBusy} reportError={setError} />
+        <EmailAuth busy={busy} changeBusy={setBusy} reportError={setError} returnTo={returnTo} />
         <div className="space-y-3 border-t border-border pt-4">
           <h3 className="text-sm font-semibold">Đăng nhập bằng tài khoản có sẵn</h3>
           <div className="grid gap-3">

@@ -1,7 +1,8 @@
 import Decimal from 'decimal.js'
 import type { FindingSeverity, ForensicAuditResponse, ForensicIntentSignals, RuleCode } from '@fincopilot/shared-types'
 import { findInstitution, normalizeVietnamese, scamTactics, type CatalogInstitution } from './data/trusted-institutions'
-import type { ParsedVietQr } from './vietqr-parser'
+import { suspiciousQrLink } from './qr-evidence'
+import type { ParsedQr } from './vietqr-parser'
 
 type Finding = ForensicAuditResponse['findings'][number]
 type MathBreakdown = NonNullable<ForensicAuditResponse['mathBreakdown']>
@@ -106,8 +107,8 @@ export function findLoanTerms(text: string): LoanTerms | null {
   }
 }
 
-interface RuleQr extends Omit<ParsedVietQr, 'raw'> {
-  raw?: string
+type RuleQr = Pick<ParsedQr, 'acqBin' | 'bankName' | 'account' | 'serviceCode' | 'amountVnd' | 'purpose' | 'crcValid'>
+  & Partial<Pick<ParsedQr, 'raw' | 'qrScheme' | 'targetUrl' | 'walletNetwork'>> & {
   visionBeneficiaryName?: string | null
 }
 interface Indicator {
@@ -130,7 +131,14 @@ const negation = /\b(khong (?:can|phai|co|nen|duoc|yeu cau|thu|nop|chuyen|cung c
 const feeDemand = /\b(nop|dong|chuyen|tra|thanh toan|truoc|loi 102|mo khoa|dat coc)\b/
 const freeze = /\b(loi 102|dong bang (?:tai khoan|khoan vay|so tien|tien|von)|mo khoa (?:khoan vay|tai khoan|giai ngan))\b/
 const personalAccount = /\b(?:tai khoan|stk|tk) ca nhan\b/
-const regulatedName = /\b(tai chinh|ngan hang|chung khoan|quan ly quy|vi dien tu|san dau tu)\b/
+const organizationName = /\b(tai chinh|ngan hang|chung khoan|quan ly quy|vi dien tu|san dau tu|cong ty|to chuc|cong an|co quan|tnhh|tmcp|ctcp)\b/
+const personalContext = /\b(tra tien an|tra tien|chia tien|tien an|mua do|ban be|cho ban|hoan tien|gui tien cho)\b/
+const cryptoInvestmentContext = /\b(dau tu|san giao dich|rut tien|rut von|nap them|loi nhuan|phi mo khoa)\b/
+const cryptoPaymentContext = /\b(chuyen|nap|dong phi|phi de rut|thanh toan|gui|yeu cau tra)\b/
+
+function isPaymentQr(qr: RuleQr) {
+  return qr.crcValid || qr.qrScheme === 'EWALLET_VN'
+}
 
 function matchIndicator(indicator: Indicator, qrPayloads: readonly RuleQr[], quotes: readonly string[]): string | undefined {
   const value = indicator.indicatorText.trim()
@@ -149,6 +157,9 @@ function matchIndicator(indicator: Indicator, qrPayloads: readonly RuleQr[], quo
       const normalizePhone = (phone: string) => phone.replace(/\D/g, '').replace(/^(?:0084|84)(?=\d{9}$)/, '0')
       const phone = normalizePhone(value)
       if (!/^0\d{9}$/.test(phone)) return undefined
+      const walletPhone = qrPayloads.find((qr) => qr.qrScheme === 'EWALLET_VN' &&
+        qr.account && normalizePhone(qr.account) === phone)?.account
+      if (walletPhone) return walletPhone
       return quotes.find((quote) => (quote.match(/(?<!\d)(?:0|\+84|0084)(?:[ .-]?\d){9}(?!\d)/g) ?? [])
         .some((token) => normalizePhone(token) === phone))
     }
@@ -156,6 +167,9 @@ function matchIndicator(indicator: Indicator, qrPayloads: readonly RuleQr[], quo
       const domain = value.toLowerCase().replace(/^https?:\/\//, '').split(/[/:?#]/)[0].replace(/\.$/, '')
       if (!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(domain)) return undefined
       const matchesHost = (host: string) => host === domain || host.endsWith('.' + domain)
+      const decodedLink = qrPayloads.find((qr) => qr.targetUrl &&
+        matchesHost(URL.parse(qr.targetUrl)?.hostname.replace(/\.$/, '') ?? ''))?.targetUrl
+      if (decodedLink) return decodedLink
       const urls = /https?:\/\/[^\s<>"'()[\]]+/gi
       return quotes.find((quote) =>
         (quote.match(urls) ?? []).some((url) => {
@@ -171,7 +185,7 @@ function matchIndicator(indicator: Indicator, qrPayloads: readonly RuleQr[], quo
     case 'QR_PATTERN': {
       // Indicator values are literal fingerprints, never executable regular expressions.
       const match = value.length >= 8 ? qrPayloads.find((qr) => qr.raw?.includes(value)) : undefined
-      return match?.purpose ?? match?.account ?? match?.serviceCode
+      return match?.purpose ?? match?.targetUrl ?? match?.account ?? match?.serviceCode ?? match?.qrScheme
     }
     default:
       return undefined
@@ -179,11 +193,13 @@ function matchIndicator(indicator: Indicator, qrPayloads: readonly RuleQr[], quo
 }
 
 export function evaluateHardRules(input: HardRuleInput) {
-  const qrPayloads = input.qrPayloads.filter((qr) => qr.crcValid)
-  const quotes = [...input.evidence, ...qrPayloads.flatMap((qr) => qr.purpose ? [qr.purpose] : [])]
+  const qrPayloads = input.qrPayloads.filter((qr) => isPaymentQr(qr) ||
+    qr.qrScheme === 'URL_LINK' || qr.qrScheme === 'CRYPTO_WALLET')
+  const quotes = [...input.evidence, ...qrPayloads.flatMap((qr) => qr.crcValid && qr.purpose ? [qr.purpose] : [])]
     .flatMap((line) => line.split(/\n+|(?<=[.!?])\s+/).map((phrase) => phrase.trim()).filter(Boolean))
   const normalized = quotes.map((quote) => ({ quote, text: normalizeVietnamese(quote) }))
   const findQuote = (matches: (text: string) => boolean) => normalized.find(({ text }) => matches(text))?.quote
+  const context = normalized.filter(({ text }) => !negation.test(text)).map(({ text }) => text).join(' ')
   const findings: Finding[] = []
   const add = (ruleCode: RuleCode, severity: FindingSeverity, scoreImpact: number, title: string, description: string,
     evidenceQuote: string, matchedIndicatorId: string | null = null) => {
@@ -195,7 +211,7 @@ export function evaluateHardRules(input: HardRuleInput) {
   const mathBreakdown = loan ? calculateFlatRateApr(loan) : null
 
   const fee = findQuote((text) => upfrontFee.test(text) && feeDemand.test(text) && !negation.test(text))
-  if (fee && qrPayloads.length > 0) add(
+  if (fee && qrPayloads.some(isPaymentQr)) add(
     'RULE_01_UPFRONT_FEE_QR', 'CRITICAL', 85, 'Yêu cầu nộp phí trước qua VietQR',
     'Khoản thu trước gắn với yêu cầu chuyển tiền qua VietQR có dấu hiệu lừa đảo giải ngân.', fee,
   )
@@ -205,8 +221,7 @@ export function evaluateHardRules(input: HardRuleInput) {
     'Dấu hiệu dùng lỗi giao dịch hoặc lý do đóng băng vốn để gây áp lực thanh toán.', trap,
   )
 
-  const claimedCompany = entity && (entityLicense !== null || regulatedName.test(normalizeVietnamese(entity))
-    || /\bcong ty\b/.test(normalizeVietnamese(entity)))
+  const claimedCompany = entity && (entityLicense !== null || organizationName.test(normalizeVietnamese(entity)) || !!loan)
   const personal = findQuote((text) => personalAccount.test(text) && !negation.test(text))
   const mismatchedQrs = claimedCompany && entity ? qrPayloads.filter((qr) => {
     if (qr.serviceCode !== 'QRIBFTTA') return false
@@ -224,7 +239,8 @@ export function evaluateHardRules(input: HardRuleInput) {
 
   const impersonation = entity ? findQuote((text) => text.includes(normalizeVietnamese(entity))
     && /\b(?:mao danh|gia danh|gia mao)\b/.test(text) && !negation.test(text)) : undefined
-  if (entity && (!entityLicense || entityLicense.status !== 'LICENSED' || mismatchedQrs.length > 0 || impersonation)) {
+  if (entity && (claimedCompany || impersonation) &&
+    (!entityLicense || entityLicense.status !== 'LICENSED' || mismatchedQrs.length > 0 || impersonation)) {
     const critical = entityLicense?.status === 'BLACKLISTED'
       || (entityLicense?.status === 'LICENSED' && (mismatchedQrs.length > 0 || !!impersonation))
     add(
@@ -289,6 +305,21 @@ export function evaluateHardRules(input: HardRuleInput) {
     },
   ] as const
   for (const { ruleCode, tactic, signal, title, description } of extraRules) {
+    if (ruleCode === 'RULE_09_BIOMETRIC_OTP_PHISHING') {
+      const url = qrPayloads.find((qr) => qr.targetUrl && suspiciousQrLink(qr.raw ?? qr.targetUrl, context))?.targetUrl
+      if (url) {
+        add(ruleCode, 'CRITICAL', 85, 'Liên kết QR yêu cầu cài đặt hoặc xác thực đáng ngờ',
+          'Không mở liên kết hoặc nhập thông tin. Kiểm tra yêu cầu qua ứng dụng hay trang chính thức.', url)
+        continue
+      }
+    }
+    if (ruleCode === 'RULE_10_FAKE_EXCHANGE_CRYPTO_CLONE' && cryptoInvestmentContext.test(context) &&
+      cryptoPaymentContext.test(context) && qrPayloads.some((qr) => qr.qrScheme === 'CRYPTO_WALLET')) {
+      add(ruleCode, 'HIGH', 55, title,
+        'Yêu cầu chuyển tiền mã hóa trong bối cảnh đầu tư hoặc rút tiền cần được kiểm tra kỹ.',
+        findQuote((text) => cryptoInvestmentContext.test(text) && !negation.test(text)) ?? 'Mã ví tiền mã hóa')
+      continue
+    }
     const topic = findQuote((text) => tactic.topic.test(text) && !negation.test(text))
     const corroboration = findQuote((text) => tactic.corroboration.test(text) && !negation.test(text))
     if (topic && corroboration) {
@@ -300,7 +331,10 @@ export function evaluateHardRules(input: HardRuleInput) {
 
   const deterministicOverride = findings.some(({ severity }) => severity === 'CRITICAL')
   const score = Math.min(95, findings.reduce((total, finding) => total + finding.scoreImpact, 0))
-  const riskScore = deterministicOverride ? Math.max(75, score) : score
+  const clearPayment = qrPayloads.some(isPaymentQr) && personalContext.test(context)
+  const qrNeedsReview = input.qrPayloads.some((qr) => !isPaymentQr(qr)) ||
+    (qrPayloads.some(isPaymentQr) && !clearPayment && !entity && !loan)
+  const riskScore = deterministicOverride ? Math.max(75, score) : qrNeedsReview ? Math.max(30, score) : score
   const verdictLevel: ForensicAuditResponse['verdictLevel'] = riskScore >= 70 ? 'HIGH_RISK' : riskScore >= 30 ? 'CAUTION' : 'SAFE'
-  return { findings, riskScore, verdictLevel, deterministicOverride, entityLicense, entityMismatchFlag: mismatchedQrs.length > 0, mismatchedQrs, mathBreakdown }
+  return { findings, riskScore, verdictLevel, deterministicOverride, entityLicense, entityMismatchFlag: mismatchedQrs.length > 0, mismatchedQrs, mathBreakdown, clearPayment }
 }

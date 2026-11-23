@@ -1,8 +1,8 @@
 import {
-  BadRequestException, Body, Controller, Get, Param, PayloadTooLargeException,
+  BadRequestException, Body, Controller, Get, HttpCode, Param, PayloadTooLargeException,
   Post, Req, Res, UseGuards,
 } from '@nestjs/common'
-import { ForensicAuditFieldsSchema } from '@fincopilot/shared-types'
+import { ForensicAuditFieldsSchema, ForensicFollowUpRequestSchema, type ForensicFollowUpRequest } from '@fincopilot/shared-types'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { GuestSessionGuard } from '../../common/guest-session.guard'
 import { ZodValidationPipe } from '../../common/zod-validation.pipe'
@@ -87,5 +87,15 @@ export class ForensicController {
     reply.header('Content-Disposition', `attachment; filename="fincopilot-${audit.auditId}.json"`)
     reply.header('Cache-Control', 'private, no-store')
     return audit
+  }
+
+  @Post('audits/:id/chat')
+  @HttpCode(200)
+  chat(
+    @Req() request: FastifyRequest,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(ForensicFollowUpRequestSchema)) body: ForensicFollowUpRequest,
+  ) {
+    return this.service.followUp(request.session, id, body)
   }
 }

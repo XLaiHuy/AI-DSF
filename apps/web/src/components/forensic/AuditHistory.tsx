@@ -12,7 +12,7 @@ export function AuditHistory({ collapsible = false }: { collapsible?: boolean })
   const [open, setOpen] = useState(!collapsible)
   const session = useQuery({ ...sessionQuery, enabled: open })
   const history = useQuery({ ...auditListQuery, enabled: open && session.isSuccess })
-  const historyTitle = collapsible ? 'Giám định gần đây' : 'Lịch sử giám định'
+  const historyTitle = 'Lịch sử giám định'
   const content = (
     <div className="px-5 pb-5 sm:px-6 sm:pb-6">
       {session.isError || history.isError ? (

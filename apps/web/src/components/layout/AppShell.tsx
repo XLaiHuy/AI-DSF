@@ -29,6 +29,8 @@ const links = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
+  const profileHref = pathname === ROUTES.profile ? ROUTES.profile
+    : `${ROUTES.profile}?returnTo=${encodeURIComponent(pathname)}`
   const currentSection = links.find(({ href }) =>
     href === ROUTES.home ? pathname === ROUTES.home : pathname === href || pathname.startsWith(`${href}/`),
   )
@@ -63,7 +65,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Link>
 
           <Link
-            href={ROUTES.profile}
+            href={profileHref}
             className={cn(buttonVariants({ variant: 'secondary', size: 'sm' }), 'gap-1.5 text-accent-foreground')}
           >
             <CircleUserRound size={15} aria-hidden="true" />
@@ -77,7 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {links.map(({ href, label, icon: Icon }) => (
             <li key={href}>
               <Link
-                href={href}
+                href={href === ROUTES.profile ? profileHref : href}
                 className="app-nav-link"
                 aria-current={pathname === href ? 'page' : currentSection?.href === href ? 'location' : undefined}
               >
@@ -89,7 +91,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </ul>
 
         <Link
-          href={ROUTES.profile}
+          href={profileHref}
           className="hidden rounded-xl border border-border bg-muted/60 p-3.5 transition-colors hover:border-primary/30 hover:bg-accent/50 md:block"
         >
           <div className="flex items-center gap-2 text-xs font-semibold text-foreground">

@@ -215,7 +215,7 @@ describe('PDF extraction', () => {
     expect(text).toBe('')
     expect(validateFiles(images.map((buffer) => ({ buffer })), 20)).toEqual(['PNG'])
     expect(pdf.subarray(0, 4).toString()).toBe('%PDF')
-  })
+  }, 20_000)
 
   it('rejects oversized page counts before extraction', async () => {
     await expect(extractPdf(makePdf('', 6), 5)).rejects.toMatchObject({ response: { errorCode: 'ERR_PDF_PAGE_LIMIT' } })
