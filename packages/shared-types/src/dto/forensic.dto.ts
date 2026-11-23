@@ -3,10 +3,19 @@ import { FindingSeverity, QrServiceCode, RuleCode, VerdictLevel } from '../enums
 import { decimalString, nonnegativeDecimal } from './decimal'
 
 export const ForensicAuditFieldsSchema = z.strictObject({
-  rawText: z.string().trim().min(1).optional(),
-  rawQrString: z.string().trim().min(1).optional(),
+  rawText: z.string().trim().min(1).max(50_000).optional(),
+  rawQrString: z.string().trim().min(1).max(4096).optional(),
+  claimedEntityName: z.string().trim().min(1).max(200).optional(),
 })
 export type ForensicAuditFields = z.infer<typeof ForensicAuditFieldsSchema>
+
+export const ForensicIntentSignalsSchema = z.strictObject({
+  provider: z.string(),
+  recoveryScamProb: z.number().min(0).max(1),
+  biometricPhishingProb: z.number().min(0).max(1),
+  urgentCoercionProb: z.number().min(0).max(1),
+})
+export type ForensicIntentSignals = z.infer<typeof ForensicIntentSignalsSchema>
 
 export const ForensicAuditResponseSchema = z.strictObject({
   auditId: z.guid(),
@@ -47,6 +56,12 @@ export const ForensicAuditResponseSchema = z.strictObject({
     rawTextMasked: z.string().nullable(),
   }),
   aiNarrative: z.string(),
+  immediateActions: z.array(z.string()),
+  intentSignals: ForensicIntentSignalsSchema.nullable().optional(),
+  entityLicense: z.strictObject({
+    issuer: z.enum(['NHNN', 'UBCKNN']),
+    status: z.enum(['LICENSED', 'SUSPENDED', 'BLACKLISTED']),
+  }).nullable().optional(),
   handoffPayload: z.strictObject({
     suggestedAmountVnd: nonnegativeDecimal,
     suggestedTermMonths: z.number().int().positive(),
@@ -58,3 +73,11 @@ export const ForensicAuditResponseSchema = z.strictObject({
   }),
 })
 export type ForensicAuditResponse = z.infer<typeof ForensicAuditResponseSchema>
+
+export const ForensicAuditSummarySchema = ForensicAuditResponseSchema.pick({
+  auditId: true, verdictLevel: true, riskScore: true, claimedEntityName: true,
+}).extend({ createdAt: z.iso.datetime() })
+export const ForensicAuditListResponseSchema = z.strictObject({
+  audits: z.array(ForensicAuditSummarySchema),
+})
+export type ForensicAuditListResponse = z.infer<typeof ForensicAuditListResponseSchema>

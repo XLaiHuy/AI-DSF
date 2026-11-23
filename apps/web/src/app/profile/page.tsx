@@ -1,32 +1,23 @@
-import { CircleUserRound } from 'lucide-react'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui'
+import type { Metadata } from 'next'
+import { ProfileCenter } from '@/components/profile/ProfileCenter'
 
-export default function ProfilePage() {
+export const metadata: Metadata = { title: 'Hồ sơ tài chính' }
+
+export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ login?: string; logout?: string }> }) {
+  const { login, logout } = await searchParams
+  const notice = login === 'success' ? 'Đã đăng nhập.'
+    : login === 'error' ? 'Đăng nhập chưa hoàn tất. Vui lòng thử lại.'
+      : logout === 'success' ? 'Đã đăng xuất.' : ''
+
   return (
-    <PlaceholderPage
-      eyebrow="Phân hệ 0 · Lead"
-      statusLabel="SCR-08"
-      title="Hồ sơ tài chính"
-      description="Thông tin thu nhập, chi phí, nghĩa vụ nợ hiện tại và mục tiêu tiết kiệm (ngữ cảnh R07) sẽ được quản lý ở đây."
-    >
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <CircleUserRound size={17} className="text-primary" aria-hidden="true" />
-            <Badge variant="info">Guest Cookie & Google OAuth</Badge>
-          </div>
-          <CardTitle className="pt-1">Ngữ cảnh tài chính cá nhân & Bảo mật</CardTitle>
-          <CardDescription>
-            Phiên khách sử dụng cookie ký điện tử HttpOnly từ Backend và đồng bộ qua Ổ cắm 4 (<code className="font-mono text-xs text-foreground">apiClient</code>).
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Dữ liệu hồ sơ tại đây được dùng chung cho Radar (lọc tác động R07) và Khảo sát (tự động tính tỷ lệ DTI).
-          </p>
-        </CardContent>
-      </Card>
-    </PlaceholderPage>
+    <div className="mx-auto max-w-6xl space-y-7">
+      <header className="space-y-2">
+        <h1 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl">Hồ sơ tài chính</h1>
+        <p className="max-w-[65ch] text-sm leading-relaxed text-muted-foreground sm:text-base">
+          Theo dõi thu nhập, nghĩa vụ trả nợ và lưu lại các báo cáo giám định của bạn.
+        </p>
+      </header>
+      <ProfileCenter notice={notice} />
+    </div>
   )
 }

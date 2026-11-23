@@ -24,3 +24,24 @@ sources:
     sourceType: WEB
     endpointUrl: https://ncsc.gov.vn/
     isTrustedForAlerts: true
+forensicReferences:
+  - sourceKey: nhnn
+    name: Ngân hàng Nhà nước Việt Nam
+    urls: [https://www.sbv.gov.vn/]
+    scope: Licensed banks, finance companies and payment intermediaries
+  - sourceKey: ubcknn
+    name: Ủy ban Chứng khoán Nhà nước
+    urls: [https://ssc.gov.vn/]
+    scope: Licensed securities and fund managers
+  - sourceKey: ncsc
+    name: Tín nhiệm mạng
+    urls: [https://tinnhiemmang.vn/]
+    scope: Online impersonation and phishing alerts
+  - sourceKey: a05
+    name: Cảnh báo tin giả
+    urls: [https://tingia.gov.vn/]
+    scope: Vietnam scam and impersonation alerts
+  - sourceKey: global_scam_taxonomy
+    name: FBI IC3 and ScamShield
+    urls: [https://www.ic3.gov/, https://www.scamshield.gov.sg/]
+    scope: Recovery fraud, investment fraud and impersonation

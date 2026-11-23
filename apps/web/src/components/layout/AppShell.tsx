@@ -94,10 +94,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
             <Lock size={14} className="shrink-0 text-primary" aria-hidden="true" />
-            <span>Phiên khách ẩn danh</span>
+            <span>Hồ sơ và quyền riêng tư</span>
           </div>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Bảo mật PII · Tùy chỉnh ngữ cảnh hồ sơ tài chính tại đây.
+            Quản lý hồ sơ tài chính, tài khoản và lịch sử giám định.
           </p>
         </Link>
       </nav>

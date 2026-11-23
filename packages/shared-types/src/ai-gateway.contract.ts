@@ -42,6 +42,7 @@ export const AI_TASK_SCHEMAS = {
     claimedEntityName: textEvidence.nullable(),
     visionBeneficiaryName: textEvidence.nullable(),
     nominalAmountVnd: nonnegativeDecimal.nullable(),
+    termMonths: z.strictObject({ value: z.number().int().min(1).max(600), evidenceQuote }).nullable(),
     upfrontFees: z.array(z.strictObject({
       amountVnd: nonnegativeDecimal,
       evidenceQuote,
@@ -51,8 +52,8 @@ export const AI_TASK_SCHEMAS = {
     redFlagPhrases: z.array(z.strictObject({ type: z.string(), evidenceQuote })),
   }),
   FORENSIC_VERDICT_NARRATIVE: z.strictObject({
-    narrative: z.string(),
-    immediateActions: z.array(z.string()),
+    narrative: z.string().trim().min(1).max(1500),
+    immediateActions: z.array(z.string().trim().min(1).max(250)).max(5),
   }),
 } as const
 
@@ -62,7 +63,7 @@ export type AiTaskOutput<T extends AiTaskType> = z.output<(typeof AI_TASK_SCHEMA
 export interface IAiGatewayService {
   generateStructured<T extends AiTaskType>(
     taskType: T,
-    schema: (typeof AI_TASK_SCHEMAS)[T],
+    schema: z.ZodType<AiTaskOutput<T>>,
     payload: unknown,
   ): Promise<AiTaskOutput<T>>
 }
