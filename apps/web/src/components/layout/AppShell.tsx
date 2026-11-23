@@ -64,7 +64,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <Link
             href={ROUTES.profile}
-            className={cn(buttonVariants({ variant: 'secondary', size: 'sm' }), 'gap-1.5 text-accent-foreground')}
+            className={cn(buttonVariants({ variant: 'secondary', size: 'sm' }), 'hidden gap-1.5 text-accent-foreground sm:inline-flex')}
           >
             <CircleUserRound size={15} aria-hidden="true" />
             <span>Hồ sơ</span>

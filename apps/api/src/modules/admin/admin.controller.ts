@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common'
 import { AdminGuard } from '../../common/admin.guard'
 import { AdminService } from './admin.service'
 
@@ -8,22 +8,37 @@ export class AdminController {
   constructor(private readonly service: AdminService) {}
 
   @Post('radar/fetch')
-  fetchRadar() {
-    return this.service.pending()
+  fetchRadar(@Body() body: { sourceKey?: string } = {}) {
+    return this.service.fetch(body.sourceKey)
+  }
+
+  @Get('radar/sources')
+  listRadarSources() {
+    return this.service.sources()
+  }
+
+  @Post('radar/sources/:sourceKey/retry')
+  retryRadarSource(@Param('sourceKey') sourceKey: string) {
+    return this.service.fetch(sourceKey)
+  }
+
+  @Get('radar/jobs/:jobId')
+  radarJob(@Param('jobId') jobId: string) {
+    return this.service.job(jobId)
   }
 
   @Get('products')
   listProducts() {
-    return this.service.pending()
+    return this.service.products()
   }
 
   @Post('products')
-  createProduct() {
-    return this.service.pending()
+  createProduct(@Body() body: Record<string, unknown>) {
+    return this.service.createProduct(body)
   }
 
   @Patch('products/:id')
-  updateProduct() {
-    return this.service.pending()
+  updateProduct(@Param('id') id: string, @Body() body: Record<string, unknown>) {
+    return this.service.updateProduct(id, body)
   }
 }
