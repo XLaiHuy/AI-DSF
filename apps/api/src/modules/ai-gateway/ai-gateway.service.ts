@@ -76,7 +76,7 @@ export class AiGatewayService implements IAiGatewayService {
       const [route] = modelRoutes('FORENSIC_INTENT_SIGNAL', this.config.get('aiRouting'), this.env)
       if (route?.provider !== 'openrouter') return null
       const key = this.env(providerKeys.openrouter)?.trim()
-      return key ? await requestForensicIntent(route.modelId, key, text, AbortSignal.timeout(1_500)) : null
+      return key ? await requestForensicIntent(route.modelId, key, text, AbortSignal.timeout(4_500)) : null
     } catch {
       return null
     }

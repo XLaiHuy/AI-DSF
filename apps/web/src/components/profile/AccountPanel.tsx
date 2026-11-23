@@ -44,7 +44,12 @@ function EmailAuth({
     event.preventDefault()
     if (busy) return
     const form = new FormData(event.currentTarget)
-    const fields = { email: String(form.get('email')).trim(), password: String(form.get('password')) }
+    const rawDisplayName = registering ? String(form.get('displayName') ?? '').trim() : ''
+    const fields = {
+      email: String(form.get('email')).trim(),
+      password: String(form.get('password')),
+      ...(registering && rawDisplayName ? { displayName: rawDisplayName } : {}),
+    }
     const parsed = (registering ? AuthRegisterSchema : AuthLoginSchema).safeParse(fields)
 
     if (!parsed.success) {
@@ -88,6 +93,12 @@ function EmailAuth({
         <div key={value} id={'email-auth-' + value} role="tabpanel" aria-labelledby={'auth-tab-' + value} hidden={mode !== value}>
           {mode === value && (
             <form onSubmit={submit} className="grid gap-4">
+              {registering && (
+                <div className="grid gap-2">
+                  <Label htmlFor="auth-display-name">Tên hiển thị (tùy chọn)</Label>
+                  <Input id="auth-display-name" name="displayName" type="text" autoComplete="name" maxLength={100} disabled={busy} className="h-11" />
+                </div>
+              )}
               <div className="grid gap-2">
                 <Label htmlFor="auth-email">Email</Label>
                 <Input id="auth-email" name="email" type="email" autoComplete="email" maxLength={254} required disabled={busy} className="h-11" />

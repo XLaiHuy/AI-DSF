@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, HttpCode, Param, Post, Put, Query,
+  Body, ConflictException, Controller, Get, HttpCode, Param, Post, Put, Query,
   Req, Res, UnauthorizedException, UseGuards,
 } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
@@ -35,9 +35,20 @@ export class ProfileAuthController {
   }
 
   @Get('auth/session')
-  async session(@Req() request: FastifyRequest): Promise<AuthSessionResponse> {
-    const user = request.session.kind === 'user' ? await this.profiles.getUser(request.session.userId) : null
-    return this.describeSession(user)
+  async session(
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<AuthSessionResponse> {
+    if (request.session.kind !== 'user') return this.describeSession(null)
+    try {
+      return this.describeSession(await this.profiles.getUser(request.session.userId))
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        reply.clearCookie(authCookie, sessionCookieOptions)
+        return this.describeSession(null)
+      }
+      throw error
+    }
   }
 
   @Post('auth/register')
@@ -92,15 +103,20 @@ export class ProfileAuthController {
     reply.header('Referrer-Policy', 'no-referrer')
     const cookie = request.cookies[oauthCookie]
     const unsigned = cookie ? request.unsignCookie(cookie) : null
-    const verifier = this.oauth.verifyState(provider, state, unsigned?.valid ? unsigned.value : null)
     reply.clearCookie(oauthCookie, { ...sessionCookieOptions, path: oauthCallbackPath(provider) })
 
-    const code = oauthCode.safeParse(queryCode)
-    if (!code.success) throw new UnauthorizedException()
-    const identity = await this.oauth.exchange(provider, code.data, verifier)
-    const user = await this.profiles.oauthLogin(identity, request.guestSessionId)
-    await this.setAuthCookie(reply, user)
-    return reply.redirect(new URL('/profile?login=success', this.oauth.appOrigin).toString())
+    try {
+      const verifier = this.oauth.verifyState(provider, state, unsigned?.valid ? unsigned.value : null)
+      const code = oauthCode.safeParse(queryCode)
+      if (!code.success) throw new UnauthorizedException()
+      const identity = await this.oauth.exchange(provider, code.data, verifier)
+      const user = await this.profiles.oauthLogin(identity, request.guestSessionId)
+      await this.setAuthCookie(reply, user)
+      return reply.redirect(new URL('/profile?login=success', this.oauth.appOrigin).toString())
+    } catch (error) {
+      const status = error instanceof ConflictException ? 'conflict' : 'error'
+      return reply.redirect(new URL(`/profile?login=${status}`, this.oauth.appOrigin).toString())
+    }
   }
 
   @Get('profile')
