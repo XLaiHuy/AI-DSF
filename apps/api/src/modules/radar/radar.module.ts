@@ -7,5 +7,6 @@ import { RadarService } from './radar.service'
   imports: [BullModule.registerQueue({ name: 'radar-ingestion' })],
   controllers: [RadarController],
   providers: [RadarService],
+  exports: [RadarService],
 })
 export class RadarModule {}
