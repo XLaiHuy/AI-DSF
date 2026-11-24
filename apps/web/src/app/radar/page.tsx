@@ -1,146 +1,419 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, ArrowUpRight, Clock3, ExternalLink, RefreshCw, Search } from 'lucide-react'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { AlertTriangle, ArrowDown, ArrowUpRight, ExternalLink, RefreshCw, Search } from 'lucide-react'
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button, Input } from '@/components/ui'
+import { CategoryArtwork } from '@/components/radar/CategoryArtwork'
+import { RadarDailyBrief, type DailyBriefResponse } from '@/components/radar/RadarDailyBrief'
 import { ApiError, apiClient } from '@/lib/api-client'
 
 type Source = { sourceKey: string; name: string; lastFetchStatus: string | null; lastAttemptAt: string | null; lastSuccessAt: string | null }
 type ArticleSource = { sourceName: string; url: string; firstSeenAt?: string | null; lastSeenAt?: string | null }
-type Article = { id: string; title: string; canonicalUrl: string; publishedAt: string | null; categories: string[]; sources: ArticleSource[] }
-type AlertItem = { id: string; threatCategory: string; tacticSummary: string; verificationStatus: string; publishedAt: string | null; evidence: { sourceName: string }[] }
+type Article = { id: string; title: string; canonicalUrl: string; publishedAt: string | null; image?: { url: string; alt: string; credit: string | null; sourceUrl: string | null; licenseIdentifier: string; licenseUrl: string | null } | null; categories: string[]; sources: ArticleSource[] }
+type ArticlePage = { items: Article[]; page: { hasMore: boolean; nextCursor: string | null }; sources: Source[] }
+type AlertItem = { id: string; threatCategory: string; tacticSummary: string; verificationStatus: string; publishedAt: string | null; evidence: { articleId?: string; sourceName: string; title?: string; url?: string }[] }
+type Highlight = Article & { editorialPriority?: 'HIGH' | 'STANDARD'; priorityReasons?: string[] | null }
+type RecommendationSignal = { categoryCode: string; source: 'PROFILE_GOAL' | 'SURVEY_TOPIC'; reason: string }
 
-const categoryLabels: Record<string, string> = { INTEREST_RATE: 'Lãi suất', BANKING: 'Ngân hàng', MARKET: 'Thị trường', POLICY: 'Chính sách', FINANCIAL_FRAUD: 'Lừa đảo tài chính' }
-
+const categoryLabels: Record<string, string> = {
+  INTEREST_RATE: 'Lãi suất', BANKING: 'Ngân hàng', MARKET: 'Thị trường', POLICY: 'Chính sách', INFLATION: 'Lạm phát', FINANCIAL_FRAUD: 'Lừa đảo tài chính',
+}
 const dateTimeFormat = new Intl.DateTimeFormat('vi-VN', {
-  day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  timeZone: 'Asia/Ho_Chi_Minh',
+  day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh',
+})
+const compactDateTimeFormat = new Intl.DateTimeFormat('vi-VN', {
+  day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh',
 })
 
-function formatDateTime(value: string | null | undefined) {
+function formatDateTime(value: string | null | undefined, compact = false) {
   if (!value) return null
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? null : dateTimeFormat.format(date)
+  return Number.isNaN(date.getTime()) ? null : (compact ? compactDateTimeFormat : dateTimeFormat).format(date)
+}
+
+function vietnamCalendarDay(value = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(value)
+  const fields = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${fields.year}-${fields.month}-${fields.day}`
+}
+
+function msUntilNextVietnamDay(value = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(value)
+  const fields = Object.fromEntries(parts.map((part) => [part.type, Number(part.value)]))
+  const nextMidnightUtc = Date.UTC(fields.year, fields.month - 1, fields.day + 1) - 7 * 60 * 60_000
+  return Math.max(1_000, nextMidnightUtc - value.getTime() + 1_000)
+}
+
+function articleCategory(article: Article) {
+  const category = article.categories[0]
+  return category ? categoryLabels[category] ?? category : 'Tin thị trường'
+}
+
+function highlightReasons(item: Highlight) {
+  return Array.isArray(item.priorityReasons) ? item.priorityReasons : []
+}
+
+function SourceLinks({ article, compact = false }: { article: Article; compact?: boolean }) {
+  if (!article.sources.length) return <span className="radar-source-missing">Chưa rõ nguồn</span>
+  return <span className="radar-source-links" aria-label="Nguồn gốc bài viết">
+    {article.sources.map((source, index) => <span className="radar-source-item" key={`${source.sourceName}-${source.url}`}>
+      {index > 0 && <span aria-hidden="true" className="radar-source-separator">·</span>}
+      <a href={source.url} target="_blank" rel="noreferrer">
+        {source.sourceName}<ExternalLink size={12} aria-hidden="true" /><span className="sr-only"> mở trong tab mới</span>
+      </a>
+      {index === 0 && formatDateTime(source.firstSeenAt, compact) && <span className="radar-first-seen">Ghi nhận {formatDateTime(source.firstSeenAt, compact)}</span>}
+    </span>)}
+  </span>
+}
+
+function ArticleImage({ image, className }: { image: NonNullable<Article['image']>; className: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) return <div className={`${className} radar-image-fallback`} role="img" aria-label="Ảnh nguồn không tải được">Ảnh nguồn không khả dụng</div>
+  return <img className={className} src={image.url} alt={image.alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+}
+
+function StoryThumbnail({ article }: { article: Article }) {
+  return <figure className="radar-story-thumb">
+    {article.image ? <><ArticleImage image={article.image} className="radar-story-thumb-image" /><figcaption>{article.image.credit || 'Nguồn ảnh'}</figcaption></> : <><CategoryArtwork categories={article.categories} /><figcaption>Minh họa theo chủ đề</figcaption></>}
+  </figure>
+}
+
+function FeatureStory({ article, index }: { article: Article; index: number }) {
+  const isLead = index === 0
+  return <article className={`radar-feature ${isLead ? 'radar-feature--lead' : 'radar-feature--second'}`}>
+    <div className="radar-feature-copy">
+      <p className="radar-feature-index"><span>{isLead ? 'Mới nhất' : 'Tiếp theo'}</span><span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span></p>
+      <p className="radar-feature-topic">{articleCategory(article)}</p>
+      <h2><Link href={`/radar/${article.id}`}>{article.title}</Link></h2>
+      <div className="radar-feature-meta">
+        <span>{article.publishedAt ? <>Công bố <time dateTime={article.publishedAt}>{formatDateTime(article.publishedAt)}</time></> : 'Chưa rõ thời gian công bố'}</span>
+        <SourceLinks article={article} compact />
+      </div>
+    </div>
+    <figure className="radar-feature-visual">{article.image ? <><ArticleImage image={article.image} className="radar-feature-image" /><figcaption>{article.image.credit} · {article.image.licenseIdentifier}{article.image.sourceUrl && <> · <a href={article.image.sourceUrl} target="_blank" rel="noreferrer">Bài nguồn</a></>}</figcaption></> : <CategoryArtwork categories={article.categories} />}</figure>
+  </article>
+}
+
+function RecommendationStory({ article, reason }: { article: Article; reason: string }) {
+  return <article className="radar-recommendation-row">
+    <h4><Link href={`/radar/${article.id}`}>{article.title}</Link></h4>
+    <p className="radar-recommendation-meta">
+      <span>{article.publishedAt ? <>Công bố <time dateTime={article.publishedAt}>{formatDateTime(article.publishedAt)}</time></> : 'Chưa rõ thời gian công bố'}</span>
+      <SourceLinks article={article} compact />
+    </p>
+    <p className="radar-recommendation-reason">{reason}</p>
+  </article>
 }
 
 function sourceState(status: string | null) {
-  if (status === 'SUCCESS') return { label: 'Hoạt động', className: 'text-[#176B49]', mark: '●' }
-  if (status === 'ERROR') return { label: 'Có lỗi', className: 'text-[#A62D25]', mark: '!' }
-  return { label: 'Chưa quét', className: 'text-[#65736B]', mark: '—' }
+  if (status === 'SUCCESS') return { label: 'Hoạt động', className: 'is-success' }
+  if (status === 'ERROR') return { label: 'Có lỗi', className: 'is-error' }
+  return { label: 'Chưa quét', className: 'is-idle' }
 }
 
 export default function RadarPage() {
   const [tab, setTab] = useState<'articles' | 'alerts'>('articles')
   const [category, setCategory] = useState('')
   const [search, setSearch] = useState('')
-  const articles = useQuery({ queryKey: ['radar-articles', category, search], queryFn: () => apiClient.get<{ items: Article[]; page: { hasMore: boolean; nextCursor: string | null }; sources: Source[] }>(`/radar/articles?${new URLSearchParams({ ...(category ? { category } : {}), ...(search ? { search } : {}) })}`) })
-  const alerts = useQuery({ queryKey: ['radar-alerts'], queryFn: () => apiClient.get<{ items: AlertItem[] }>('/radar/alerts') })
-  const staleSources = useMemo(() => (articles.data?.sources ?? []).filter((source) => source.lastFetchStatus === 'ERROR'), [articles.data])
+  const [period, setPeriod] = useState<'all' | 'today' | '7d' | 'month' | 'year' | 'custom'>('all')
+  const [year, setYear] = useState(String(new Date().getFullYear()))
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [interests, setInterests] = useState<string[]>([])
+  const [personalizationEnabled, setPersonalizationEnabled] = useState(false)
+  const [includeProfileGoal, setIncludeProfileGoal] = useState(false)
+  const [includeSurveyTopics, setIncludeSurveyTopics] = useState(false)
+  const [dailyBriefDay, setDailyBriefDay] = useState(vietnamCalendarDay)
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>
+    const scheduleNextRefresh = () => {
+      timer = setTimeout(() => {
+        setDailyBriefDay(vietnamCalendarDay())
+        scheduleNextRefresh()
+      }, msUntilNextVietnamDay())
+    }
+    scheduleNextRefresh()
+    return () => clearTimeout(timer)
+  }, [])
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('fincopilot.radar.interests') ?? 'null') as { enabled?: boolean; topics?: string[]; includeProfileGoal?: boolean; includeSurveyTopics?: boolean } | null
+      setInterests(saved?.topics?.filter((topic) => topic in categoryLabels) ?? [])
+      setPersonalizationEnabled(saved?.enabled === true)
+      setIncludeProfileGoal(saved?.includeProfileGoal === true)
+      setIncludeSurveyTopics(saved?.includeSurveyTopics === true)
+    } catch { /* Ignore malformed local preferences; no profile data is read. */ }
+  }, [])
+  function saveInterests(enabled: boolean, topics: string[]) {
+    setPersonalizationEnabled(enabled)
+    setInterests(topics)
+    localStorage.setItem('fincopilot.radar.interests', JSON.stringify({ enabled, topics, includeProfileGoal, includeSurveyTopics }))
+  }
+  function saveConsent(profile: boolean, survey: boolean) {
+    setIncludeProfileGoal(profile); setIncludeSurveyTopics(survey)
+    localStorage.setItem('fincopilot.radar.interests', JSON.stringify({ enabled: personalizationEnabled, topics: interests, includeProfileGoal: profile, includeSurveyTopics: survey }))
+  }
+  const articlesQuery = useInfiniteQuery({
+    queryKey: ['radar-articles', category, search, period, year, dateFrom, dateTo],
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ ...(category ? { category } : {}), ...(search ? { search } : {}), ...(period !== 'all' && period !== 'year' && period !== 'custom' ? { period } : {}), ...(period === 'year' ? { year } : {}), ...(period === 'custom' && dateFrom ? { from: dateFrom } : {}), ...(period === 'custom' && dateTo ? { to: dateTo } : {}) })
+      if (pageParam) params.set('cursor', pageParam)
+      return apiClient.get<ArticlePage>(`/radar/articles?${params}`)
+    },
+    getNextPageParam: (lastPage) => lastPage.page.hasMore ? lastPage.page.nextCursor ?? undefined : undefined,
+  })
+  const alertsQuery = useQuery({ queryKey: ['radar-alerts'], queryFn: () => apiClient.get<{ items: AlertItem[] }>('/radar/alerts') })
+  const fraudArticlesQuery = useQuery({ queryKey: ['radar-fraud-articles'], queryFn: () => apiClient.get<ArticlePage>('/radar/articles?category=FINANCIAL_FRAUD&limit=5') })
+  const highlightsQuery = useQuery({ queryKey: ['radar-highlights'], queryFn: () => apiClient.get<{ items: Highlight[]; ranking: string }>('/radar/articles/highlights') })
+  const dailyBriefQuery = useQuery({
+    queryKey: ['radar-daily-brief', dailyBriefDay, personalizationEnabled, interests, includeProfileGoal, includeSurveyTopics],
+    queryFn: () => apiClient.post<DailyBriefResponse>('/radar/daily-brief', {
+      personalizationEnabled, topics: personalizationEnabled ? interests : [],
+      includeProfileGoal: personalizationEnabled && includeProfileGoal,
+      includeSurveyTopics: personalizationEnabled && includeSurveyTopics,
+    }),
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: true,
+  })
+  const signalsQuery = useQuery({
+    queryKey: ['radar-recommendation-signals', includeProfileGoal, includeSurveyTopics],
+    queryFn: () => apiClient.post<{ signals: RecommendationSignal[] }>('/radar/recommendation-signals', { includeProfileGoal, includeSurveyTopics }),
+    enabled: personalizationEnabled && (includeProfileGoal || includeSurveyTopics),
+  })
+  const articles = useMemo(() => articlesQuery.data?.pages.flatMap((page) => page.items) ?? [], [articlesQuery.data])
+  const sources = articlesQuery.data?.pages[0]?.sources ?? []
+  const staleSources = sources.filter((source) => source.lastFetchStatus === 'ERROR')
+  const featured = articles.slice(0, 2)
+  const latestAlert = alertsQuery.data?.items[0]
+  const alertArticleIds = new Set(alertsQuery.data?.items.flatMap((alert) => alert.evidence.map((item) => item.articleId).filter((id): id is string => Boolean(id))) ?? [])
+  const fraudArticles = fraudArticlesQuery.data?.items.filter((article) => !alertArticleIds.has(article.id)) ?? []
+  const emptyAlertState = alertsQuery.data?.items.length === 0 && Boolean(fraudArticlesQuery.data) && fraudArticles.length === 0
+  const recommendations = useMemo(() => {
+    if (!personalizationEnabled) return []
+    const signalCategories = signalsQuery.data?.signals.map((signal) => signal.categoryCode) ?? []
+    const selectedTopics = [...new Set([...interests, ...signalCategories])]
+    if (selectedTopics.length === 0) return []
+    const highPriorityIds = new Set(highlightsQuery.data?.items.filter((item) => item.editorialPriority === 'HIGH').map((item) => item.id) ?? [])
+    const ranked = articles.filter((article) => article.categories.some((topic) => selectedTopics.includes(topic))).map((article) => {
+      const matchedTopics = article.categories.filter((topic) => selectedTopics.includes(topic))
+      const matchedTopic = matchedTopics[0] ?? ''
+      const ageDays = article.publishedAt ? Math.max(0, (Date.now() - new Date(article.publishedAt).getTime()) / 86_400_000) : Number.POSITIVE_INFINITY
+      const score = matchedTopics.length * 25 + (ageDays <= 1 ? 10 : ageDays <= 7 ? 5 : 0) + (highPriorityIds.has(article.id) ? 16 : 0) + Math.min(article.sources.length, 3) * 2
+      const reasons = matchedTopics.flatMap((topic) => {
+        const signal = signalsQuery.data?.signals.find((item) => item.categoryCode === topic)
+        return [signal?.reason ?? `Chủ đề bạn đã chọn: ${categoryLabels[topic]?.toLocaleLowerCase('vi')}`]
+      })
+      if (ageDays <= 7) reasons.push('Bài mới công bố')
+      if (highPriorityIds.has(article.id)) reasons.push('Đạt tiêu chí ưu tiên biên tập')
+      if (article.sources.length > 1) reasons.push(`Được ${article.sources.length} nguồn ghi nhận`)
+      return { article, score, matchedTopic, reason: reasons.join(' · ') }
+    }).sort((a, b) => b.score - a.score || new Date(b.article.publishedAt ?? 0).getTime() - new Date(a.article.publishedAt ?? 0).getTime())
+    const selected: typeof ranked = []
+    const perTopic = new Map<string, number>()
+    for (const item of ranked) {
+      if (selected.some((entry) => entry.article.id === item.article.id)) continue
+      const count = perTopic.get(item.matchedTopic) ?? 0
+      if (count >= 2) continue
+      selected.push(item)
+      perTopic.set(item.matchedTopic, count + 1)
+      if (selected.length === 4) break
+    }
+    return selected
+  }, [articles, highlightsQuery.data, interests, personalizationEnabled, signalsQuery.data])
 
-  return <div className="mx-auto max-w-[1120px] space-y-8 px-5 py-7 sm:px-8 sm:py-10">
-    <header className="border-b border-[#D9E1DA] pb-6 sm:pb-8">
-      <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#145C46]">
-        <span className="size-1.5 rounded-full bg-[#145C46]" aria-hidden="true" /> FinCopilot / Radar
+  const coldStart = useMemo(() => (highlightsQuery.data?.items ?? []).slice(0, 3), [highlightsQuery.data])
+
+  return <div className="radar-page">
+    <header className="radar-masthead">
+      <div>
+        <p className="radar-kicker"><span aria-hidden="true" /> Thông tin tài chính · Việt Nam</p>
+        <h1>Radar thị trường</h1>
+        <p className="radar-deck">Tin tức và cảnh báo có nguồn gốc rõ ràng. Thời điểm công bố được tách riêng khỏi thời điểm hệ thống ghi nhận.</p>
       </div>
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-        <div className="max-w-2xl">
-          <h1 className="text-[30px] font-semibold leading-tight tracking-[-0.04em] text-[#17231D] sm:text-[36px]">Tin tức thị trường</h1>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-[#52635A] sm:text-[15px]">Nguồn gốc và thời điểm được giữ rõ. Nhận định AI được trình bày riêng ở phần phân tích.</p>
-        </div>
-        <div className="flex items-baseline gap-2 text-sm text-[#52635A]">
-          <span className="font-mono text-base font-semibold tabular-nums text-[#17231D]">{articles.data?.sources.length ? articles.data.sources.length : '—'}</span>
-          <span>nguồn theo dõi</span>
-        </div>
-      </div>
+      <div className="radar-edition-mark" aria-hidden="true"><span>F</span><small>FINCOPILOT<br/>MARKET DESK</small></div>
     </header>
 
-    <div className="grid gap-9 lg:grid-cols-[minmax(0,1fr)_268px] lg:gap-12">
-      <section className="min-w-0" aria-label="Bản tin Radar">
-        <div className="mb-5 space-y-4 border-b border-[#D9E1DA] pb-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex gap-5" role="group" aria-label="Loại nội dung">
-              <button type="button" aria-pressed={tab === 'articles'} onClick={() => setTab('articles')} className={`min-h-11 border-b-2 px-0.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#145C46] ${tab === 'articles' ? 'border-[#145C46] text-[#145C46]' : 'border-transparent text-[#65736B] hover:text-[#17231D]'}`}>Tin thị trường</button>
-              <button type="button" aria-pressed={tab === 'alerts'} onClick={() => setTab('alerts')} className={`min-h-11 border-b-2 px-0.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#145C46] ${tab === 'alerts' ? 'border-[#145C46] text-[#145C46]' : 'border-transparent text-[#65736B] hover:text-[#17231D]'}`}>Cảnh báo lừa đảo</button>
-            </div>
-            {tab === 'articles' && <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-              <label className="relative min-w-0 flex-1 sm:w-[220px]">
-                <span className="sr-only">Tìm tin theo tiêu đề</span>
-                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#65736B]" size={15} aria-hidden="true" />
-                <Input aria-label="Tìm tin theo tiêu đề" className="h-10 rounded-md border-[#D9E1DA] bg-white pl-9 text-sm shadow-none focus-visible:ring-[#145C46]" placeholder="Tìm theo tiêu đề" value={search} onChange={(event) => setSearch(event.target.value)} />
-              </label>
-              <label className="min-w-0 sm:w-[166px]">
-                <span className="sr-only">Lọc chủ đề</span>
-                <select aria-label="Lọc chủ đề" className="h-10 w-full rounded-md border border-[#D9E1DA] bg-white px-3 text-sm text-[#17231D] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#145C46]" value={category} onChange={(event) => setCategory(event.target.value)}>
-                  <option value="">Mọi chủ đề</option>{Object.entries(categoryLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
-                </select>
-              </label>
-            </div>}
+    {tab === 'articles' && <section className={`radar-v2-alerts ${emptyAlertState ? 'radar-v2-alerts--empty' : ''}`} aria-labelledby="radar-v2-alerts-title">
+      {emptyAlertState ? <div className="radar-empty-alert-bar"><p id="radar-v2-alerts-title"><strong>Cảnh báo lừa đảo</strong><span>Hiện chưa có cảnh báo hoặc bài viết cùng chủ đề được công bố.</span></p><button type="button" onClick={() => setTab('alerts')}>Mở danh sách <ArrowUpRight size={14} aria-hidden="true" /></button></div> : <>
+      <div className="radar-v2-section-head"><div><p className="radar-context-kicker">CẢNH BÁO CÓ DẪN CHỨNG</p><h2 id="radar-v2-alerts-title">Cảnh báo lừa đảo cần chú ý</h2></div><button type="button" onClick={() => setTab('alerts')}>Tất cả cảnh báo <ArrowUpRight size={14} aria-hidden="true" /></button></div>
+      {alertsQuery.isPending && <p className="radar-context-empty">Đang tải cảnh báo…</p>}
+      {alertsQuery.isError && <p className="radar-context-empty" role="status">Chưa thể tải cảnh báo. Tin thị trường vẫn có thể xem bên dưới.</p>}
+      <div className="radar-v2-alert-list">
+        {alertsQuery.data?.items.slice(0, 3).map((alert) => <article className="radar-v2-alert-item" key={alert.id}>
+          <span className={`radar-verification ${alert.verificationStatus === 'VERIFIED' ? 'is-verified' : 'is-unverified'}`}>{alert.verificationStatus === 'VERIFIED' ? 'Đã xác minh' : alert.verificationStatus === 'UNVERIFIED' ? 'Chưa xác minh' : `Trạng thái: ${alert.verificationStatus}`}</span>
+          <h3><Link href={`/radar/${alert.id}?kind=alert`}>{alert.tacticSummary}</Link></h3>
+          <p>{alert.publishedAt ? <>Công bố <time dateTime={alert.publishedAt}>{formatDateTime(alert.publishedAt)}</time></> : 'Chưa rõ thời điểm công bố'}{alert.evidence.length > 0 && <> · Dẫn chứng: {alert.evidence.map((item) => item.sourceName).join(', ')}</>}</p>
+        </article>)}
+        {fraudArticles.slice(0, 2).map((article) => <article className="radar-v2-alert-item radar-v2-alert-item--report" key={`report-${article.id}`}>
+          <span className="radar-verification is-unverified">Bài viết cùng chủ đề · Chưa có trạng thái xác minh cảnh báo</span>
+          <h3><Link href={`/radar/${article.id}`}>{article.title}</Link></h3>
+          <p>{article.publishedAt ? <>Công bố <time dateTime={article.publishedAt}>{formatDateTime(article.publishedAt)}</time></> : 'Chưa rõ thời điểm công bố'} · <SourceLinks article={article} compact /></p>
+        </article>)}
+      </div>
+      </>}
+    </section>}
+
+    {tab === 'articles' && <section className="radar-v2-highlights" aria-labelledby="radar-v2-highlights-title">
+      <div className="radar-v2-section-head"><div><p className="radar-context-kicker">ƯU TIÊN BIÊN TẬP · CÓ GIẢI THÍCH</p><h2 id="radar-v2-highlights-title">Tin đáng chú ý hôm nay</h2></div></div>
+      {highlightsQuery.isError && <p className="radar-context-empty" role="status">Chưa thể tạo danh sách ưu tiên. Không có số liệu phổ biến hoặc tương tác giả.</p>}
+      <div className="radar-v2-highlight-list">{highlightsQuery.data?.items.slice(0, 3).map((item) => <article key={item.id}>
+        <p className="radar-story-topic">{articleCategory(item)}{item.editorialPriority === 'HIGH' ? ' · ƯU TIÊN CAO' : ''}</p>
+        <h3><Link href={`/radar/${item.id}`}>{item.title}</Link></h3>
+        <p className="radar-v2-reasons">{highlightReasons(item).length ? highlightReasons(item).join(' · ') : 'Xếp theo thời điểm công bố; chưa có tín hiệu ưu tiên bổ sung.'}</p>
+      </article>)}</div>
+      {highlightsQuery.data?.items.length === 0 && <p className="radar-context-empty">Chưa có bài viết có ngày công bố để xếp hạng.</p>}
+    </section>}
+
+    {tab === 'articles' && <section className="radar-v2-personal" aria-labelledby="radar-v2-personal-title">
+      <div className="radar-v2-section-head"><div><p className="radar-context-kicker">TÙY CHỌN · LƯU TRÊN THIẾT BỊ NÀY</p><h2 id="radar-v2-personal-title">Chủ đề bạn quan tâm</h2></div>
+        <button type="button" aria-pressed={personalizationEnabled} onClick={() => saveInterests(!personalizationEnabled, interests)}>{personalizationEnabled ? 'Tắt gợi ý cá nhân' : 'Bật gợi ý cá nhân'}</button>
+      </div>
+      <div className="radar-preference-group">
+        <div className="radar-v2-interest-list" role="group" aria-label="Chọn chủ đề quan tâm">{Object.entries(categoryLabels).map(([code, label]) => {
+          const next = interests.includes(code) ? interests.filter((topic) => topic !== code) : [...interests, code]
+          return <button type="button" key={code} aria-pressed={interests.includes(code)} onClick={() => saveInterests(personalizationEnabled, next)}>{label}</button>
+        })}</div>
+        <fieldset className="radar-consent-options"><legend>Cho phép dùng thêm tín hiệu (tùy chọn)</legend>
+          <label><input type="checkbox" checked={includeProfileGoal} onChange={(event) => saveConsent(event.target.checked, includeSurveyTopics)} /> Mục tiêu trong hồ sơ tài chính</label>
+          <label><input type="checkbox" checked={includeSurveyTopics} onChange={(event) => saveConsent(includeProfileGoal, event.target.checked)} /> Loại Khảo sát đã dùng gần đây</label>
+        </fieldset>
+        <p className="radar-consent-summary">Gợi ý dùng chủ đề bạn chọn và chỉ dùng mục tiêu hoặc loại Khảo sát gần đây nếu bạn bật quyền tương ứng. Không đọc thu nhập, số tiền vay, kết quả tính hay tài liệu Giám định.</p>
+        <details className="radar-consent-details">
+          <summary>Chi tiết về dữ liệu và quyền kiểm soát</summary>
+          <p>Lựa chọn chủ đề được lưu trên thiết bị này. Bạn có thể tắt gợi ý bất cứ lúc nào; cảnh báo công khai vẫn luôn hiển thị. Khi không có tín hiệu được phép dùng, danh sách dựa trên tiêu chí tin công khai và được ghi rõ như vậy.</p>
+        </details>
+      </div>
+      {personalizationEnabled && <section className="radar-v2-recommendations" aria-labelledby="radar-recommendations-title">
+        <div className="radar-recommendations-heading">
+          <div><p className="radar-context-kicker">{interests.length || signalsQuery.data?.signals.length ? 'THEO CHỦ ĐỀ ĐÃ CHỌN' : 'THEO TIN CÔNG KHAI'}</p><h3 id="radar-recommendations-title">{interests.length || signalsQuery.data?.signals.length ? 'Gợi ý cho bạn' : 'Tin ưu tiên công khai'}</h3></div>
+        </div>
+        {signalsQuery.isError && (includeProfileGoal || includeSurveyTopics) && <p role="status" className="radar-recommendation-status">Không tải được tín hiệu được phép; vẫn dùng chủ đề đã chọn.</p>}
+        {recommendations.length ? <div className="radar-recommendation-list">{recommendations.map(({ article, reason }) => <RecommendationStory key={article.id} article={article} reason={reason} />)}</div> : interests.length || signalsQuery.data?.signals.length ? <p className="radar-recommendation-empty">Chưa có bài phù hợp trong các tin đã tải. Không suy đoán sở thích khác.</p> : <>
+          <p className="radar-recommendation-empty">Chưa có tín hiệu cá nhân được phép dùng; các tin dưới đây theo tiêu chí công khai.</p>
+          <div className="radar-recommendation-list">{coldStart.map((article) => <RecommendationStory key={article.id} article={article} reason={highlightReasons(article).join(' · ') || 'Ưu tiên công khai theo thời gian công bố'} />)}</div>
+        </>}
+      </section>}
+    </section>}
+
+    <div className="radar-workspace">
+      <section className="radar-feed" id="radar-feed" aria-label="Bản tin Radar">
+        <div className="radar-discovery" role="group" aria-label="Tìm kiếm và lọc tin">
+        <div className="radar-controls">
+          <div className="radar-tabs" role="group" aria-label="Loại nội dung">
+            <button type="button" aria-pressed={tab === 'articles'} onClick={() => setTab('articles')}>Thị trường</button>
+            <button type="button" aria-pressed={tab === 'alerts'} onClick={() => setTab('alerts')}>Cảnh báo lừa đảo</button>
           </div>
+          {tab === 'articles' && <label className="radar-search">
+            <span className="sr-only">Tìm tin theo tiêu đề</span>
+            <Search size={16} aria-hidden="true" />
+            <Input aria-label="Tìm tin theo tiêu đề" placeholder="Tìm tin theo tiêu đề" value={search} onChange={(event) => setSearch(event.target.value)} />
+          </label>}
+          {tab === 'articles' && <div className="radar-date-controls">
+            <label><span className="sr-only">Lọc thời gian</span><select aria-label="Lọc thời gian" value={period} onChange={(event) => setPeriod(event.target.value as typeof period)}>
+              <option value="all">Mọi thời gian</option><option value="today">Hôm nay</option><option value="7d">7 ngày qua</option><option value="month">Tháng này</option><option value="year">Lưu trữ theo năm</option><option value="custom">Chọn ngày</option>
+            </select></label>
+            {period === 'year' && <label><span className="sr-only">Năm công bố</span><select aria-label="Năm công bố" value={year} onChange={(event) => setYear(event.target.value)}>{Array.from({ length: 11 }, (_, index) => String(new Date().getFullYear() - index)).map((item) => <option key={item} value={item}>{item}</option>)}</select></label>}
+            {period === 'custom' && <><label><span className="sr-only">Từ ngày</span><input type="date" aria-label="Từ ngày" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label><label><span className="sr-only">Đến ngày</span><input type="date" aria-label="Đến ngày" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label></>}
+          </div>}
         </div>
 
-        {staleSources.length > 0 && <div role="status" className="mb-4 flex gap-2 border-l-2 border-[#A62D25] bg-[#FBF3F1] px-3 py-2.5 text-sm leading-5 text-[#67241F]">
-          <AlertTriangle className="mt-0.5 shrink-0" size={15} aria-hidden="true" />
-          <p><span className="font-semibold">Một số nguồn đang gián đoạn:</span> {staleSources.map((source) => source.name).join(', ')}. Tin hiện có giữ nguyên thời điểm xuất bản.</p>
+        {tab === 'articles' && <div className="radar-topics" role="group" aria-label="Lọc theo chủ đề">
+          <button type="button" aria-pressed={category === ''} onClick={() => setCategory('')}>Tất cả</button>
+          {Object.entries(categoryLabels).map(([code, label]) => <button type="button" key={code} aria-pressed={category === code} onClick={() => setCategory(category === code ? '' : code)}>{label}</button>)}
+        </div>}
+        </div>
+
+        {tab === 'articles' && staleSources.length > 0 && <div role="status" className="radar-stale-note">
+          <AlertTriangle size={16} aria-hidden="true" />
+          <p><strong>Nguồn tạm gián đoạn:</strong> {staleSources.map((source) => source.name).join(', ')}. Ngày công bố tin cũ được giữ nguyên.</p>
         </div>}
 
-        {tab === 'articles' ? <div aria-label="Tin tức" className="divide-y divide-[#D9E1DA] border-t border-[#D9E1DA]">
-          {articles.isPending && <p role="status" className="py-8 text-sm text-[#52635A]">Đang tải tin…</p>}
-          {articles.isError && <div className="flex flex-wrap items-center justify-between gap-3 py-6"><p role="alert" className="text-sm text-[#67241F]">{articles.error instanceof ApiError ? articles.error.message : 'Không tải được Radar.'} Hãy kiểm tra kết nối rồi thử lại.</p><Button variant="outline" size="sm" onClick={() => void articles.refetch()}><RefreshCw size={14} aria-hidden="true"/> Thử lại</Button></div>}
-          {articles.data?.items.map((article) => <article key={article.id} className="py-6 first:pt-6 sm:py-7">
-            <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#145C46]">
-              {article.categories.length ? article.categories.map((item) => <span key={item}>{categoryLabels[item] ?? item}</span>) : <span>Tin thị trường</span>}
+        {tab === 'articles' ? <div className="radar-article-content" aria-label="Tin thị trường">
+          {articlesQuery.isPending && <p role="status" className="radar-state-message">Đang tải tin…</p>}
+          {articlesQuery.isError && <div className="radar-state-message radar-error-state"><p role="alert">{articlesQuery.error instanceof ApiError ? articlesQuery.error.message : 'Không tải được Radar.'} Hãy kiểm tra kết nối rồi thử lại.</p><Button variant="outline" size="sm" onClick={() => void articlesQuery.refetch()}><RefreshCw size={14} aria-hidden="true"/> Thử lại</Button></div>}
+          {featured.length > 0 && <>
+            <div className={`radar-feature-grid ${featured.length === 1 ? 'radar-feature-grid--single' : ''}`} aria-label="Tin nổi bật theo thời gian công bố">
+              {featured.map((article, index) => <FeatureStory key={article.id} article={article} index={index} />)}
             </div>
-            <h2 className="max-w-3xl text-[21px] font-semibold leading-[1.35] tracking-[-0.025em] text-[#17231D] sm:text-[25px]">
-              <Link href={`/radar/${article.id}`} className="decoration-[#145C46] decoration-1 underline-offset-4 hover:text-[#145C46] hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#145C46]">{article.title}</Link>
-            </h2>
-            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-5 text-[#52635A]">
-              <Clock3 size={14} className="shrink-0" aria-hidden="true" />
-              <span>{article.publishedAt ? <>Công bố <time dateTime={article.publishedAt}>{formatDateTime(article.publishedAt) ?? 'chưa rõ thời gian'}</time></> : 'Chưa rõ thời gian công bố'}</span>
-              {article.sources.map((source, index) => <span key={`${source.sourceName}-${source.url}`} className="inline-flex items-center gap-1.5">
-                <span aria-hidden="true">·</span><span className="font-medium text-[#17231D]">{source.sourceName}</span>
-                {index === article.sources.length - 1 && formatDateTime(source.firstSeenAt) && <span className="text-[#65736B]">· Thu thập lần đầu {formatDateTime(source.firstSeenAt)}</span>}
-              </span>)}
-              {article.sources.length === 0 && <span>· Chưa rõ nguồn</span>}
-            </div>
-            <div className="mt-4 flex items-center gap-5 text-[13px] font-semibold">
-              <Link href={`/radar/${article.id}`} className="inline-flex min-h-9 items-center gap-1 text-[#145C46] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#145C46]">Mở phân tích <ArrowUpRight size={14} aria-hidden="true" /></Link>
-              {article.sources.map((source) => <a key={`${source.sourceName}-${source.url}-original`} className="inline-flex min-h-9 items-center gap-1 text-[#52635A] hover:text-[#17231D] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#145C46]" href={source.url} target="_blank" rel="noreferrer">Bài gốc <ExternalLink size={13} aria-hidden="true"/><span className="sr-only"> mở trong tab mới</span></a>)}
-            </div>
+            {articles.length > 2 && <section className="radar-secondary" aria-label="Các tin tiếp theo">
+              <h2 className="radar-section-heading"><span>Tin tiếp theo</span><span>THEO THỜI GIAN CÔNG BỐ</span></h2>
+              <div className="radar-story-list">
+                {articles.slice(2).map((article, index) => <article className="radar-story-row" key={article.id}>
+                  <span className="radar-story-index" aria-hidden="true">{String(index + 3).padStart(2, '0')}</span>
+                  <div className="radar-story-copy">
+                    <p className="radar-story-topic">{articleCategory(article)}</p>
+                    <h3><Link href={`/radar/${article.id}`}>{article.title}</Link></h3>
+                    <div className="radar-story-meta"><span>{article.publishedAt ? <>Công bố <time dateTime={article.publishedAt}>{formatDateTime(article.publishedAt)}</time></> : 'Chưa rõ thời gian công bố'}</span><SourceLinks article={article} compact /></div>
+                  </div>
+                  <StoryThumbnail article={article} />
+                </article>)}
+              </div>
+            </section>}
+            {articlesQuery.hasNextPage && <div className="radar-load-more">
+              {articlesQuery.isFetchNextPageError && <p role="alert">Không tải thêm được tin. Bạn có thể thử lại.</p>}
+              <Button variant="outline" onClick={() => void articlesQuery.fetchNextPage()} disabled={articlesQuery.isFetchingNextPage}>
+                {articlesQuery.isFetchingNextPage ? 'Đang tải…' : articlesQuery.isFetchNextPageError ? 'Thử tải lại' : 'Tải thêm tin'}
+                {!articlesQuery.isFetchingNextPage && <ArrowDown size={15} aria-hidden="true" />}
+              </Button>
+            </div>}
+          </>}
+          {articlesQuery.data && articles.length === 0 && <div className="radar-empty-state">
+            <span className="radar-empty-mark" aria-hidden="true">R</span>
+            <p className="radar-story-topic">CHƯA CÓ KẾT QUẢ</p>
+            <h2>Chưa có tin phù hợp</h2>
+            <p>Thử tìm với từ khóa khác hoặc bỏ bộ lọc chủ đề.</p>
+            {(category || search || period !== 'all') && <button type="button" onClick={() => { setCategory(''); setSearch(''); setPeriod('all'); setDateFrom(''); setDateTo('') }}>Xóa bộ lọc</button>}
+          </div>}
+        </div> : <div className="radar-alert-feed" aria-label="Cảnh báo lừa đảo">
+          {alertsQuery.isPending && <p role="status" className="radar-state-message">Đang tải cảnh báo…</p>}
+          {alertsQuery.isError && <div className="radar-state-message radar-error-state"><p role="alert">Không tải được cảnh báo.</p><Button variant="outline" size="sm" onClick={() => void alertsQuery.refetch()}><RefreshCw size={14} aria-hidden="true"/> Thử lại</Button></div>}
+          {alertsQuery.data?.items.map((alert) => <article className="radar-alert-row" key={alert.id}>
+            <div className="radar-alert-status"><span>{alert.threatCategory}</span><strong className={alert.verificationStatus === 'VERIFIED' ? 'is-verified' : 'is-unverified'}>{alert.verificationStatus === 'VERIFIED' ? 'Đã xác minh' : 'Chưa xác minh'}</strong></div>
+            <h2><Link href={`/radar/${alert.id}?kind=alert`}>{alert.tacticSummary}</Link></h2>
+            <p>{alert.publishedAt ? <>Công bố <time dateTime={alert.publishedAt}>{formatDateTime(alert.publishedAt)}</time></> : 'Chưa rõ thời điểm công bố'}{alert.evidence.length > 0 && <> · Dẫn chứng từ {alert.evidence.map((item) => item.sourceName).join(', ')}</>}</p>
+            <Link className="radar-alert-detail" href={`/radar/${alert.id}?kind=alert`}>Xem dấu hiệu và bằng chứng <ArrowUpRight size={15} aria-hidden="true" /></Link>
           </article>)}
-          {articles.data?.items.length === 0 && <div className="py-10"><p className="text-xl font-semibold text-[#17231D]">Không có tin phù hợp</p><p className="mt-2 text-sm leading-6 text-[#52635A]">Thử bỏ bớt bộ lọc hoặc đổi chủ đề.</p></div>}
-        </div> : <div aria-label="Cảnh báo lừa đảo" className="divide-y divide-[#D9E1DA] border-t border-[#D9E1DA]">
-          {alerts.isPending && <p role="status" className="py-8 text-sm text-[#52635A]">Đang tải cảnh báo…</p>}
-          {alerts.isError && <div className="py-6"><p role="alert" className="text-sm text-[#67241F]">Không tải được cảnh báo.</p><Button className="mt-3" variant="outline" size="sm" onClick={() => void alerts.refetch()}><RefreshCw size={14} aria-hidden="true"/> Thử lại</Button></div>}
-          {alerts.data?.items.map((alert) => <article key={alert.id} className="py-6 sm:py-7">
-            <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#52635A]">
-              <span>{alert.threatCategory}</span><span aria-hidden="true">·</span>
-              <span className={`normal-case tracking-normal ${alert.verificationStatus === 'VERIFIED' ? 'text-[#176B49]' : 'text-[#8A5A08]'}`}>
-                {alert.verificationStatus === 'VERIFIED' ? 'Đã xác minh' : 'Chưa xác minh'}
-              </span>
-            </div>
-            <h2 className="max-w-3xl text-[21px] font-semibold leading-[1.35] tracking-[-0.025em] text-[#17231D] sm:text-[25px]"><Link href={`/radar/${alert.id}?kind=alert`} className="hover:text-[#145C46] hover:underline hover:decoration-1 hover:underline-offset-4">{alert.tacticSummary}</Link></h2>
-            <p className="mt-3 text-[13px] leading-5 text-[#52635A]">{alert.publishedAt ? <>Công bố <time dateTime={alert.publishedAt}>{formatDateTime(alert.publishedAt) ?? 'chưa rõ thời gian'}</time></> : 'Chưa rõ thời điểm công bố'}{alert.evidence.length > 0 && <> · Dẫn chứng từ {alert.evidence.map((item) => item.sourceName).join(', ')}</>}</p>
-            <Link href={`/radar/${alert.id}?kind=alert`} className="mt-3 inline-flex min-h-9 items-center gap-1 text-[13px] font-semibold text-[#145C46] hover:underline">Xem dấu hiệu và bằng chứng <ArrowUpRight size={14} aria-hidden="true" /></Link>
-          </article>)}
-          {alerts.data?.items.length === 0 && <div className="py-10"><p className="text-xl font-semibold text-[#17231D]">Chưa có cảnh báo được công bố</p><p className="mt-2 text-sm leading-6 text-[#52635A]">Chỉ cảnh báo đã công bố mới xuất hiện tại đây.</p></div>}
+          {alertsQuery.data?.items.length === 0 && <div className="radar-empty-state">
+            <span className="radar-empty-mark" aria-hidden="true">!</span><p className="radar-story-topic">THREAT RADAR</p><h2>Chưa có cảnh báo được công bố</h2><p>Chỉ cảnh báo đã công bố mới xuất hiện tại đây.</p>
+          </div>}
         </div>}
       </section>
 
-      <aside aria-label="Trạng thái nguồn" className="border-t border-[#D9E1DA] pt-5 lg:border-t-0 lg:border-l lg:pl-7 lg:pt-0">
-        <h2 className="text-sm font-semibold text-[#17231D]">Trạng thái nguồn</h2>
-        <p className="mt-1 text-xs leading-5 text-[#65736B]">Lần quét gần nhất được hiển thị theo dữ liệu hệ thống.</p>
-        {articles.data?.sources.length ? <ul className="mt-4 divide-y divide-[#E6EBE6]">
-          {articles.data.sources.map((source) => {
-            const state = sourceState(source.lastFetchStatus)
-            return <li key={source.sourceKey} className="flex items-start justify-between gap-3 py-3 first:pt-0">
-              <div className="min-w-0"><p className="text-sm font-medium text-[#17231D]">{source.name}</p><p className="mt-1 text-xs text-[#65736B]">{source.lastSuccessAt ? `Thành công ${formatDateTime(source.lastSuccessAt)}` : source.lastAttemptAt ? `Thử gần nhất ${formatDateTime(source.lastAttemptAt)}` : 'Chưa có lần quét'}</p></div>
-              <span className={`shrink-0 text-xs font-semibold ${state.className}`}><span aria-hidden="true">{state.mark}</span><span className="sr-only"> trạng thái </span> {state.label}</span>
-            </li>
-          })}
-        </ul> : <p className="mt-4 border-l border-[#D9E1DA] py-1 pl-3 text-xs leading-5 text-[#65736B]">Trạng thái nguồn chưa được API cung cấp.</p>}
-        <p className="mt-5 border-t border-[#D9E1DA] pt-4 text-xs leading-5 text-[#65736B]">Lỗi lấy tin không làm thay đổi ngày công bố của bài viết.</p>
+      <aside className="radar-context" aria-label="Thông tin liên quan">
+        <RadarDailyBrief data={dailyBriefQuery.data} isPending={dailyBriefQuery.isPending} isError={dailyBriefQuery.isError} onRetry={() => void dailyBriefQuery.refetch()} />
+        <section className="radar-context-alert">
+          <div className="radar-context-heading"><p className="radar-context-kicker">PROVENANCE</p><h2>Dẫn chứng cảnh báo gần nhất</h2></div>
+          {alertsQuery.isPending && <p className="radar-context-empty">Đang tải nguồn dẫn chứng…</p>}
+          {alertsQuery.isError && <p className="radar-context-empty">Chưa thể lấy nguồn dẫn chứng.</p>}
+          {latestAlert && <>
+            <p className="radar-context-meta">{latestAlert.verificationStatus === 'VERIFIED' ? 'Trạng thái: đã xác minh' : 'Trạng thái: chưa xác minh'}</p>
+            {latestAlert.evidence.length > 0 ? <ul className="radar-context-evidence">{latestAlert.evidence.map((item, index) => <li key={`${item.sourceName}-${item.url ?? index}`}>
+              {item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.sourceName}<ExternalLink size={12} aria-hidden="true" /><span className="sr-only"> mở trong tab mới</span></a> : <span>{item.sourceName}</span>}
+              {item.title && <p>{item.title}</p>}
+            </li>)}</ul> : <p className="radar-context-empty">Chưa có dẫn chứng được cung cấp.</p>}
+            <Link className="radar-context-action" href={`/radar/${latestAlert.id}?kind=alert`}>Mở chi tiết cảnh báo <ArrowUpRight size={14} aria-hidden="true" /></Link>
+          </>}
+          {alertsQuery.data?.items.length === 0 && <p className="radar-context-empty">Chưa có cảnh báo được công bố.</p>}
+        </section>
+
+        <section className="radar-context-sources">
+          <div className="radar-context-heading"><p className="radar-context-kicker">DATA DESK</p><h2>Nguồn thu thập</h2></div>
+          {sources.length > 0 ? <ul>
+            {sources.map((source) => {
+              const state = sourceState(source.lastFetchStatus)
+              const stateTime = source.lastFetchStatus === 'ERROR' ? source.lastAttemptAt : source.lastSuccessAt ?? source.lastAttemptAt
+              return <li key={source.sourceKey}>
+                <div><span className={`radar-source-state ${state.className}`} aria-hidden="true" /><span className="radar-source-name">{source.name}</span></div>
+                <span className={`radar-source-status ${state.className}`}>{state.label}</span>
+                <time dateTime={stateTime ?? undefined}>{stateTime ? formatDateTime(stateTime, true) : 'Chưa có lần quét'}</time>
+              </li>
+            })}
+          </ul> : <p className="radar-context-empty">Trạng thái nguồn chưa được API cung cấp.</p>}
+          <p className="radar-source-footnote">Nguồn hoạt động không đồng nghĩa nội dung đã được xác minh.</p>
+        </section>
       </aside>
     </div>
   </div>

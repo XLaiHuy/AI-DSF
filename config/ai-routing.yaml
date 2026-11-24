@@ -8,6 +8,9 @@ routing:
   RADAR_CLASSIFY_IMPACT:
     primary: openai:gpt-4.1-mini
     fallbacks: [google:gemini-3.8-flash]
+  RADAR_DAILY_BRIEF:
+    primary: openai:gpt-4.1-mini
+    fallbacks: [google:gemini-3.8-flash]
   SURVEY_WEB_LOOKUP:
     primary: openai:gpt-4.1-mini
     fallbacks: [google:gemini-3.8-flash]

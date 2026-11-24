@@ -13,9 +13,17 @@ export const AI_TASK_SCHEMAS = {
     topics: z.array(z.string()),
     extractedFacts: z.array(z.string()),
     aiAssessment: z.string(),
-    suggestedRateDelta: decimalString.nullable(),
+    // Radar AI explains source-backed impact; numerical loan scenarios belong to deterministic math.
+    suggestedRateDelta: z.null(),
     isFraudAlert: z.boolean(),
     indicators: z.array(ThreatIndicatorSchema),
+  }),
+  RADAR_DAILY_BRIEF: z.strictObject({
+    items: z.array(z.strictObject({
+      referenceId: z.uuid(),
+      summary: z.string().trim().min(1).max(240),
+      interpretation: z.string().trim().max(280).nullable(),
+    })).max(10),
   }),
   SURVEY_WEB_LOOKUP: z.discriminatedUnion('found', [
     z.strictObject({

@@ -1,5 +1,7 @@
 # FINCOPILOT — UI Audit (Radar SCR-02)
 
+> **Tài liệu lịch sử.** Audit Radar ban đầu này đã được mở rộng và thay thế bởi [audit hiện hành](design/UI_AUDIT.md), bao gồm AppShell, Home, chi tiết Radar, handoff Khảo sát và Admin cùng kết quả kiểm tra responsive.
+
 **Phạm vi audit:** màn Radar hiện có tại `/radar`, ở trạng thái chạy trên desktop và mobile; các yêu cầu SCR-02/SCR-03, user stories P1, app shell, component tokens và prototype/ERD/architecture assets hiện có. Đây là audit trước khi redesign, không phải phê duyệt nghiệp vụ.
 
 ## Tài liệu và giới hạn
