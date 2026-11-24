@@ -8,6 +8,7 @@ if (existsSync(envPath)) loadEnvFile(envPath)
 
 const config: NextConfig = {
   devIndicators: false,
+  experimental: { optimizePackageImports: ['lucide-react'] },
   async rewrites() {
     return [{
       source: '/api/v1/:path*',

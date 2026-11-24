@@ -1,92 +1,67 @@
-import { handoffRoutes, ROUTES } from '@fincopilot/shared-types'
-import { Activity, ArrowRight, Calculator, ShieldCheck } from 'lucide-react'
+import { ROUTES } from '@fincopilot/shared-types'
+import { Activity, ArrowRight, Calculator, ScanLine } from 'lucide-react'
 import Link from 'next/link'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-import { Badge, buttonVariants, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui'
+import { OverviewWidgets } from '@/components/home/OverviewWidgets'
+import { buttonVariants, Card } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
 const pillars = [
   {
-    href: ROUTES.radar,
-    badge: 'Phân hệ 1 · Tài',
-    badgeVariant: 'info' as const,
-    icon: Activity,
-    title: 'Radar thị trường & Cảnh báo',
-    description: 'Tổng hợp tin tài chính từ 5 nguồn tin cậy, khử trùng lặp và gắn cờ chỉ dấu rủi ro từ NHNN/NCSC.',
-    cta: 'Mở Radar',
+    href: ROUTES.radar, icon: Activity, title: 'Radar thị trường',
+    description: 'Theo dõi tin tài chính và cảnh báo từ những nguồn đã đối chiếu.',
   },
   {
-    href: ROUTES.survey,
-    badge: 'Phân hệ 2 · Tân',
-    badgeVariant: 'safe' as const,
-    icon: Calculator,
-    title: 'Khảo sát vay & Tích lũy',
-    description: 'Tính toán chuẩn xác bằng decimal.js (EMI, APR/EAR, DTI), đối chiếu sản phẩm qua Bộ lọc Tin cậy.',
-    cta: 'Mở Khảo sát',
+    href: ROUTES.survey, icon: Calculator, title: 'Khảo sát & tính toán',
+    description: 'So sánh chi phí vay, sức trả nợ và các phương án tích lũy.',
   },
   {
-    href: ROUTES.forensic,
-    badge: 'Phân hệ 3 · Lead',
-    badgeVariant: 'warning' as const,
-    icon: ShieldCheck,
-    title: 'Giám định hợp đồng & VietQR',
-    description: 'Giải mã VietQR, đọc điều khoản PDF và đối chiếu 7 Luật Cứng nhằm phát hiện dấu hiệu lừa đảo.',
-    cta: 'Mở Giám định',
+    href: ROUTES.forensic, icon: ScanLine, title: 'Giám định tài chính',
+    description: 'Kiểm tra hợp đồng, tin nhắn đòi tiền và tài khoản nhận qua VietQR.',
   },
 ]
 
 export default function HomePage() {
   return (
-    <PlaceholderPage
-      eyebrow="Editorial Fintech Shell"
-      statusLabel="Lead · SCR-01"
-      title="Tổng quan tài chính"
-      description="Theo dõi tin thị trường, chuẩn bị phương án vay an toàn và giám định dấu hiệu rủi ro trên một luồng liên kết khép kín."
-    >
-      <Card className="border-primary/20 bg-gradient-to-br from-card via-card to-accent/30">
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Badge variant="safe">Khảo sát nhanh · URL Handoff</Badge>
-            <span className="font-mono text-xs text-muted-foreground font-numeric">50.000.000 VND · 24 tháng</span>
-          </div>
-          <CardTitle className="pt-1 text-lg">Ước tính nhanh phương án vay tiêu chuẩn</CardTitle>
-          <CardDescription>
-            Kiểm thử liên kết trực tiếp từ Trang chủ sang Phân hệ 2 với tham số khoản vay mẫu.
-          </CardDescription>
-        </CardHeader>
-        <CardFooter>
-          <Link
-            className={cn(buttonVariants({ variant: 'default', size: 'lg' }))}
-            href={handoffRoutes.quickSurvey({ amount: '50000000', term: 24 })}
-          >
-            Thử khảo sát vay mẫu
-            <ArrowRight size={17} aria-hidden="true" />
-          </Link>
-        </CardFooter>
-      </Card>
+    <div className="mx-auto max-w-6xl space-y-8">
+      <header className="space-y-2">
+        <h1 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl">Tổng quan tài chính</h1>
+        <p className="max-w-[65ch] text-sm leading-relaxed text-muted-foreground sm:text-base">
+          Theo dõi thị trường, chuẩn bị phương án vay và kiểm tra trước khi chuyển tiền.
+        </p>
+      </header>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {pillars.map(({ href, badge, badgeVariant, icon: Icon, title, description, cta }) => (
-          <Card key={href} className="flex flex-col justify-between">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <span className="grid size-9 place-items-center rounded-lg bg-muted text-primary">
-                  <Icon size={18} aria-hidden="true" />
-                </span>
-                <Badge variant={badgeVariant}>{badge}</Badge>
+      <OverviewWidgets>
+        <section className="grid gap-5 rounded-xl bg-primary p-6 text-primary-foreground sm:p-8" aria-labelledby="quick-forensic-title">
+          <ScanLine size={29} strokeWidth={1.6} aria-hidden="true" />
+          <div className="space-y-2">
+            <h2 id="quick-forensic-title" className="max-w-[22ch] text-balance text-2xl font-bold tracking-tight sm:text-3xl">
+              Kiểm tra trước khi chuyển tiền
+            </h2>
+            <p className="max-w-[49ch] text-sm leading-relaxed text-primary-foreground/90">
+              Nhận được hợp đồng, tin nhắn đòi nộp phí hoặc mã VietQR lạ? Hãy đối chiếu giấy phép và dấu hiệu rủi ro trước khi giao dịch.
+            </p>
+          </div>
+          <Link href={ROUTES.forensic} className={cn(buttonVariants({ variant: 'secondary' }), 'min-h-11 w-fit')}>
+            Bắt đầu giám định <ArrowRight size={17} aria-hidden="true" />
+          </Link>
+        </section>
+      </OverviewWidgets>
+
+      <section aria-labelledby="tools-title" className="space-y-3">
+        <h2 id="tools-title" className="text-lg font-semibold">Công cụ tài chính</h2>
+        <Card className="divide-y divide-border">
+          {pillars.map(({ href, icon: Icon, title, description }) => (
+            <Link key={href} href={href} className="group flex min-h-16 items-center gap-3 rounded-xl p-4 hover:bg-muted sm:gap-4 sm:px-5">
+              <Icon className="shrink-0 text-primary" size={22} strokeWidth={1.7} aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-semibold">{title}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{description}</p>
               </div>
-              <CardTitle className="pt-2">{title}</CardTitle>
-              <CardDescription>{description}</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <Link className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'w-full justify-between')} href={href}>
-                <span>{cta}</span>
-                <ArrowRight size={15} aria-hidden="true" />
-              </Link>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </PlaceholderPage>
+              <ArrowRight className="shrink-0 text-primary" size={17} aria-hidden="true" />
+            </Link>
+          ))}
+        </Card>
+      </section>
+    </div>
   )
 }

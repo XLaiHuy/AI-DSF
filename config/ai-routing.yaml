@@ -1,16 +1,29 @@
 routing:
+  PROFILE_PARSE_NATURAL:
+    primary: openai:gpt-4.1-mini
+    fallbacks: [google:gemini-3.5-flash-lite]
+  PROFILE_HEALTH_COACH:
+    primary: openai:gpt-4.1-mini
+    fallbacks: [google:gemini-3.5-flash-lite]
   RADAR_CLASSIFY_IMPACT:
     primary: openai:gpt-4.1-mini
-    fallbacks: [google:gemini-2.5-flash, openai-compatible]
+    fallbacks: [google:gemini-3.8-flash]
   SURVEY_WEB_LOOKUP:
     primary: openai:gpt-4.1-mini
-    fallbacks: [google:gemini-2.5-flash]
+    fallbacks: [google:gemini-3.8-flash]
   SURVEY_EXPLAIN:
     primary: openai:gpt-4.1-mini
-    fallbacks: [anthropic:claude-3-5-haiku, google:gemini-2.5-flash]
+    fallbacks: [anthropic:claude-3-5-haiku, google:gemini-3.8-flash]
   FORENSIC_VISION_EXTRACT:
-    primary: openai:gpt-4.1
-    fallbacks: [google:gemini-2.5-pro, anthropic:claude-sonnet]
+    primary: openai:gpt-6-luna
+    fallbacks: [openai:gpt-4.1-mini, openrouter:openai/gpt-6-luna, google:gemini-3.8-flash, anthropic:claude-sonnet]
   FORENSIC_VERDICT_NARRATIVE:
     primary: openai:gpt-4.1-mini
-    fallbacks: [google:gemini-2.5-flash]
+    fallbacks: [google:gemini-3.5-flash-lite]
+    streamFallbacks: [google:gemini-3.5-flash-lite, anthropic:claude-haiku-4-5, openrouter:openai/gpt-4.1-mini]
+  FORENSIC_DEEP_REASONING:
+    primary: openai:gpt-6-luna
+    fallbacks: [google:gemini-3.8-flash, openai:gpt-4.1-mini]
+  FORENSIC_INTENT_SIGNAL:
+    primary: openrouter:typesafe/jev-1.13
+    fallbacks: []

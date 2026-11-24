@@ -80,6 +80,159 @@ body {
   color: var(--foreground);
 }
 
+.forensic-thinking-dots > i {
+  width: 0.25rem;
+  height: 0.25rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+@keyframes scr-word-enter {
+  from { opacity: 0; filter: blur(4px); translate: 0 2px; }
+  to { opacity: 1; filter: none; translate: 0 0; }
+}
+
+@keyframes scr-item-enter {
+  from { opacity: 0; filter: blur(3px); translate: 0 5px; }
+  to { opacity: 1; filter: none; translate: 0 0; }
+}
+
+@keyframes audit-stage-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes forensic-dot-lift {
+  0%, 65%, 100% { transform: translateY(0); }
+  35% { transform: translateY(-0.25rem); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .scr-block {
+    opacity: 1;
+    translate: 0 0;
+    transition: opacity 220ms ease-out, translate 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .scr-word {
+    display: inline-block;
+    max-inline-size: 100%;
+    animation: scr-word-enter 150ms ease-out backwards;
+  }
+
+  .scr-block :is(.scr-stagger-list, .scr-stagger-grid) > *,
+  .scr-block .scr-table-rows > tr,
+  .scr-block .scr-table-follow {
+    animation: scr-item-enter 185ms ease-out backwards;
+    animation-delay: calc(var(--scr-step, 60ms) * min(var(--scr-i, 0), 10));
+  }
+
+  .scr-block .scr-table-rows { --scr-step: 45ms; }
+  .scr-block .scr-table-follow { animation-delay: calc(185ms + 45ms * min(var(--scr-i, 0), 10)); }
+  .scr-image { transition: opacity 220ms ease-out, filter 260ms ease-out; }
+  .scr-image[data-loaded="false"] { opacity: 0; filter: blur(6px); }
+
+  .audit-stage-spinner {
+    animation: audit-stage-spin 900ms linear infinite;
+  }
+
+  .coach-reveal > li:nth-child(1) { animation-delay: 140ms; }
+  .coach-reveal > li:nth-child(2) { animation-delay: 220ms; }
+  .coach-reveal > li:nth-child(3) { animation-delay: 300ms; }
+
+  .forensic-thinking-dots > i { animation: forensic-dot-lift 850ms cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+  .forensic-thinking-dots > :nth-child(2) { animation-delay: 100ms; }
+  .forensic-thinking-dots > :nth-child(3) { animation-delay: 200ms; }
+}
+
+@starting-style {
+  @media (prefers-reduced-motion: no-preference) {
+    .scr-block { opacity: 0; translate: 0 6px; }
+    .scr-image[data-loaded="true"] { opacity: 0; filter: blur(6px); }
+  }
+}
+
+:is(.scr-stagger-list, .scr-stagger-grid) > :nth-child(2) { --scr-i: 1; }
+:is(.scr-stagger-list, .scr-stagger-grid) > :nth-child(3) { --scr-i: 2; }
+:is(.scr-stagger-list, .scr-stagger-grid) > :nth-child(4) { --scr-i: 3; }
+:is(.scr-stagger-list, .scr-stagger-grid) > :nth-child(5) { --scr-i: 4; }
+:is(.scr-stagger-list, .scr-stagger-grid) > :nth-child(6) { --scr-i: 5; }
+:is(.scr-stagger-list, .scr-stagger-grid) > :nth-child(7) { --scr-i: 6; }
+:is(.scr-stagger-list, .scr-stagger-grid) > :nth-child(8) { --scr-i: 7; }
+:is(.scr-stagger-list, .scr-stagger-grid) > :nth-child(9) { --scr-i: 8; }
+:is(.scr-stagger-list, .scr-stagger-grid) > :nth-child(10) { --scr-i: 9; }
+:is(.scr-stagger-list, .scr-stagger-grid) > :nth-child(n + 11) { --scr-i: 10; }
+
+@supports not (field-sizing: content) {
+  .forensic-input-mirror { display: grid; }
+  .forensic-input-mirror > textarea,
+  .forensic-input-mirror::after { grid-area: 1 / 1; }
+  .forensic-input-mirror::after {
+    content: attr(data-value) " ";
+    visibility: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    min-block-size: 2.25rem;
+    max-block-size: 9rem;
+    overflow: hidden;
+    padding: 0.375rem 0.5rem;
+  }
+}
+
+.forensic-input-mirror > textarea:placeholder-shown { block-size: 2.25rem; }
+
+.print-only { display: none; }
+
+.audit-timeline > li:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto -0.75rem calc(0.875rem - 0.5px);
+  width: 1px;
+  background: var(--border);
+}
+
+.case-card:hover, .case-card[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: var(--accent);
+}
+
+.forensic-composer:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.app-navigation-progress {
+  display: none;
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  pointer-events: none;
+  background: var(--primary);
+  transform-origin: left;
+}
+
+.app-shell:has(.app-nav-content[aria-busy="true"]) .app-navigation-progress {
+  display: block;
+}
+
+.app-nav-link:active, .app-nav-link:has(.app-nav-content[aria-busy="true"]) {
+  background: var(--accent);
+  color: var(--primary);
+}
+
+@keyframes report-caret-blink { 50% { opacity: 0; } }
+@keyframes navigation-progress { from { transform: scaleX(0.12); } to { transform: scaleX(0.92); } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .report-caret { animation: report-caret-blink 850ms step-end infinite; }
+  .app-navigation-progress { animation: navigation-progress 850ms ease-out both; }
+  .forensic-composer { transition: border-color 150ms ease-out, box-shadow 150ms ease-out; }
+}
+
+.forensic-report button[aria-controls][aria-expanded] {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
+
 .font-numeric {
   font-variant-numeric: tabular-nums;
 }
@@ -188,7 +341,52 @@ body {
   grid-area: main;
   min-inline-size: 0;
   padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 4vw, 3rem) calc(5.75rem + env(safe-area-inset-bottom));
+  background-image: radial-gradient(ellipse 55rem 26rem at 55% 0%, #e7f3e9 0%, #fbf8ee60 55%, transparent 100%);
 }
+
+.app-main:has(.forensic-workspace-shell) {
+  min-block-size: 0;
+  padding: 0 clamp(0.75rem, 3vw, 1.75rem);
+}
+
+@media screen {
+  html:has(.forensic-workspace-shell),
+  .app-shell:has(.forensic-workspace-shell),
+  .app-main:has(.forensic-workspace-shell) {
+    overflow: clip;
+  }
+
+  .app-shell:has(.forensic-workspace-shell) { block-size: 100dvh; }
+}
+
+.forensic-workspace {
+  position: relative;
+  height: calc(100dvh - 4rem - 4.25rem - env(safe-area-inset-bottom));
+  padding-bottom: 0.375rem;
+}
+
+.forensic-transcript { overflow-anchor: none; }
+
+.forensic-history-popover {
+  position: fixed;
+  inset: 8.25rem max(0.75rem, 3vw) auto auto;
+  margin: 0;
+  width: min(25rem, calc(100vw - 1.5rem));
+  max-height: min(28rem, calc(100dvh - 13rem));
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+@supports (position-area: block-end span-inline-start) {
+  .forensic-history-popover[popover] {
+    inset: auto;
+    position-area: block-end span-inline-start;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    margin-block-start: 0.375rem;
+  }
+}
+
+.app-nav-content { display: contents; }
 
 @media (min-width: 48rem) {
   .app-shell {
@@ -218,6 +416,7 @@ body {
   }
 
   .app-nav-link {
+    position: relative;
     flex-direction: row;
     justify-content: flex-start;
     gap: 0.7rem;
@@ -227,7 +426,125 @@ body {
     text-align: start;
   }
 
+  .app-nav-link[aria-current]::before {
+    content: "";
+    position: absolute;
+    inset: 0.5rem auto 0.5rem 0;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--primary);
+  }
+
   .app-main {
     padding: clamp(2rem, 4vw, 3.25rem) clamp(1.75rem, 4vw, 3.5rem);
+  }
+  .forensic-workspace {
+    height: calc(100dvh - 4rem);
+    padding-bottom: 0.75rem;
+  }
+}
+
+@page forensic {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+@media print {
+  html:has(.forensic-report),
+  body:has(.forensic-report) {
+    min-height: 0;
+    background: white;
+  }
+
+  body:has(.forensic-report) { page: forensic; }
+
+  body:has(.forensic-report),
+  body:has(.forensic-report) * {
+    animation: none !important;
+    transition: none !important;
+    filter: none !important;
+    transform: none !important;
+    translate: none !important;
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+  }
+
+  body:has(.forensic-report) :has(.forensic-report) > :not(.forensic-report, :has(.forensic-report)),
+  .topbar, .app-nav, .print-hidden,
+  .forensic-report button, .forensic-report [popover] {
+    display: none !important;
+  }
+
+  body:has(.forensic-report) .app-shell,
+  body:has(.forensic-report) .app-main,
+  body:has(.forensic-report) .app-main :has(.forensic-report) {
+    display: block;
+    min-height: 0;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    background: white;
+  }
+
+  .forensic-workspace,
+  .forensic-transcript {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .forensic-report {
+    color: #111;
+    font-size: 10pt;
+  }
+
+  .forensic-report > * { margin-block: 0 2mm; }
+  .forensic-report :is(.text-sm, .text-base) { font-size: 9.5pt; line-height: 1.4; }
+  .forensic-report .report-print-card {
+    padding: 3mm;
+    border-radius: 2.5mm;
+    box-shadow: none;
+  }
+  .forensic-report header.report-print-card { gap: 2mm; }
+  .forensic-report [data-verdict-heading] { font-size: 22pt; }
+  .forensic-report ol > li { padding-block: 1.25mm; }
+  .forensic-report [data-report-section="reason"] li { padding-block: 2mm; }
+  .forensic-report th, .forensic-report td { padding-block: 1.5mm; }
+  .forensic-report [data-report-section="qr"] :is(th, td) { padding-block: 0.75mm; }
+  .forensic-report p, .forensic-report li { orphans: 2; widows: 2; }
+  .forensic-report summary { min-height: 0; padding-block: 1.5mm; }
+  .forensic-report summary svg { display: none; }
+
+  .forensic-report :focus-visible { outline: none; }
+  .forensic-report .print-keep { break-inside: avoid; }
+  .forensic-report tr { break-inside: avoid; }
+  .forensic-report h1, .forensic-report h2, .forensic-report h3 { break-after: avoid; }
+
+  .forensic-report .print-only {
+    display: block;
+    padding: 0 0 0.75rem;
+    border-block-end: 1px solid #666;
+    overflow-wrap: anywhere;
+  }
+
+  .forensic-report .print-only h1 { font-size: 15pt; font-weight: 700; }
+  .forensic-report .print-only h2 { font-size: 12pt; font-weight: 700; }
+  .forensic-report .print-only p { margin-block-start: 0.25rem; }
+  .forensic-report .print-only ul { list-style: disc; padding-inline-start: 1rem; }
+  .forensic-report .print-only a { text-decoration: underline; }
+  .forensic-report .print-report-support {
+    padding: 1.5mm 3mm;
+    border: 1px solid #666;
+    border-radius: 2.5mm;
+  }
+  .forensic-report .print-report-support ul {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.5fr;
+    column-gap: 4mm;
+  }
+  .forensic-report .print-source-url {
+    border: 0;
+    padding: 0;
+    font-size: 8pt;
   }
 }

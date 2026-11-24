@@ -7,6 +7,10 @@ export const RuleCode = z.enum([
   'RULE_01_UPFRONT_FEE_QR', 'RULE_02_ERROR_102_FREEZE_TRAP', 'RULE_03_ENTITY_MISMATCH',
   'RULE_04_UNLICENSED_OR_IMPERSONATION', 'RULE_05_NCSC_THREAT_MATCH',
   'RULE_06_FLAT_RATE_AND_USURY_APR', 'RULE_07_PONZI_UNREALISTIC_RETURN',
+  'RULE_08_RECOVERY_SCAM_TRAP', 'RULE_09_BIOMETRIC_OTP_PHISHING',
+  'RULE_10_FAKE_EXCHANGE_CRYPTO_CLONE', 'RULE_11_DEEPFAKE_URGENT_COERCION',
+  'RULE_12_CONDITIONAL_LOAN_TERMS', 'RULE_13_INSURANCE_BUNDLING',
+  'RULE_14_CHANNEL_REPUTATION', 'RULE_15_CHANNEL_RISK', 'RULE_16_TRANSFER_AMOUNT_REVIEW',
 ])
 export type RuleCode = z.infer<typeof RuleCode>
 
@@ -16,7 +20,7 @@ export type DtiRiskBand = z.infer<typeof DtiRiskBand>
 export const DataProvenance = z.enum(['CATALOG_VERIFIED', 'WEB_REFERENCE'])
 export type DataProvenance = z.infer<typeof DataProvenance>
 
-export const AuthProvider = z.enum(['EMAIL', 'GOOGLE'])
+export const AuthProvider = z.enum(['EMAIL', 'GOOGLE', 'GITHUB'])
 export const RiskAppetite = z.enum(['CONSERVATIVE', 'BALANCED', 'GROWTH'])
 export const PrimaryGoal = z.enum(['BORROW_SAFE', 'OPTIMIZE_DEBT', 'SAVE_INVEST'])
 export const AnalysisMode = z.enum(['GENERAL', 'PERSONALIZED'])
@@ -33,6 +37,8 @@ export const SessionMode = z.enum(['LOAN_SURVEY', 'INVESTMENT_SURVEY', 'MANUAL_C
 export const InputChannel = z.enum(['CHAT_IMAGE', 'PDF', 'VIETQR_IMAGE', 'TEXT'])
 export const FindingSeverity = z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])
 export const QrServiceCode = z.enum(['QRIBFTTA', 'QRIBFTTC', 'MERCHANT'])
+export const QrScheme = z.enum(['VIETQR_NAPAS', 'EWALLET_VN', 'EMVCO_INTL', 'URL_LINK', 'CRYPTO_WALLET', 'UNKNOWN'])
+export type QrScheme = z.infer<typeof QrScheme>
 export const VerificationStatus = z.enum(['UNVERIFIED', 'VERIFIED'])
 
 export type AuthProvider = z.infer<typeof AuthProvider>

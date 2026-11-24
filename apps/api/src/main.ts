@@ -18,11 +18,26 @@ export async function bootstrap() {
     const config = app.get(ConfigService)
     const uploadMax = z.coerce.number().int().positive().parse(config.get('UPLOAD_MAX_MB', '20'))
     await app.register(cookie, { secret: config.getOrThrow<string>('JWT_SECRET') })
-    await app.register(multipart, { limits: { files: 6, fileSize: uploadMax * mib } })
+    await app.register(multipart, { limits: { files: 6, fileSize: uploadMax * mib }, throwFileSizeLimit: false })
     const webPort = port.parse(config.get('WEB_PORT', '3000'))
+    const appOrigin = new URL(config.get('APP_BASE_URL') || `http://localhost:${webPort}`).origin
+    const allowedOrigins = new Set([appOrigin])
+    if (process.env.NODE_ENV !== 'production') {
+      allowedOrigins.add(`http://localhost:${webPort}`)
+      allowedOrigins.add(`http://127.0.0.1:${webPort}`)
+    }
     app.enableCors({
-      origin: [`http://localhost:${webPort}`, `http://127.0.0.1:${webPort}`],
+      origin: [...allowedOrigins],
       credentials: true,
+    })
+    app.getHttpAdapter().getInstance().addHook('onRequest', async (request, reply) => {
+      const { method, headers } = request
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) &&
+        (headers.origin ? !allowedOrigins.has(headers.origin) : headers['sec-fetch-site'] === 'cross-site')) {
+        return reply.code(403).send({
+          statusCode: 403, errorCode: 'ERR_FORBIDDEN', message: 'Nguồn của yêu cầu không được phép.',
+        })
+      }
     })
     app.setGlobalPrefix('api/v1')
     app.useGlobalFilters(new ApiExceptionFilter())

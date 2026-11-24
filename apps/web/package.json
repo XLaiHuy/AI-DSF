@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "node --env-file-if-exists=../../.env scripts/serve.mjs dev",
+    "dev": "node --env-file-if-exists=../../.env scripts/serve.mjs dev --turbopack",
     "build": "next build",
     "start": "node --env-file-if-exists=../../.env scripts/serve.mjs start",
     "lint": "eslint src next.config.ts",

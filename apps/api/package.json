@@ -6,16 +6,23 @@
     "dev": "prisma generate && nest start --watch",
     "build": "prisma generate && tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
+    "test": "vitest run src --pool=threads",
+    "ai:ping": "tsx src/scripts/ai-ping.ts",
     "lint": "eslint src prisma prisma.config.ts",
     "typecheck": "prisma generate && tsc --noEmit",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.143",
+    "@ai-sdk/google": "^3.0.148",
+    "@ai-sdk/openai": "^3.0.145",
+    "@ai-sdk/openai-compatible": "^2.0.94",
     "@fastify/cookie": "^11.0.0",
     "@fastify/multipart": "^9.3.0",
-    "@fincopilot/shared-types": "workspace:*",
     "@fincopilot/financial-math": "workspace:*",
+    "@fincopilot/shared-types": "workspace:*",
+    "@napi-rs/canvas": "^1.2.0",
     "@nestjs/bullmq": "^11.0.0",
     "@nestjs/common": "^11.1.0",
     "@nestjs/config": "^4.0.0",
@@ -23,18 +30,24 @@
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/platform-fastify": "^11.1.0",
     "@prisma/client": "^6.19.0",
+    "ai": "^6.0.336",
     "bullmq": "^5.66.0",
+    "decimal.js": "^10.6.0",
     "fastify": "^5.6.0",
     "ioredis": "^5.8.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "sharp": "^0.35.5",
+    "unpdf": "^2.2.1",
     "yaml": "^2.8.0",
-    "zod": "^4.1.13"
+    "zod": "^4.1.13",
+    "zxing-wasm": "^3.1.7"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
     "@types/node": "^24.0.0",
     "prisma": "^6.19.0",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "vitest": "^4.1.12"
   }
 }
