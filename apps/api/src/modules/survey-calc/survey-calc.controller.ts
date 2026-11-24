@@ -1,5 +1,8 @@
-import { Controller, Post, Get, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Post, Req, UseGuards, UsePipes } from '@nestjs/common'
+import { ManualCompareRequestSchema, SurveyInvestRequestSchema, SurveyLoanRequestSchema } from '@fincopilot/shared-types'
+import type { FastifyRequest } from 'fastify'
 import { GuestSessionGuard } from '../../common/guest-session.guard'
+import { ZodValidationPipe } from '../../common/zod-validation.pipe'
 import { SurveyCalcService } from './survey-calc.service'
 
 @Controller()
@@ -8,22 +11,17 @@ export class SurveyCalcController {
   constructor(private readonly service: SurveyCalcService) {}
 
   @Post('survey/loan')
-  surveyLoan() {
-    return this.service.pending()
-  }
+  @UsePipes(new ZodValidationPipe(SurveyLoanRequestSchema))
+  surveyLoan(@Body() body: unknown, @Req() request: FastifyRequest) { return this.service.loan(body as never, request.session) }
 
   @Post('survey/investment')
-  surveyInvestment() {
-    return this.service.pending()
-  }
+  @UsePipes(new ZodValidationPipe(SurveyInvestRequestSchema))
+  surveyInvestment(@Body() body: unknown, @Req() request: FastifyRequest) { return this.service.investment(body as never, request.session) }
 
   @Post('calculator/manual-compare')
-  compareManual() {
-    return this.service.pending()
-  }
+  @UsePipes(new ZodValidationPipe(ManualCompareRequestSchema))
+  compareManual(@Body() body: unknown, @Req() request: FastifyRequest) { return this.service.manualCompare(body as never, request.session) }
 
   @Get('survey/history')
-  history() {
-    return this.service.pending()
-  }
+  history(@Req() request: FastifyRequest) { return this.service.history(request.session) }
 }
