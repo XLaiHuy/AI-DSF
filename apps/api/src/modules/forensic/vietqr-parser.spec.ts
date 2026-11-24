@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { prepareZXingModule, writeBarcode } from 'zxing-wasm/writer'
-import { decodeAnyQrs, decodeVietQr, parseAnyQr, parseVietQr } from './vietqr-parser'
+import { decodeAnyQrs, decodeVietQr, findCryptoWallets, parseAnyQr, parseVietQr } from './vietqr-parser'
 
 const qr1 = '00020101021238540010A00000072701240006970422011009876543210208QRIBFTTA5303704540725000005802VN62250821PHI GIAI NGAN LOI 1026304CA92'
 const qr2 = '00020101021138540010A00000072701240006970436011010123456780208QRIBFTTA53037045802VN62230819COC HO SO VAY NHANH630415DB'
@@ -138,6 +138,11 @@ describe('universal QR parsing', () => {
     expect(parseAnyQr('https://example.test/\x00')).toBeNull()
     expect(parseAnyQr('usdt:invalid')).toMatchObject({ qrScheme: 'UNKNOWN', account: null })
     expect(parseAnyQr('usdt:erc20:' + tron)).toMatchObject({ qrScheme: 'UNKNOWN', account: null })
+    expect(findCryptoWallets('Mình vừa chuyển khoản, mã giao dịch 123456789123456789123456789')).toEqual([])
+    expect(findCryptoWallets('Thanh toán hóa đơn mã tham chiếu 3123456789123456789123456789')).toEqual([])
+    expect(findCryptoWallets('Gửi BTC vào địa chỉ 1BoatSLRHtKNngkdXEeobR76b53LETtpyT')).toMatchObject([
+      { qrScheme: 'CRYPTO_WALLET', walletNetwork: 'BTC', account: '1BoatSLRHtKNngkdXEeobR76b53LETtpyT' },
+    ])
   })
 
   it('decodes multiple QR formats in one image while retaining the legacy single-code reader', async () => {

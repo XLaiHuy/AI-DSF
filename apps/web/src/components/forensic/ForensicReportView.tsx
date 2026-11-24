@@ -13,7 +13,7 @@ import { ForensicReport } from './ForensicReport'
 
 export function ForensicReportView({ id }: { id: string }) {
   const session = useQuery(sessionQuery)
-  const audit = useQuery({ ...auditQuery(id), enabled: session.isSuccess })
+  const audit = useQuery(auditQuery(id))
   const missing = audit.error instanceof ApiError && audit.error.status === 404
 
   return (

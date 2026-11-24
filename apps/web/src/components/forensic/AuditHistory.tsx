@@ -3,18 +3,23 @@
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRight, History } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { Badge, Button, Card } from '@/components/ui'
 import { auditHref, auditListQuery, formatVietnamTime, sessionQuery } from '@/lib/workspace-data'
 import { verdictLabels, verdictVariants } from './verdict'
 
-export function AuditHistory({ collapsible = false }: { collapsible?: boolean }) {
-  const [open, setOpen] = useState(!collapsible)
+const subscribePopoverSupport = () => () => {}
+const supportsPopover = () => 'popover' in HTMLElement.prototype
+const serverPopoverSupport = () => false
+
+export function AuditHistory({ collapsible = false, dropdown = false }: { collapsible?: boolean; dropdown?: boolean }) {
+  const [open, setOpen] = useState(!collapsible && !dropdown)
+  const nativePopover = useSyncExternalStore(subscribePopoverSupport, supportsPopover, serverPopoverSupport)
   const session = useQuery({ ...sessionQuery, enabled: open })
-  const history = useQuery({ ...auditListQuery, enabled: open && session.isSuccess })
+  const history = useQuery({ ...auditListQuery, enabled: open })
   const historyTitle = 'Lịch sử giám định'
   const content = (
-    <div className="px-5 pb-5 sm:px-6 sm:pb-6">
+    <div className={dropdown ? 'px-4 pb-3' : 'px-5 pb-5 sm:px-6 sm:pb-6'}>
       {session.isError || history.isError ? (
         <div role="alert" className="space-y-2">
           <p className="text-sm text-destructive">Chưa tải được lịch sử giám định.</p>
@@ -44,6 +49,30 @@ export function AuditHistory({ collapsible = false }: { collapsible?: boolean })
         <p className="text-sm leading-relaxed text-muted-foreground">Chưa có báo cáo. Kết quả giám định của bạn sẽ xuất hiện tại đây.</p>
       )}
     </div>
+  )
+
+  if (dropdown && nativePopover) return (
+    <>
+      <Button popoverTarget="forensic-history" variant="outline" className="h-9 gap-1 whitespace-nowrap px-2 text-xs sm:text-sm">
+        <History size={16} aria-hidden="true" className="hidden sm:inline-block" /> {historyTitle}
+      </Button>
+      <div id="forensic-history" popover="auto" onToggle={(event) => setOpen(event.newState === 'open')}
+        className="forensic-history-popover rounded-xl border border-border bg-card text-card-foreground shadow-lg">
+        <h2 className="px-4 pt-3 pb-2 text-base font-semibold">{historyTitle}</h2>
+        {open && content}
+      </div>
+    </>
+  )
+
+  if (dropdown) return (
+    <details className="forensic-history-fallback" onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className="flex h-9 cursor-pointer items-center gap-1 rounded-md border border-border bg-card px-2 text-xs font-medium sm:text-sm">
+        <History size={16} aria-hidden="true" className="hidden sm:inline-block" /> {historyTitle}
+      </summary>
+      <div className="forensic-history-popover z-30 rounded-xl border border-border bg-card pt-3 text-card-foreground shadow-lg">
+        {open && content}
+      </div>
+    </details>
   )
 
   return (

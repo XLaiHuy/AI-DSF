@@ -1,13 +1,15 @@
 import { ConfigService } from '@nestjs/config'
+import { z } from 'zod'
 import { AI_TASK_SCHEMAS } from '@fincopilot/shared-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { requestObject } from './ai-provider'
+import { requestObject, requestTextStream } from './ai-provider'
 import { AiGatewayService } from './ai-gateway.service'
 import { modelRoutes } from './ai-routing'
 import { requestForensicIntent } from './forensic-intent.adapter'
 
 vi.mock('./ai-provider', () => ({
   requestObject: vi.fn(),
+  requestTextStream: vi.fn(),
   failureStatus: () => 'http_429',
 }))
 vi.mock('./forensic-intent.adapter', () => ({ requestForensicIntent: vi.fn() }))
@@ -16,6 +18,7 @@ const task = 'FORENSIC_VERDICT_NARRATIVE'
 const routing = { routing: {
   [task]: { primary: 'openai:primary', fallbacks: ['google:secondary', 'anthropic:tertiary'] },
   FORENSIC_VISION_EXTRACT: { primary: 'openai:vision', fallbacks: ['openrouter:openai/vision'] },
+  FORENSIC_DEEP_REASONING: { primary: 'google:reasoning', fallbacks: [] },
   FORENSIC_INTENT_SIGNAL: { primary: 'openrouter:typesafe/decision', fallbacks: [] },
 } }
 const payload = { text: 'Synthetic evidence' }
@@ -36,6 +39,17 @@ describe('AI gateway', () => {
       .resolves.toEqual({ output: sample, provider: 'google' })
     expect(mockedRequest).toHaveBeenCalledTimes(1)
     expect(mockedRequest.mock.calls[0]?.[0]).toEqual({ provider: 'google', modelId: 'secondary' })
+    expect(mockedRequest.mock.calls[0]?.[6]).toBe('low')
+  })
+
+  it('requests medium thinking for deep reasoning and keeps Vision JSON keys required', async () => {
+    mockedRequest.mockResolvedValue({ findings: [], summary: '' })
+    await gateway({ GOOGLE_GENERATIVE_AI_API_KEY: 'fixture' })
+      .generateWithProvider('FORENSIC_DEEP_REASONING', AI_TASK_SCHEMAS.FORENSIC_DEEP_REASONING, payload)
+    expect(mockedRequest.mock.calls[0]?.[6]).toBe('medium')
+    const schema = z.toJSONSchema(AI_TASK_SCHEMAS.FORENSIC_VISION_EXTRACT)
+    expect(schema.required).toEqual(Object.keys(schema.properties ?? {}))
+    expect(schema.properties?.ratePhases).not.toHaveProperty('maxItems')
   })
 
   it('falls through on provider failure and opens a circuit for the failed route', async () => {
@@ -59,6 +73,28 @@ describe('AI gateway', () => {
       { provider: 'openai', modelId: 'custom-vision' },
       { provider: 'openrouter', modelId: 'openai/custom-vision' },
     ])
+  })
+
+  it('streams from the next provider when the first fails before sending text', async () => {
+    const request = vi.mocked(requestTextStream)
+    request.mockImplementationOnce(async function* () { await Promise.reject(new Error('offline')) })
+      .mockImplementationOnce(async function* () { yield 'VERIFY\n' })
+    const chunks = []
+    for await (const chunk of gateway({ OPENAI_API_KEY: 'fixture', GOOGLE_GENERATIVE_AI_API_KEY: 'fixture' })
+      .streamWithProvider(task, payload, new AbortController().signal)) chunks.push(chunk)
+    expect(chunks).toEqual([{ delta: 'VERIFY\n', provider: 'google' }])
+    expect(request.mock.calls.map(([route]) => route.provider)).toEqual(['openai', 'google'])
+    expect(request.mock.calls[1]?.[5]).toBe('low')
+  })
+
+  it('skips blank stream keys and avoids mixing providers after text has been emitted', async () => {
+    const request = vi.mocked(requestTextStream)
+    request.mockImplementationOnce(async function* () { yield 'VERIFY\n'; throw new Error('connection lost') })
+    const stream = gateway({ OPENAI_API_KEY: ' ', GOOGLE_GENERATIVE_AI_API_KEY: 'fixture', ANTHROPIC_API_KEY: 'fixture' })
+      .streamWithProvider(task, payload, new AbortController().signal)
+    await expect(stream.next()).resolves.toMatchObject({ value: { provider: 'google', delta: 'VERIFY\n' } })
+    await expect(stream.next()).rejects.toMatchObject({ status: 503 })
+    expect(request.mock.calls.map(([route]) => route.provider)).toEqual(['google'])
   })
 
   it('preserves multimodal input and PDF text on the public gateway contract', async () => {

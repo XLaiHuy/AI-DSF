@@ -46,6 +46,7 @@ describe('Forensic audit lookups', () => {
     const prisma = new PrismaService()
     const institutions = vi.spyOn(prisma.financialInstitution, 'findMany').mockResolvedValue([])
     const indicators = vi.spyOn(prisma.threatIndicator, 'findMany').mockResolvedValue([])
+    vi.spyOn(prisma.financialProfile, 'findFirst').mockResolvedValue(null)
     vi.spyOn(prisma.forensicAudit, 'create').mockResolvedValue({} as Awaited<ReturnType<typeof prisma.forensicAudit.create>>)
     const config = new ConfigService()
     const ai = new AiGatewayService(config)

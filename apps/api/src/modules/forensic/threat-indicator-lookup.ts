@@ -8,6 +8,7 @@ export function threatIndicatorFilters({ evidence, qrPayloads }: Pick<Evidence, 
   const accounts = new Set<string>()
   const phones = new Set<string>()
   const domains = new Set<string>()
+  const wallets = new Set<string>()
   const add = (values: Set<string>, value: string) => {
     if (values.size < maxCandidatesPerType) values.add(value)
   }
@@ -25,7 +26,8 @@ export function threatIndicatorFilters({ evidence, qrPayloads }: Pick<Evidence, 
   }
 
   for (const qr of qrPayloads) {
-    if (qr.account && /^[a-z0-9]{7,32}$/i.test(qr.account)) add(accounts, qr.account.toUpperCase())
+    if (qr.account && qr.qrScheme === 'CRYPTO_WALLET') add(wallets, qr.account)
+    else if (qr.account && /^[a-z0-9]{7,32}$/i.test(qr.account)) add(accounts, qr.account.toUpperCase())
     if (qr.qrScheme === 'EWALLET_VN' && qr.account) addPhone(qr.account)
     if (qr.targetUrl) addHost(indicatorUrlHost(qr.targetUrl))
   }
@@ -42,7 +44,8 @@ export function threatIndicatorFilters({ evidence, qrPayloads }: Pick<Evidence, 
     }
   }
 
-  return ([['BANK_ACCOUNT', accounts], ['PHONE', phones], ['DOMAIN', domains]] as const)
+  return ([['BANK_ACCOUNT', accounts], ['PHONE', phones], ['DOMAIN', domains],
+    ['BANK_ACCOUNT', wallets], ['CRYPTO_WALLET', wallets], ['WALLET_ADDRESS', wallets]] as const)
     .flatMap(([indicatorType, values]) => values.size
       ? [{ indicatorType, indicatorText: { in: [...values], mode: 'insensitive' as const } }]
       : [])

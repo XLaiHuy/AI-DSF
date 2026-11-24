@@ -147,9 +147,48 @@ describe('OAuth state', () => {
       .mockResolvedValueOnce(Response.json({ sub: 'user', email: 'unverified@example.com', email_verified: false })))
     await expect(service.exchange('google', 'fake-code', 'fake-verifier')).rejects.toThrow(UnauthorizedException)
   })
+
+  it('rejects an unverified primary GitHub address even when a secondary address is verified', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(Response.json({ access_token: 'fake-access-token' }))
+      .mockResolvedValueOnce(Response.json({ id: 42 }))
+      .mockResolvedValueOnce(Response.json([
+        { email: 'primary@example.com', verified: false, primary: true },
+        { email: 'secondary@example.com', verified: true, primary: false },
+      ])))
+    await expect(service.exchange('github', 'fake-code', 'fake-verifier')).rejects.toThrow(UnauthorizedException)
+  })
 })
 
 describe('session cookies', () => {
+  it('lets parallel reads stay cookie-free and creates the guest cookie on the first write', async () => {
+    const secret = 'generated-for-this-test-only'
+    const guard = new GuestSessionGuard(new JwtService({ secret }))
+    const app = Fastify()
+    await app.register(cookie, { secret })
+    app.route({
+      method: ['GET', 'POST'], url: '/profile', handler: async (request, response) => {
+        const context = { switchToHttp: () => ({ getRequest: () => request, getResponse: () => response }) }
+        await guard.canActivate(context as unknown as ExecutionContext)
+        return request.session
+      },
+    })
+    try {
+      const reads = await Promise.all([app.inject('/profile'), app.inject('/profile')])
+      for (const read of reads) {
+        expect(read.json()).toMatchObject({ kind: 'guest' })
+        expect(read.cookies).toEqual([])
+      }
+      const write = await app.inject({ url: '/profile', method: 'POST' })
+      const cookie = write.cookies.find(({ name }) => name === guestCookie)
+      expect(cookie).toBeDefined()
+      const owned = await app.inject({ url: '/profile', cookies: { [guestCookie]: cookie?.value ?? '' } })
+      expect(owned.json()).toEqual(write.json())
+    } finally {
+      await app.close()
+    }
+  })
+
   it('uses the signed auth cookie first and keeps the signed guest ID for merging', async () => {
     const secret = 'generated-for-this-test-only'
     const jwt = new JwtService({ secret })
@@ -232,13 +271,16 @@ describe('guest account merge', () => {
     expect(tx.calculationSession.updateMany).toHaveBeenCalledOnce()
   })
 
-  it('rejects provider login when its email belongs to a different login method', async () => {
+  it.each(['GOOGLE', 'GITHUB'] as const)('merges a verified %s email into the existing account', async (provider) => {
     tx.user.findFirst.mockResolvedValue(null)
     tx.user.findUnique.mockResolvedValue(existingUser)
     await expect(service.oauthLogin({
-      provider: 'GITHUB', subject: '123', email: existingUser.email, name: null,
-    }, guestSessionId)).rejects.toThrow(ConflictException)
+      provider, subject: '123', email: existingUser.email, name: 'Provider display name',
+    }, guestSessionId)).resolves.toMatchObject({ id: userId, authProvider: 'EMAIL' })
     expect(tx.user.create).not.toHaveBeenCalled()
-    expect(tx.forensicAudit.updateMany).not.toHaveBeenCalled()
+    const transfer = { where: { guestSessionId, userId: null }, data: { guestSessionId: null, userId } }
+    expect(tx.financialProfile.updateMany).toHaveBeenCalledWith(transfer)
+    expect(tx.forensicAudit.updateMany).toHaveBeenCalledWith(transfer)
+    expect(tx.calculationSession.updateMany).toHaveBeenCalledWith(transfer)
   })
 })

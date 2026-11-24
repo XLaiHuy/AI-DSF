@@ -20,10 +20,14 @@ const configSchema = z.object({
   routing: z.record(z.string(), z.object({
     primary: z.string(),
     fallbacks: z.array(z.string()),
+    streamFallbacks: z.array(z.string()).optional(),
   })),
 })
 const overrides: Record<string, string> = {
+  PROFILE_PARSE_NATURAL: 'AI_FAST_MODEL',
+  PROFILE_HEALTH_COACH: 'AI_FAST_MODEL',
   FORENSIC_VISION_EXTRACT: 'AI_VISION_MODEL',
+  FORENSIC_DEEP_REASONING: 'AI_VISION_MODEL',
   FORENSIC_VERDICT_NARRATIVE: 'AI_FAST_MODEL',
   FORENSIC_INTENT_SIGNAL: 'AI_JEV_MODEL',
   RADAR_CLASSIFY_IMPACT: 'AI_FAST_MODEL',
@@ -50,13 +54,14 @@ export function loadAiRouting() {
   return parse(readFileSync(resolve(workspaceRoot, 'config/ai-routing.yaml'), 'utf8')) as unknown
 }
 
-export function modelRoutes(task: string, configuration: unknown, env: AiEnvironment): ModelRoute[] {
+export function modelRoutes(task: string, configuration: unknown, env: AiEnvironment, stream = false): ModelRoute[] {
   const entry = configSchema.parse(configuration).routing[task]
   if (!entry) return []
   const primary = configuredRoute(entry.primary)
   const variable = overrides[task]
   const override = variable && env(variable)?.trim()
-  const routes = [primary, ...entry.fallbacks.map(configuredRoute)]
+  const fallbacks = stream ? entry.streamFallbacks ?? entry.fallbacks : entry.fallbacks
+  const routes = [primary, ...fallbacks.map(configuredRoute)]
   if (override) {
     const replacement = overrideRoute(override, primary.provider)
     // A direct OpenAI vision override should also apply through OpenRouter.

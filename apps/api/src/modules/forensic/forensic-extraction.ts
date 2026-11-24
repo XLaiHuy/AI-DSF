@@ -3,13 +3,22 @@ import Decimal from 'decimal.js'
 import sharp from 'sharp'
 import type { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { validateFiles } from './file-guard'
-import { findLoanTerms, type LoanTerms } from './hard-rules.engine'
+import { findLoanQuoteAmount, findLoanTerms, type LoanTerms } from './hard-rules.engine'
+import { inspectConditionalLoan } from './conditional-loan.parser'
 import { extractPdf } from './pdf-extractor'
 import { maskForensicText } from './qr-evidence'
-import { decodeAnyQrs, parseAnyQr } from './vietqr-parser'
+import { decodeAnyQrs, findCryptoWallets, parseAnyQr } from './vietqr-parser'
 
 type Vision = AiTaskOutput<'FORENSIC_VISION_EXTRACT'>
 export type Upload = { buffer: Buffer }
+export type ForensicExtractionObservation = {
+  vision: Vision | null
+  visionProvider: string | null
+  visionNeeded: boolean
+  imageCount: number
+  pdfRasterCount: number
+  decodedQrCount: number
+}
 const maxRasterizedPages = 8
 
 async function prepareVisionImages(buffers: readonly Buffer[], maxImages = 8) {
@@ -38,6 +47,7 @@ export async function extractAuditEvidence(
   files: readonly Upload[],
   uploadMaxMb: number,
   pdfMaxPages: number,
+  observe?: (observation: ForensicExtractionObservation) => void,
 ) {
   const derivedImages: Buffer[] = []
   let visionImages: Buffer[] = []
@@ -53,7 +63,7 @@ export async function extractAuditEvidence(
       (async () => {
         const text: string[] = []
         for (const { buffer } of pdfs) {
-          const result = await extractPdf(buffer, pdfMaxPages, maxRasterizedPages - derivedImages.length)
+          const result = await extractPdf(buffer, pdfMaxPages, maxRasterizedPages - derivedImages.length, Boolean(observe))
           derivedImages.push(...result.images)
           text.push(result.text)
         }
@@ -65,30 +75,40 @@ export async function extractAuditEvidence(
     const pdfText = pdfExtraction.value
     const pdfQrs = await Promise.all(derivedImages.map((image) => decodeAnyQrs(image).catch(() => [])))
     const decodedQrs = [...qrExtraction.value.flat(), ...pdfQrs.flat()]
-    const qrs = [...new Map([manualQr, pastedQr?.qrScheme !== 'UNKNOWN' ? pastedQr : null, ...decodedQrs]
+    const pastedWallets = findCryptoWallets(fields.rawText ?? '')
+    const qrs = [...new Map([manualQr, pastedQr?.qrScheme !== 'UNKNOWN' ? pastedQr : null, ...decodedQrs, ...pastedWallets]
       .filter((qr) => qr !== null).map((qr) => [qr.raw, qr])).values()]
     const qrPurposes = qrs.flatMap((qr) => qr.crcValid && qr.purpose ? [qr.purpose] : [])
     const rawText = [pastedQr && pastedQr.qrScheme !== 'UNKNOWN' ? undefined : fields.rawText, ...pdfText]
       .filter(Boolean).join('\n').slice(0, 50_000)
     const aiText = maskForensicText(rawText)
     const allImages = [...images, ...derivedImages]
-    const visionNeeded = allImages.length > 0 || aiText.length > 0
+    const flatLoan = findLoanTerms(rawText)
+    const textLoan = inspectConditionalLoan(rawText)
     visionImages = await prepareVisionImages(allImages)
+    const visionNeeded = allImages.length > 0 || (rawText.length > 120 && !flatLoan && !textLoan.spec && qrs.length === 0)
     const visionTask = 'FORENSIC_VISION_EXTRACT'
+    const intentText = maskForensicText([rawText, ...qrPurposes].join('\n')).slice(0, 12_000)
     const [visionResult, intentResult] = await Promise.allSettled([
-      visionImages.length > 0 || aiText.length > 0
+      visionNeeded && (visionImages.length > 0 || aiText.length > 0)
         ? ai.generateWithProvider(visionTask, AI_TASK_SCHEMAS[visionTask], {
-          text: aiText || 'Trích dữ kiện từ các ảnh được cung cấp.',
+          text: observe && visionImages.length ? 'Trích dữ kiện từ các ảnh được cung cấp.' : aiText || 'Trích dữ kiện từ các ảnh được cung cấp.',
           images: visionImages,
         })
         : null,
-      ai.classifyForensicIntent(maskForensicText([rawText, ...qrPurposes].join('\n')).slice(0, 12_000)),
+      !intentText.trim() && observe ? null : ai.classifyForensicIntent(intentText),
     ])
     if (intentResult.status === 'rejected') throw intentResult.reason
-    const intentSignals = intentResult.value
     const vision = visionResult.status === 'fulfilled' ? visionResult.value : null
+    const intentSignals = !intentText.trim() && observe
+      ? await ai.classifyForensicIntent(maskForensicText(vision?.output.documentTranscript || 'Hồ sơ chỉ có tệp đính kèm.').slice(0, 12_000))
+      : intentResult.value
+    observe?.({
+      vision: vision?.output ?? null, visionProvider: vision?.provider ?? null, visionNeeded,
+      imageCount: visionImages.length, pdfRasterCount: derivedImages.length, decodedQrCount: decodedQrs.length,
+    })
     const supportsQuote = (quote: string) => visionImages.length > 0 || aiText.includes(quote)
-    const facts = vision?.output
+    const facts = vision?.output && { ...vision.output, ratePhases: vision.output.ratePhases?.slice(0, 30) ?? null }
     const beneficiary = facts?.visionBeneficiaryName
     const beneficiaryName = namedBeneficiary(rawText) ?? (beneficiary && supportsQuote(beneficiary.evidenceQuote) &&
       beneficiary.evidenceQuote.includes(beneficiary.value) ? beneficiary.value.trim() : null)
@@ -103,10 +123,31 @@ export async function extractAuditEvidence(
         .concat(facts.upfrontFees.map(({ evidenceQuote }) => evidenceQuote))
         .filter(supportsQuote)
       : []
+    // Second-pass claims must match text, QR evidence, or a quote already transcribed from the image.
+    const visionQuotes = [facts?.nominalAmountEvidenceQuote, facts?.termMonths?.evidenceQuote, facts?.quotedRatePct?.evidenceQuote]
+      .filter((quote): quote is string => Boolean(quote && supportsQuote(quote)))
+    const normalizeQuote = (quote: string) => quote.normalize('NFC').replace(/\s+/g, ' ').trim()
+    const normalizedText = normalizeQuote(aiText)
+    const transcript = visionImages.length && facts?.documentTranscript ? normalizeQuote(facts.documentTranscript) : ''
+    const visualSchedule = facts && groundVisualSchedule(facts, (quote) => {
+      const normalized = normalizeQuote(quote)
+      return normalizedText.includes(normalized) || transcript.includes(normalized)
+    })
+    const conditionalLoan = textLoan.spec ? textLoan : {
+      spec: visualSchedule ? visualSchedule.spec : null,
+      conditionalQuote: textLoan.conditionalQuote ?? (visualSchedule ? visualSchedule.conditionalQuote : undefined),
+      floatingQuote: textLoan.floatingQuote ?? (visualSchedule ? visualSchedule.floatingQuote : undefined),
+      insuranceQuote: textLoan.insuranceQuote ?? (visualSchedule ? visualSchedule.insuranceQuote : undefined),
+    }
     return {
       claimedEntityName: (fields.claimedEntityName ?? extractedEntity)?.slice(0, 200) ?? null,
       beneficiaryName,
       evidence: [rawText, ...quotes, ...qrPurposes].filter(Boolean),
+      visionQuotes: [...visionQuotes, ...[
+        conditionalLoan.conditionalQuote, conditionalLoan.floatingQuote, conditionalLoan.insuranceQuote,
+        ...(conditionalLoan.spec?.ratePhases.map(({ evidenceQuote }) => evidenceQuote) ?? []),
+      ].filter((quote): quote is string => Boolean(quote))],
+      hasVisionRedFlags: facts?.redFlagPhrases.some(({ evidenceQuote }) => supportsQuote(evidenceQuote)) ?? false,
       rawText,
       qrPayloads: qrs.map((qr, index) => ({
         ...qr,
@@ -119,7 +160,9 @@ export async function extractAuditEvidence(
         ...(images.length ? ['CHAT_IMAGE'] : []),
         ...(decodedQrs.some((qr) => qr.qrScheme === 'VIETQR_NAPAS') ? ['VIETQR_IMAGE'] : []),
       ])],
-      loan: findLoanTerms(rawText) ?? (facts ? visualLoanTerms(facts, supportsQuote) : null),
+      loan: flatLoan ?? (facts && (facts.ratePhases?.length ?? 0) <= 1 &&
+        !facts.stressEvidenceQuote && !facts.hasUncappedFloatingClause ? visualLoanTerms(facts, supportsQuote) : null),
+      conditionalLoan,
       intentSignals,
       visionProvider: vision?.provider ?? null,
       visionDegraded: visionNeeded && !vision,
@@ -131,16 +174,57 @@ export async function extractAuditEvidence(
   }
 }
 
+function groundVisualSchedule(facts: Vision, supportsQuote: (quote: string) => boolean) {
+  const grounded = (quote: string | null | undefined): quote is string => Boolean(quote?.trim() && supportsQuote(quote))
+  const nominal = facts.nominalAmountEvidenceQuote
+  const term = facts.termMonths?.evidenceQuote
+  const phases = (facts.ratePhases ?? []).filter((phase) => grounded(phase.evidenceQuote))
+  const fee = facts.recurringFeeEvidenceQuote
+  const stress = facts.stressEvidenceQuote
+  const floating = facts.uncappedFloatingQuote
+  const upfrontQuotes = facts.upfrontFees.map(({ evidenceQuote }) => evidenceQuote)
+  const quotes = [...new Set([nominal, term, facts.quotedRatePct?.evidenceQuote, facts.repaymentMethodEvidenceQuote,
+    ...upfrontQuotes, ...phases.map(({ evidenceQuote }) => evidenceQuote), fee, stress, floating].filter(grounded))]
+  const parsed = inspectConditionalLoan(quotes.join('\n'))
+  const spec = parsed.spec
+  if (!spec) return parsed
+  if (spec.termMonths !== facts.termMonths?.value ||
+      facts.repaymentMethod && spec.repaymentMethod !== facts.repaymentMethod ||
+      facts.recurringMonthlyFeeVnd != null && (!grounded(fee) || spec.recurringFeeVnd === undefined ||
+        !new Decimal(spec.recurringFeeVnd).eq(facts.recurringMonthlyFeeVnd))) return { ...parsed, spec: null }
+  if (facts.ratePhases?.length && (spec.ratePhases.length !== phases.length ||
+      spec.ratePhases.some((phase, index) => {
+        const claimed = phases[index]
+        return !claimed || phase.fromMonth !== claimed.fromMonth || phase.toMonth !== claimed.toMonth ||
+          !new Decimal(phase.monthlyRatePct).eq(claimed.monthlyRatePct)
+      }))) return { ...parsed, spec: null }
+  if (spec.stressScenario && (facts.stressMonthlyRatePct == null ||
+      !new Decimal(spec.stressScenario.monthlyRatePct).eq(facts.stressMonthlyRatePct))) {
+    return { ...parsed, spec: { ...spec, stressScenario: undefined } }
+  }
+  return parsed
+}
+
 function visualLoanTerms(facts: Vision, supportsQuote: (quote: string) => boolean): LoanTerms | null {
   const rate = facts.quotedRatePct
   const term = facts.termMonths
-  if (facts.rateMethod !== 'FLAT_RATE' || !facts.nominalAmountVnd || !rate || !term ||
+  if (facts.rateMethod !== 'FLAT_RATE' || !rate || !term ||
     !supportsQuote(rate.evidenceQuote) || !supportsQuote(term.evidenceQuote) ||
-    !/tháng|month/i.test(rate.evidenceQuote) || new Decimal(rate.value).lt(0)) return null
-  const fees = facts.upfrontFees.filter(({ evidenceQuote }) => supportsQuote(evidenceQuote))
-  const upfrontFeeVnd = fees.reduce((sum, { amountVnd }) => sum.plus(amountVnd), new Decimal(0))
+    !/tháng|month/i.test(rate.evidenceQuote) || !/^\d{1,3}(?:\.\d{1,4})?$/.test(rate.value)) return null
+  const quote = facts.nominalAmountEvidenceQuote
+  const principal = quote && supportsQuote(quote) ? findLoanQuoteAmount(quote, 'principal') : null
+  const nominalVnd = principal ?? facts.nominalAmountVnd
+  if (!nominalVnd || !/^\d{1,16}(?:\.\d{1,2})?$/.test(nominalVnd)) return null
+
+  let upfrontFeeVnd = new Decimal(0)
+  for (const { amountVnd, evidenceQuote } of facts.upfrontFees) {
+    if (!supportsQuote(evidenceQuote)) continue
+    const fee = findLoanQuoteAmount(evidenceQuote, 'fee') ?? amountVnd
+    if (!/^\d{1,16}(?:\.\d{1,2})?$/.test(fee)) return null
+    upfrontFeeVnd = upfrontFeeVnd.plus(fee)
+  }
   return {
-    principalNominalVnd: facts.nominalAmountVnd,
+    principalNominalVnd: nominalVnd,
     upfrontFeeVnd: upfrontFeeVnd.toFixed(),
     flatMonthlyRatePct: rate.value,
     termMonths: term.value,

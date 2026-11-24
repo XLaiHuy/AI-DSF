@@ -1,17 +1,15 @@
 import {
-  AuthSessionResponseSchema, FinancialProfileSchema, ForensicAuditListResponseSchema,
+  AuthSessionResponseSchema, FinancialProfileResponseSchema, ForensicAuditListResponseSchema,
   ForensicAuditResponseSchema, ROUTES,
 } from '@fincopilot/shared-types'
 import { queryOptions } from '@tanstack/react-query'
-import { z } from 'zod'
 import { ApiError, apiClient } from './api-client'
 
-export const profileResponseSchema = z.strictObject({ profile: FinancialProfileSchema.nullable() })
+export const profileResponseSchema = FinancialProfileResponseSchema
 
 export const sessionQuery = queryOptions({
   queryKey: ['session'],
   queryFn: ({ signal }) => apiClient.get('/auth/session', { schema: AuthSessionResponseSchema, signal, cache: 'no-store' }),
-  staleTime: 60_000,
   retry: false,
 })
 

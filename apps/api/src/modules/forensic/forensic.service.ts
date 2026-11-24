@@ -5,27 +5,62 @@ import type { Prisma } from '@prisma/client'
 import {
   AI_TASK_SCHEMAS, ForensicAuditListResponseSchema, ForensicAuditResponseSchema,
   ForensicFollowUpResponseSchema, ForensicQrMetadataSchema,
-  type ForensicAuditFields, type ForensicFollowUpRequest, type SessionContext,
+  type ForensicAuditFields, type ForensicAuditResponse, type ForensicAuditStage, type ForensicFollowUpRequest, type SessionContext,
 } from '@fincopilot/shared-types'
 import { z } from 'zod'
 import { maskAccount } from '../../common/pii-masker'
 import { PrismaService } from '../../common/prisma.service'
 import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
-import { extractAuditEvidence, type Upload } from './forensic-extraction'
-import { deterministicNarrative, followUpAnchor } from './forensic-narrative'
+import { extractAuditEvidence, type ForensicExtractionObservation, type Upload } from './forensic-extraction'
+import { buildForensicDossier, buildNarrativeInput, completeNarrativePayment, deterministicNarrative, isGroundedForensicNarrative, mentionsCasePayment } from './forensic-narrative'
 import { evaluateHardRules } from './hard-rules.engine'
-import { normalizeVietnamese, type CatalogInstitution } from './data/trusted-institutions'
+import type { CatalogInstitution } from './data/trusted-institutions'
 import { maskedQrLink, maskForensicText } from './qr-evidence'
 import { threatIndicatorFilters } from './threat-indicator-lookup'
+import { classifyAuditComplexity } from './complexity-router'
+import { elevateVerdict, groundReasoningFindings } from './deep-reasoning'
+import { followUpEvents, screened } from './forensic-chat-stream'
+import { classifyFollowUpIntent, prepareFollowUp, statedTransferAmount } from './forensic-follow-up'
+import { evaluatePersonalImpact } from './personal-impact.engine'
+import { selectLegalCitations } from './data/vn-legal-registry'
+import { ChannelIntelligenceService } from './channel-intelligence.service'
 
 const institutionCacheTtlMs = 5 * 60_000
 
+export type ForensicBenchmarkObservation = {
+  baselineVerdict: ForensicAuditResponse['verdictLevel']
+  reasoningProvider: string | null
+  reasoningProposed: number
+  reasoningGrounded: number
+  narrativeProvider: string | null
+  narrativeGrounded: boolean | null
+  paymentMentioned: boolean | null
+  narrativeRetried: boolean
+}
+
 const reportExtras = ForensicAuditResponseSchema.pick({
   mathBreakdown: true, handoffPayload: true, immediateActions: true, intentSignals: true, entityLicense: true, meta: true,
+  complexityTier: true, reasoningFindings: true, personalImpact: true, legalCitations: true,
 }).extend({ qrMetadata: z.record(z.uuid(), ForensicQrMetadataSchema).optional() })
 
 function ownerFilter(session: SessionContext) {
   return session.kind === 'user' ? { userId: session.userId } : { userId: null, guestSessionId: session.guestSessionId }
+}
+
+export function validateAuditInput(fields: ForensicAuditFields, files: readonly Upload[]) {
+  if (!files.length && !fields.rawText && !fields.rawQrString && !fields.claimedEntityName) {
+    throw new BadRequestException({
+      errorCode: 'ERR_VALIDATION_FAILED',
+      message: 'Hãy cung cấp tệp, văn bản, mã VietQR hoặc tên tổ chức cần kiểm tra.',
+    })
+  }
+}
+
+const stageLabels: Record<ForensicAuditStage['step'], string> = {
+  EXTRACT: 'Đọc bằng chứng',
+  RULES: 'Đối chiếu dấu hiệu và hồ sơ',
+  REASONING: 'Phân tích sâu',
+  NARRATIVE: 'Soạn báo cáo',
 }
 
 function redactKnown(text: string, replacements: Map<string, string>) {
@@ -43,6 +78,7 @@ function beneficiaryLabel(name: string | null) {
 
 @Injectable()
 export class ForensicService {
+  private readonly channelIntelligence = new ChannelIntelligenceService()
   private institutionCache?: { rows: CatalogInstitution[]; expiresAt: number }
   private institutionRefresh?: Promise<CatalogInstitution[]>
 
@@ -56,7 +92,7 @@ export class ForensicService {
     const cached = this.institutionCache
     if (cached && cached.expiresAt > Date.now()) return cached.rows
     this.institutionRefresh ??= this.prisma.financialInstitution.findMany({
-      select: { code: true, name: true, licenseIssuer: true, trustStatus: true, vietqrBin: true },
+      select: { code: true, name: true, licenseIssuer: true, trustStatus: true, institutionType: true, vietqrBin: true },
     }).then((rows) => {
       this.institutionCache = { rows, expiresAt: Date.now() + institutionCacheTtlMs }
       return rows
@@ -83,36 +119,57 @@ export class ForensicService {
     return [...exact, ...patterns]
   }
 
-  async audit(session: SessionContext, fields: ForensicAuditFields, files: readonly Upload[]) {
-    if (!files.length && !fields.rawText && !fields.rawQrString && !fields.claimedEntityName) {
-      throw new BadRequestException({
-        errorCode: 'ERR_VALIDATION_FAILED',
-        message: 'Hãy cung cấp tệp, văn bản, mã VietQR hoặc tên tổ chức cần kiểm tra.',
-      })
-    }
+  async audit(session: SessionContext, fields: ForensicAuditFields, files: readonly Upload[],
+    onStage?: (stage: ForensicAuditStage) => void,
+    benchmark?: {
+      onExtraction: (observation: ForensicExtractionObservation) => void
+      onReport: (observation: ForensicBenchmarkObservation) => void
+    },
+  ) {
+    validateAuditInput(fields, files)
+    const stage = (step: ForensicAuditStage['step'], status: ForensicAuditStage['status'], detail?: string) =>
+      onStage?.({ step, status, label: stageLabels[step], detail })
     const limit = z.coerce.number().int().positive()
+    stage('EXTRACT', 'running')
     const evidence = await extractAuditEvidence(this.ai, fields, files,
       limit.parse(this.config.get('UPLOAD_MAX_MB', '20')),
-      limit.parse(this.config.get('PDF_MAX_PAGES', '5')))
+      limit.parse(this.config.get('PDF_MAX_PAGES', '5')), benchmark?.onExtraction)
     const sourceFilesPurgedAt = new Date()
-    const [indicators, institutions] = await Promise.all([
+    stage('EXTRACT', 'done', `${files.length} tệp · ${evidence.qrPayloads.length} mã QR`)
+    stage('RULES', 'running')
+    const [indicators, institutions, profile] = await Promise.all([
       this.loadThreatIndicators(evidence),
       this.loadInstitutions(),
+      this.loadFinancialProfile(session),
     ])
+    const inspectedQrs = await this.channelIntelligence.inspect(evidence.qrPayloads, indicators)
+    const statedTransferAmountVnd = statedTransferAmount(evidence.rawText)
     const rules = evaluateHardRules({
       evidence: evidence.evidence,
       claimedEntityName: evidence.claimedEntityName,
-      qrPayloads: evidence.qrPayloads,
+      qrPayloads: inspectedQrs,
+      statedTransferAmountVnd,
       indicators,
       institutions,
       loan: evidence.loan,
+      conditionalLoan: evidence.conditionalLoan,
       intentSignals: evidence.intentSignals,
     })
     const insufficientEvidence = !evidence.evidence.length && !evidence.qrPayloads.some((qr) => qr.crcValid)
     const needsReview = rules.verdictLevel === 'SAFE' &&
       (insufficientEvidence || evidence.visionDegraded && files.length > 0 && !rules.clearPayment)
-    const verdictLevel = needsReview ? 'CAUTION' : rules.verdictLevel
-    const riskScore = needsReview ? Math.max(30, rules.riskScore) : rules.riskScore
+    const baseline = needsReview ? { verdictLevel: 'CAUTION' as const, riskScore: Math.max(30, rules.riskScore) } : rules
+    const complexityTier = classifyAuditComplexity({
+      ...baseline, findings: rules.findings, intentSignals: evidence.intentSignals, fileCount: files.length,
+      hasPdf: evidence.channels.includes('PDF'), hasQr: evidence.qrPayloads.length > 0, textLength: evidence.rawText.length,
+      hasConditionalLoanTerms: Boolean(evidence.conditionalLoan.conditionalQuote || evidence.conditionalLoan.floatingQuote ||
+        evidence.conditionalLoan.insuranceQuote),
+      licensedWithAnomaly: rules.entityLicense?.status === 'LICENSED' && (
+        rules.findings.length > 0 || evidence.hasVisionRedFlags || /[1-9]/.test(evidence.loan?.upfrontFeeVnd ?? '') ||
+        evidence.qrPayloads.some((qr) => qr.qrScheme === 'URL_LINK' || qr.qrScheme === 'UNKNOWN' ||
+          qr.qrScheme === 'VIETQR_NAPAS' && !qr.crcValid)
+      ),
+    })
     const bankNames = new Map(institutions.flatMap(({ vietqrBin, name }) => vietqrBin ? [[vietqrBin, name]] : []))
     const replacements = new Map<string, string>()
     if (evidence.beneficiaryName) {
@@ -126,13 +183,13 @@ export class ForensicService {
     }
     const redact = (text: string) => redactKnown(text, replacements)
     const findings = rules.findings.map((finding) => ({
-      ...finding, evidenceQuote: redact(finding.evidenceQuote),
+      ...finding, title: redact(finding.title).slice(0, 200), description: redact(finding.description), evidenceQuote: redact(finding.evidenceQuote),
     }))
-    const savedQrs = evidence.qrPayloads.map((qr) => ({
+    const savedQrs = inspectedQrs.map((qr) => ({
       id: randomUUID(), rawQrString: '[redacted]',
       base: {
         acqBin: qr.acqBin,
-        bankName: (qr.acqBin ? bankNames.get(qr.acqBin) ?? qr.bankName : qr.bankName)?.slice(0, 120) ?? null,
+        bankName: redact((qr.acqBin ? bankNames.get(qr.acqBin) ?? qr.bankName : qr.bankName) ?? '').slice(0, 120) || null,
         accountNumberMasked: qr.account ? maskAccount(qr.account) : null,
         serviceCode: qr.serviceCode,
         qrAmountVnd: qr.amountVnd,
@@ -146,42 +203,99 @@ export class ForensicService {
         countryCode: qr.countryCode, currencyCode: qr.currencyCode, walletNetwork: qr.walletNetwork,
         targetUrl: qr.targetUrl ? maskedQrLink(qr.targetUrl) : null,
         merchantName: qr.merchantName ? redact(qr.merchantName) : null,
+        merchantCategoryCode: qr.merchantCategoryCode,
+        channelIntelligence: qr.channelIntelligence,
         amount: qr.amount,
       }),
     }))
     const qrPayloads = savedQrs.map(({ base, metadata }) => ({ ...base, ...metadata }))
-    const fallback = deterministicNarrative(verdictLevel, findings.length)
-    const narrativeTask = 'FORENSIC_VERDICT_NARRATIVE'
-    // Use curated descriptions so quotes from untrusted evidence never become narrative instructions.
-    const narrative = await this.ai.generateWithProvider(narrativeTask, AI_TASK_SCHEMAS[narrativeTask], {
-      text: JSON.stringify({ verdictLevel, riskScore, findings: findings.map(({ ruleCode, severity, title }) => ({
-        ruleCode, severity, title,
-      })) }),
+    const sourceMath = rules.mathBreakdown
+    const mathBreakdown = sourceMath?.stressScenario ? {
+      ...sourceMath, stressScenario: {
+        ...sourceMath.stressScenario,
+        evidenceQuote: redact(sourceMath.stressScenario.evidenceQuote),
+        triggerCondition: redact(sourceMath.stressScenario.triggerCondition),
+      },
+    } : sourceMath
+    const personalImpact = evaluatePersonalImpact(profile, mathBreakdown, [{ qrAmountVnd: statedTransferAmountVnd }, ...qrPayloads])
+    const profileDetail = personalImpact ? 'đã đối chiếu với hồ sơ cá nhân'
+      : profile ? 'chưa đủ dữ liệu để đối chiếu cá nhân' : 'chưa có hồ sơ cá nhân'
+    stage('RULES', 'done', `${findings.length} dấu hiệu · ${profileDetail}`)
+    const reasoningTask = 'FORENSIC_DEEP_REASONING'
+    const shouldReason = complexityTier !== 'EASY' || Boolean(benchmark)
+    const maskedEvidence = shouldReason ? [...evidence.evidence, ...evidence.visionQuotes].map(redact).filter(Boolean) : []
+    if (shouldReason) stage('REASONING', 'running')
+    const reasoning = !shouldReason ? null : await this.ai.generateWithProvider(reasoningTask, AI_TASK_SCHEMAS[reasoningTask], {
+      text: JSON.stringify({
+        evidence: maskedEvidence, qrPayloads, mathBreakdown, entityLicense: rules.entityLicense,
+        intentSignals: evidence.intentSignals, existingFindings: findings, baseline: { verdictLevel: baseline.verdictLevel, riskScore: baseline.riskScore },
+      }),
     }).catch(() => null)
-    const degradedMode = evidence.visionDegraded || !narrative
+    const reasoningFindings = reasoning ? groundReasoningFindings(reasoning.output.findings, maskedEvidence, redact) : []
+    if (shouldReason) stage('REASONING', 'done')
+    const { verdictLevel, riskScore } = elevateVerdict(baseline, reasoningFindings)
+    const claimedEntityName = evidence.claimedEntityName ? redact(evidence.claimedEntityName) : null
+    const legalCitations = selectLegalCitations({ verdictLevel, mathBreakdown, findings, qrPayloads, entityLicense: rules.entityLicense, claimedEntityName })
+    const dossier = buildForensicDossier({
+      verdictLevel, riskScore, claimedEntityName, entityLicense: rules.entityLicense, qrPayloads,
+      mathBreakdown, personalImpact, findings, reasoningFindings, legalCitations,
+    })
+    const fallback = deterministicNarrative({
+      verdictLevel, findingCount: dossier.findingCount, claimedEntityName, qrPayloads, mathBreakdown, personalImpact, findings,
+    })
+    const narrativeTask = 'FORENSIC_VERDICT_NARRATIVE'
+    stage('NARRATIVE', 'running')
+    const narrativeInput = buildNarrativeInput(dossier)
+    const generateNarrative = async (qualitativeOnly: boolean) => {
+      const generated = await this.ai.generateWithProvider(narrativeTask, AI_TASK_SCHEMAS[narrativeTask], {
+        text: JSON.stringify({ dossier: narrativeInput, ...(qualitativeOnly && { qualitativeOnly }) }),
+      }).catch(() => null)
+      if (!generated) return null
+      const original = generated.output.narrative
+      const text = completeNarrativePayment(redact(original), dossier)
+      const grounded = isGroundedForensicNarrative(original, dossier) && isGroundedForensicNarrative(text, dossier)
+      const paymentMentioned = mentionsCasePayment(text, dossier)
+      return { generated, text, grounded, paymentMentioned, accepted: grounded && paymentMentioned }
+    }
+    let candidate = await generateNarrative(false)
+    const narrativeRetried = candidate !== null && !candidate.accepted
+    if (narrativeRetried) candidate = await generateNarrative(true) ?? candidate
+    const narrative = candidate?.accepted ? candidate : null
+    const actions = (candidate?.generated.output.immediateActions ?? [])
+      .filter((action) => isGroundedForensicNarrative(action, dossier)).map(redact)
+    const degradedMode = evidence.visionDegraded || !narrative || (shouldReason && !reasoning)
+    benchmark?.onReport({
+      baselineVerdict: baseline.verdictLevel,
+      reasoningProvider: reasoning?.provider ?? null,
+      reasoningProposed: reasoning?.output.findings.length ?? 0,
+      reasoningGrounded: reasoningFindings.length,
+      narrativeProvider: candidate?.generated.provider ?? null,
+      narrativeGrounded: candidate?.grounded ?? null,
+      paymentMentioned: candidate?.paymentMentioned ?? null,
+      narrativeRetried,
+    })
+    const createdAt = new Date()
     const response = ForensicAuditResponseSchema.parse({
-      auditId: randomUUID(), riskScore, verdictLevel,
+      auditId: randomUUID(), createdAt: createdAt.toISOString(), riskScore, verdictLevel,
+      complexityTier, reasoningFindings,
       deterministicOverride: rules.deterministicOverride,
-      claimedEntityName: evidence.claimedEntityName ? redact(evidence.claimedEntityName) : null,
+      claimedEntityName,
       entityLicense: rules.entityLicense,
-      mathBreakdown: rules.mathBreakdown, qrPayloads, findings,
+      mathBreakdown, qrPayloads, findings, personalImpact, legalCitations,
       privacyProof: { sourceFilesPurgedAt: sourceFilesPurgedAt.toISOString(), rawTextMasked: evidence.rawText ? redact(evidence.rawText) : null },
-      aiNarrative: narrative ? `${fallback.narrative}\n\n${redact(narrative.output.narrative)}` : fallback.narrative,
-      immediateActions: [...new Set([
-        ...fallback.immediateActions,
-        ...(narrative?.output.immediateActions.map(redact) ?? []),
-      ])].slice(0, 6),
+      aiNarrative: narrative?.text ?? fallback.narrative,
+      immediateActions: [...new Set([...fallback.immediateActions, ...actions])].slice(0, 6),
       intentSignals: evidence.intentSignals,
-      handoffPayload: rules.mathBreakdown && evidence.loan ? {
-        suggestedAmountVnd: rules.mathBreakdown.principalNominalVnd, suggestedTermMonths: evidence.loan.termMonths,
+      handoffPayload: mathBreakdown?.termMonths ? {
+        suggestedAmountVnd: mathBreakdown.principalNominalVnd, suggestedTermMonths: mathBreakdown.termMonths,
       } : null,
-      meta: { llmProvider: narrative?.provider ?? evidence.visionProvider, degradedMode,
+      meta: { llmProvider: narrative?.generated.provider ?? evidence.visionProvider, degradedMode,
         ...(degradedMode ? { errorCode: 'ERR_AI_DEGRADED_FALLBACK' } : {}) },
     })
     const apr = response.mathBreakdown?.effectiveAprPct
     await this.prisma.forensicAudit.create({
       data: {
-        id: response.auditId, ...ownerFilter(session), sourceFilesPurgedAt,
+        id: response.auditId, ...ownerFilter(session), sourceFilesPurgedAt, createdAt,
         claimedEntityName: response.claimedEntityName,
         inputChannels: evidence.channels,
         rawTextMasked: response.privacyProof.rawTextMasked,
@@ -189,11 +303,12 @@ export class ForensicService {
           mathBreakdown: response.mathBreakdown, handoffPayload: response.handoffPayload,
           immediateActions: response.immediateActions, intentSignals: response.intentSignals,
           entityLicense: response.entityLicense, meta: response.meta,
+          complexityTier: response.complexityTier, reasoningFindings: response.reasoningFindings, personalImpact, legalCitations,
           qrMetadata: Object.fromEntries(savedQrs.map(({ id, metadata }) => [id, metadata])),
         }),
         principalNominalVnd: response.mathBreakdown?.principalNominalVnd,
         principalNetVnd: response.mathBreakdown?.principalNetVnd,
-        quotedRatePct: response.mathBreakdown ? evidence.loan?.flatMonthlyRatePct : undefined,
+        quotedRatePct: response.mathBreakdown && !evidence.conditionalLoan.spec ? evidence.loan?.flatMonthlyRatePct : undefined,
         // The scalar column is Decimal(8,4). The report JSON retains the exact result.
         effectiveAprPct: apr && /^\d{1,4}\.\d{4}$/.test(apr) ? apr : undefined,
         verdictLevel, riskScore, deterministicOverride: response.deterministicOverride,
@@ -202,40 +317,44 @@ export class ForensicService {
         findings: { createMany: { data: findings.map((finding) => ({ id: randomUUID(), ...finding })) } },
       },
     })
+    stage('NARRATIVE', 'done')
     return response
   }
 
-  async followUp(session: SessionContext, id: string, input: ForensicFollowUpRequest) {
+  private async loadFinancialProfile(session: SessionContext) {
+    const profile = await this.prisma.financialProfile.findFirst({ where: ownerFilter(session), select: {
+      monthlyIncomeVnd: true, monthlyExpenseVnd: true, existingDebtPaymentVnd: true, liquidSavingsVnd: true,
+    } })
+    return profile ? {
+      monthlyIncomeVnd: profile.monthlyIncomeVnd?.toFixed() ?? null,
+      monthlyExpenseVnd: profile.monthlyExpenseVnd?.toFixed() ?? null,
+      existingDebtPaymentVnd: profile.existingDebtPaymentVnd?.toFixed() ?? null,
+      liquidSavingsVnd: profile.liquidSavingsVnd?.toFixed() ?? null,
+    } : null
+  }
+
+  private async prepareReply(session: SessionContext, id: string, input: ForensicFollowUpRequest) {
     const audit = await this.read(session, id)
-    const anchor = followUpAnchor(audit)
+    const profile = classifyFollowUpIntent(input.question, audit) === 'NEW_CONTEXT' ? await this.loadFinancialProfile(session) : null
+    return prepareFollowUp(audit, input, profile)
+  }
+
+  async followUp(session: SessionContext, id: string, input: ForensicFollowUpRequest) {
+    const reply = await this.prepareReply(session, id, input)
+    if (reply.directAnswer) return { answer: reply.directAnswer, meta: { llmProvider: null, degradedMode: false, ...reply.meta } }
+
     const task = 'FORENSIC_VERDICT_NARRATIVE'
-    const result = await this.ai.generateWithProvider(task, AI_TASK_SCHEMAS[task], {
-      text: JSON.stringify({
-        task: 'Trả lời câu hỏi tiếp theo về báo cáo đã khóa bên dưới.',
-        audit: {
-          verdictLevel: audit.verdictLevel, riskScore: audit.riskScore, deterministicOverride: audit.deterministicOverride,
-          findings: audit.findings.map(({ ruleCode, severity, title, description }) => ({ ruleCode, severity, title, description })),
-          qrs: audit.qrPayloads.map(({ qrScheme, providerLabel, currencyCode, countryCode, amount, qrAmountVnd, crcValid, walletNetwork }) => ({
-            qrScheme, providerLabel, currencyCode, countryCode, amount, qrAmountVnd, crcValid, walletNetwork,
-          })),
-          mathBreakdown: audit.mathBreakdown,
-        },
-        question: maskForensicText(input.question),
-        history: input.history?.map(({ role, content }) => ({ role, content: maskForensicText(content) })),
-      }),
-    }).catch(() => null)
-    const narrative = result ? maskForensicText(result.output.narrative) : ''
-    const contradicts = audit.verdictLevel === 'HIGH_RISK' &&
-      /\b(yen tam chuyen|giao dich nay an toan|hay tiep tuc chuyen|khong co rui ro|bo qua canh bao)\b/
-        .test(normalizeVietnamese(narrative))
-    const supported = !!result && !contradicts
-    const finding = audit.findings.find(({ severity }) => severity === 'CRITICAL') ?? audit.findings[0]
-    const guidance = finding ? `Dấu hiệu cần xem lại trước tiên là “${finding.title}”. ${finding.description}`
-      : 'Bạn có thể đối chiếu tên và số tiền trong báo cáo với màn hình xác nhận của ứng dụng. Nếu còn thiếu thông tin, hãy hỏi lại người nhận qua kênh bạn đã biết.'
+    const result = await this.ai.generateWithProvider(task, AI_TASK_SCHEMAS[task], reply.modelInput).catch(() => null)
+    const narrative = result && screened(result.output.narrative, reply.guard)
     return ForensicFollowUpResponseSchema.parse({
-      answer: `${anchor}\n\n${supported ? narrative : 'Mình chưa trả lời chi tiết được lúc này. ' + guidance}`,
-      meta: { llmProvider: supported ? result.provider : null, degradedMode: !supported },
+      answer: [reply.prefix, narrative || reply.fallback].filter(Boolean).join('\n\n'),
+      meta: { llmProvider: narrative ? result.provider : null, degradedMode: !narrative, ...reply.meta },
     })
+  }
+
+  async streamFollowUp(session: SessionContext, id: string, input: ForensicFollowUpRequest, signal: AbortSignal) {
+    const reply = await this.prepareReply(session, id, input)
+    return followUpEvents(this.ai, reply, signal)
   }
 
   async list(session: SessionContext) {
@@ -250,7 +369,7 @@ export class ForensicService {
     })) })
   }
 
-  async read(session: SessionContext, id: string) {
+  async read(session: SessionContext, id: string): Promise<ForensicAuditResponse> {
     if (!z.uuid().safeParse(id).success) throw new NotFoundException()
     const row = await this.prisma.forensicAudit.findFirst({
       where: { id, ...ownerFilter(session) },
@@ -261,9 +380,9 @@ export class ForensicService {
     })
     if (!row) throw new NotFoundException()
     const extras = reportExtras.safeParse(row.extractedClaimsJson)
-    const defaults = deterministicNarrative(ForensicAuditResponseSchema.shape.verdictLevel.parse(row.verdictLevel), row.findings.length)
-    return ForensicAuditResponseSchema.parse({
-      auditId: row.id, verdictLevel: row.verdictLevel, riskScore: row.riskScore,
+    const defaults = deterministicNarrative({ verdictLevel: ForensicAuditResponseSchema.shape.verdictLevel.parse(row.verdictLevel), findingCount: row.findings.length })
+    const audit = ForensicAuditResponseSchema.parse({
+      auditId: row.id, createdAt: row.createdAt.toISOString(), verdictLevel: row.verdictLevel, riskScore: row.riskScore,
       deterministicOverride: row.deterministicOverride, claimedEntityName: row.claimedEntityName,
       qrPayloads: row.qrPayloads.map(({
         id: qrId, acqBin, bankName, accountNumberMasked, serviceCode, qrAmountVnd, purposeText,
@@ -284,6 +403,10 @@ export class ForensicService {
           degradedMode: row.llmProvider === 'deterministic' },
       }),
     })
+    const currentCitations = selectLegalCitations(audit)
+    return { ...audit, legalCitations: audit.legalCitations?.map((item) => ({
+      ...item, caseRelevance: item.caseRelevance ?? currentCitations.find(({ code }) => code === item.code)?.caseRelevance,
+    })) ?? currentCitations }
   }
 }
 

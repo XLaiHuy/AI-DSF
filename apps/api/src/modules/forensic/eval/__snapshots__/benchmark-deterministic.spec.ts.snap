@@ -1,0 +1,201 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`offline benchmark regression > 'G01-01' 'MoMo chia tiền ăn' 1`] = `"SAFE | 0 |  |  |  | EWALLET_VN:VND | "`;
+
+exports[`offline benchmark regression > 'G01-02' 'VietQR trả tiền ăn' 1`] = `"SAFE | 0 |  |  |  | VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G01-03' 'VietQR hoàn tiền' 1`] = `"SAFE | 0 |  |  |  | VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G01-04' 'Mã tham chiếu 28 chữ số' 1`] = `"SAFE | 0 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G01-05' 'Biên lai có mã dài bắt đầu bằng 3' 1`] = `"SAFE | 0 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G01-06' 'Hợp đồng Vietcombank 8,5%' 1`] = `"SAFE | 0 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G01-07' 'Hợp đồng BIDV 8,5%' 1`] = `"SAFE | 0 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G01-08' 'Hợp đồng Techcombank 8,5%' 1`] = `"SAFE | 0 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G01-09' 'Phủ định lỗi 102' 1`] = `"SAFE | 0 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G01-10' 'Phủ định phí với QR' 1`] = `"SAFE | 0 |  |  |  | VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G01-11' 'Phủ định yêu cầu OTP' 1`] = `"SAFE | 0 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G01-12' 'Cảnh báo cộng đồng có phủ định' 1`] = `"SAFE | 0 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G01-13' 'URL chính thức không yêu cầu giao dịch' 1`] = `"CAUTION | 30 |  |  |  | URL_LINK: | "`;
+
+exports[`offline benchmark regression > 'G01-14' 'Câu hỏi tài chính thông thường' 1`] = `"SAFE | 0 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G01-15' 'Hướng dẫn nhầm chuyển khoản' 1`] = `"SAFE | 0 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G02-01' 'Lỗi 102 qua VietQR' 1`] = `"HIGH_RISK | 95 | RULE_01_UPFRONT_FEE_QR,RULE_02_ERROR_102_FREEZE_TRAP |  |  | VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G02-02' 'Đóng băng khoản vay' 1`] = `"HIGH_RISK | 95 | RULE_01_UPFRONT_FEE_QR,RULE_02_ERROR_102_FREEZE_TRAP |  |  | VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G02-03' 'Phí giải ngân MoMo' 1`] = `"HIGH_RISK | 85 | RULE_01_UPFRONT_FEE_QR |  |  | EWALLET_VN:VND | "`;
+
+exports[`offline benchmark regression > 'G02-04' 'Phí mở khóa ZaloPay' 1`] = `"HIGH_RISK | 95 | RULE_01_UPFRONT_FEE_QR,RULE_02_ERROR_102_FREEZE_TRAP |  |  | EWALLET_VN:VND | "`;
+
+exports[`offline benchmark regression > 'G02-05' 'Phí hồ sơ VNPAY' 1`] = `"HIGH_RISK | 85 | RULE_01_UPFRONT_FEE_QR |  |  | EWALLET_VN:VND | "`;
+
+exports[`offline benchmark regression > 'G02-06' 'Phí xác minh' 1`] = `"HIGH_RISK | 85 | RULE_01_UPFRONT_FEE_QR |  |  | VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G02-07' 'Tổ chức dùng QR tài khoản cá nhân' 1`] = `"HIGH_RISK | 95 | RULE_03_ENTITY_MISMATCH,RULE_04_UNLICENSED_OR_IMPERSONATION |  |  | VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G02-08' 'Mạo danh Vietcombank' 1`] = `"HIGH_RISK | 95 | RULE_01_UPFRONT_FEE_QR,RULE_03_ENTITY_MISMATCH,RULE_04_UNLICENSED_OR_IMPERSONATION |  |  | VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G02-09' 'Giả mạo NHNN' 1`] = `"HIGH_RISK | 95 | RULE_01_UPFRONT_FEE_QR,RULE_02_ERROR_102_FREEZE_TRAP,RULE_04_UNLICENSED_OR_IMPERSONATION |  |  | VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G02-10' 'Giả danh Công an' 1`] = `"HIGH_RISK | 95 | RULE_04_UNLICENSED_OR_IMPERSONATION,RULE_11_DEEPFAKE_URGENT_COERCION |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G02-11' 'Giả mạo FE Credit' 1`] = `"HIGH_RISK | 95 | RULE_01_UPFRONT_FEE_QR,RULE_03_ENTITY_MISMATCH,RULE_04_UNLICENSED_OR_IMPERSONATION |  |  | VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G02-12' 'VietQR sửa CRC' 1`] = `"CAUTION | 30 |  |  |  | VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G03-01' 'Ảnh lãi phẳng và phí giữ lại' 1`] = `"CAUTION | 30 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G03-02' 'Ảnh lãi bậc thang' 1`] = `"CAUTION | 30 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G03-03' 'Ảnh hồi tố do chậm 1 ngày' 1`] = `"CAUTION | 30 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G03-04' 'Ảnh dư nợ giảm dần kèm phí' 1`] = `"CAUTION | 38 | RULE_04_UNLICENSED_OR_IMPERSONATION |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G03-05' 'Ảnh lãi thả nổi không ghi trần' 1`] = `"CAUTION | 30 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G03-06' 'Ảnh ép mua bảo hiểm' 1`] = `"CAUTION | 30 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G03-07' 'PDF lãi phẳng có phí trước' 1`] = `"CAUTION | 34 | RULE_06_FLAT_RATE_AND_USURY_APR | 40.2398 |  |  | "`;
+
+exports[`offline benchmark regression > 'G03-08' 'PDF hai trang có điều khoản hồi tố' 1`] = `"HIGH_RISK | 74 | RULE_06_FLAT_RATE_AND_USURY_APR,RULE_12_CONDITIONAL_LOAN_TERMS | 45.4223 |  |  | "`;
+
+exports[`offline benchmark regression > 'G03-09' 'PDF vay góp 400 nghìn mỗi ngày' 1`] = `"HIGH_RISK | 72 | RULE_04_UNLICENSED_OR_IMPERSONATION,RULE_06_FLAT_RATE_AND_USURY_APR | 444.9652 |  |  | "`;
+
+exports[`offline benchmark regression > 'G03-10' 'PDF lãi thả nổi theo biểu nội bộ' 1`] = `"CAUTION | 30 | RULE_12_CONDITIONAL_LOAN_TERMS |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G03-11' 'PDF scan ép bảo hiểm' 1`] = `"CAUTION | 30 |  |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G03-12' 'Vay nặng lãi trên 100% APR' 1`] = `"HIGH_RISK | 72 | RULE_04_UNLICENSED_OR_IMPERSONATION,RULE_06_FLAT_RATE_AND_USURY_APR | 208.7798 |  |  | "`;
+
+exports[`offline benchmark regression > 'G03-13' 'App vay thiếu pháp nhân' 1`] = `"HIGH_RISK | 72 | RULE_04_UNLICENSED_OR_IMPERSONATION,RULE_06_FLAT_RATE_AND_USURY_APR | 40.2398 |  |  | "`;
+
+exports[`offline benchmark regression > 'G03-14' 'Lãi tuần trả góp trá hình' 1`] = `"HIGH_RISK | 72 | RULE_04_UNLICENSED_OR_IMPERSONATION,RULE_06_FLAT_RATE_AND_USURY_APR | 223.0410 |  |  | "`;
+
+exports[`offline benchmark regression > 'G03-15' 'Khoản vay lãi phẳng thấp ghi đủ' 1`] = `"SAFE | 0 |  | 10.8964 |  |  | "`;
+
+exports[`offline benchmark regression > 'G04-01' 'QR TRON mở khóa rút lãi' 1`] = `"HIGH_RISK | 85 | RULE_10_FAKE_EXCHANGE_CRYPTO_CLONE,RULE_15_CHANNEL_RISK |  |  | CRYPTO_WALLET: | "`;
+
+exports[`offline benchmark regression > 'G04-02' 'QR Ethereum ERC-20' 1`] = `"CAUTION | 30 | RULE_15_CHANNEL_RISK |  |  | CRYPTO_WALLET: | "`;
+
+exports[`offline benchmark regression > 'G04-03' 'QR Bitcoin Legacy' 1`] = `"CAUTION | 30 | RULE_15_CHANNEL_RISK |  |  | CRYPTO_WALLET: | "`;
+
+exports[`offline benchmark regression > 'G04-04' 'QR Bitcoin SegWit' 1`] = `"CAUTION | 30 | RULE_15_CHANNEL_RISK |  |  | CRYPTO_WALLET: | "`;
+
+exports[`offline benchmark regression > 'G04-05' 'TRON dán giữa đoạn hội thoại' 1`] = `"CAUTION | 30 | RULE_15_CHANNEL_RISK |  |  | CRYPTO_WALLET: | "`;
+
+exports[`offline benchmark regression > 'G04-06' 'Sàn giả đòi nộp thuế để rút' 1`] = `"HIGH_RISK | 85 | RULE_10_FAKE_EXCHANGE_CRYPTO_CLONE,RULE_15_CHANNEL_RISK |  |  | CRYPTO_WALLET: | "`;
+
+exports[`offline benchmark regression > 'G04-07' 'Phí rút cá nhân qua BTC' 1`] = `"HIGH_RISK | 85 | RULE_10_FAKE_EXCHANGE_CRYPTO_CLONE,RULE_15_CHANNEL_RISK |  |  | CRYPTO_WALLET: | "`;
+
+exports[`offline benchmark regression > 'G04-08' 'Ethereum dán trong tin nhắn' 1`] = `"CAUTION | 30 | RULE_15_CHANNEL_RISK |  |  | CRYPTO_WALLET: | "`;
+
+exports[`offline benchmark regression > 'G04-09' 'Sàn Binance nhái không có địa chỉ' 1`] = `"HIGH_RISK | 85 | RULE_10_FAKE_EXCHANGE_CRYPTO_CLONE |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G04-10' 'Bitcoin SegWit qua chuỗi thô' 1`] = `"CAUTION | 30 | RULE_15_CHANNEL_RISK |  |  | CRYPTO_WALLET: | "`;
+
+exports[`offline benchmark regression > 'G05-01' 'QR tải APK VNeID giả lập' 1`] = `"HIGH_RISK | 95 | RULE_09_BIOMETRIC_OTP_PHISHING,RULE_15_CHANNEL_RISK |  |  | URL_LINK: | "`;
+
+exports[`offline benchmark regression > 'G05-02' 'Tên miền nhái dịch vụ công' 1`] = `"HIGH_RISK | 95 | RULE_09_BIOMETRIC_OTP_PHISHING,RULE_15_CHANNEL_RISK |  |  | URL_LINK: | "`;
+
+exports[`offline benchmark regression > 'G05-03' 'Tên miền ngân hàng giả' 1`] = `"HIGH_RISK | 95 | RULE_09_BIOMETRIC_OTP_PHISHING,RULE_15_CHANNEL_RISK |  |  | URL_LINK: | "`;
+
+exports[`offline benchmark regression > 'G05-04' 'Yêu cầu gửi OTP' 1`] = `"HIGH_RISK | 85 | RULE_09_BIOMETRIC_OTP_PHISHING |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G05-05' 'Sinh trắc học qua chia sẻ màn hình' 1`] = `"HIGH_RISK | 85 | RULE_09_BIOMETRIC_OTP_PHISHING |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G05-06' 'Quét mặt thông qua app lạ' 1`] = `"HIGH_RISK | 85 | RULE_09_BIOMETRIC_OTP_PHISHING |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G05-07' 'Dịch vụ thu hồi tiền đòi phí' 1`] = `"HIGH_RISK | 85 | RULE_08_RECOVERY_SCAM_TRAP |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G05-08' 'Hoàn tiền bằng phí xác nhận' 1`] = `"HIGH_RISK | 85 | RULE_08_RECOVERY_SCAM_TRAP |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G05-09' 'Thu hồi vốn nói tránh chữ phí' 1`] = `"HIGH_RISK | 85 | RULE_08_RECOVERY_SCAM_TRAP |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G05-10' 'Deepfake giả giọng' 1`] = `"HIGH_RISK | 85 | RULE_11_DEEPFAKE_URGENT_COERCION |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G05-11' 'Cuộc gọi video ép chuyển gấp' 1`] = `"HIGH_RISK | 85 | RULE_11_DEEPFAKE_URGENT_COERCION |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G05-12' 'Giả danh tòa án ép chuyển' 1`] = `"HIGH_RISK | 85 | RULE_11_DEEPFAKE_URGENT_COERCION |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G06-01' 'Lãi cố định 15% mỗi tháng' 1`] = `"HIGH_RISK | 85 | RULE_07_PONZI_UNREALISTIC_RETURN |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G06-02' 'Hoa hồng F1–F3' 1`] = `"HIGH_RISK | 85 | RULE_07_PONZI_UNREALISTIC_RETURN |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G06-03' 'Việc nhẹ chốt đơn' 1`] = `"HIGH_RISK | 85 | RULE_07_PONZI_UNREALISTIC_RETURN |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G06-04' 'Ủy thác đầu tư 2% mỗi ngày' 1`] = `"HIGH_RISK | 85 | RULE_07_PONZI_UNREALISTIC_RETURN |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G06-05' 'Cam kết 10% theo tuần' 1`] = `"HIGH_RISK | 85 | RULE_07_PONZI_UNREALISTIC_RETURN |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G06-06' 'Bao lời 100%' 1`] = `"HIGH_RISK | 85 | RULE_07_PONZI_UNREALISTIC_RETURN |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G06-07' 'Nhóm việc nhẹ yêu cầu thêm đơn' 1`] = `"HIGH_RISK | 85 | RULE_07_PONZI_UNREALISTIC_RETURN |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G06-08' 'Thông báo gói 25% hàng tháng' 1`] = `"HIGH_RISK | 85 | RULE_07_PONZI_UNREALISTIC_RETURN |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G07-01' 'Visa MCC 7995 bằng ảnh' 1`] = `"CAUTION | 30 | RULE_15_CHANNEL_RISK |  |  | EMVCO_INTL:USD | "`;
+
+exports[`offline benchmark regression > 'G07-02' 'Mastercard MCC 6051' 1`] = `"CAUTION | 30 | RULE_15_CHANNEL_RISK |  |  | EMVCO_INTL:USD | "`;
+
+exports[`offline benchmark regression > 'G07-03' 'Visa MCC 4829' 1`] = `"CAUTION | 30 | RULE_15_CHANNEL_RISK |  |  | EMVCO_INTL:USD | "`;
+
+exports[`offline benchmark regression > 'G07-04' 'PromptPay bằng THB' 1`] = `"CAUTION | 30 | RULE_15_CHANNEL_RISK |  |  | EMVCO_INTL:THB | "`;
+
+exports[`offline benchmark regression > 'G07-05' 'PayNow bằng SGD' 1`] = `"CAUTION | 30 | RULE_15_CHANNEL_RISK |  |  | EMVCO_INTL:SGD | "`;
+
+exports[`offline benchmark regression > 'G07-06' 'DuitNow bằng MYR' 1`] = `"CAUTION | 30 | RULE_15_CHANNEL_RISK |  |  | EMVCO_INTL:MYR | "`;
+
+exports[`offline benchmark regression > 'G07-07' 'Một ảnh ba mã khác kênh' 1`] = `"CAUTION | 60 | RULE_15_CHANNEL_RISK,RULE_15_CHANNEL_RISK |  |  | EMVCO_INTL:THB,EMVCO_INTL:USD,VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G07-08' 'ZaloPay dual-template' 1`] = `"SAFE | 0 |  |  |  | EWALLET_VN:VND | "`;
+
+exports[`offline benchmark regression > 'G08-01' 'Chuyển 2,5 triệu vừa sức' 1`] = `"SAFE | 0 |  |  | WITHIN_BUDGET |  | "`;
+
+exports[`offline benchmark regression > 'G08-02' 'Chuyển 5 triệu căng ngân sách' 1`] = `"SAFE | 0 |  |  | STRETCHED |  | "`;
+
+exports[`offline benchmark regression > 'G08-03' 'Chuyển 10 triệu chạm ngưỡng' 1`] = `"CAUTION | 30 | RULE_16_TRANSFER_AMOUNT_REVIEW |  | OVER_CAPACITY |  | "`;
+
+exports[`offline benchmark regression > 'G08-04' 'Chuyển 500 triệu vượt quỹ' 1`] = `"CAUTION | 30 | RULE_16_TRANSFER_AMOUNT_REVIEW |  | OVER_CAPACITY |  | "`;
+
+exports[`offline benchmark regression > 'G08-05' 'Vay trả góp với thu nhập cao' 1`] = `"CAUTION | 34 | RULE_06_FLAT_RATE_AND_USURY_APR | 40.2398 | WITHIN_BUDGET |  | "`;
+
+exports[`offline benchmark regression > 'G08-06' 'Cùng khoản vay với thu nhập thấp' 1`] = `"CAUTION | 34 | RULE_06_FLAT_RATE_AND_USURY_APR | 40.2398 | OVER_CAPACITY |  | "`;
+
+exports[`offline benchmark regression > 'G09-01' 'Prompt injection SAFE với lỗi 102' 1`] = `"HIGH_RISK | 95 | RULE_01_UPFRONT_FEE_QR,RULE_02_ERROR_102_FREEZE_TRAP |  |  | VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G09-02' 'Teencode lỗi 102' 1`] = `"HIGH_RISK | 95 | RULE_01_UPFRONT_FEE_QR,RULE_02_ERROR_102_FREEZE_TRAP |  |  | VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G09-03' 'Kế toán nhờ chuyển tế nhị' 1`] = `"CAUTION | 30 | RULE_16_TRANSFER_AMOUNT_REVIEW |  |  |  | "`;
+
+exports[`offline benchmark regression > 'G09-04' 'Điều khoản rủi ro cuối PDF' 1`] = `"HIGH_RISK | 74 | RULE_06_FLAT_RATE_AND_USURY_APR,RULE_12_CONDITIONAL_LOAN_TERMS | 45.4223 |  |  | "`;
+
+exports[`offline benchmark regression > 'G09-05' 'Chèn vai trò vào điều khoản vay' 1`] = `"HIGH_RISK | 74 | RULE_06_FLAT_RATE_AND_USURY_APR,RULE_12_CONDITIONAL_LOAN_TERMS | 45.4223 |  |  | "`;
+
+exports[`offline benchmark regression > 'G09-06' 'Ẩn chữ APK trong mã' 1`] = `"HIGH_RISK | 95 | RULE_09_BIOMETRIC_OTP_PHISHING,RULE_15_CHANNEL_RISK |  |  | URL_LINK: | "`;
+
+exports[`offline benchmark regression > 'G09-07' 'Hai mẩu tin trái ngược' 1`] = `"HIGH_RISK | 95 | RULE_01_UPFRONT_FEE_QR,RULE_02_ERROR_102_FREEZE_TRAP |  |  | EWALLET_VN:VND | "`;
+
+exports[`offline benchmark regression > 'G09-08' 'Lỗi 102 với dấu ngăn cách' 1`] = `"HIGH_RISK | 90 | RULE_02_ERROR_102_FREEZE_TRAP |  |  | VIETQR_NAPAS:VND | "`;
+
+exports[`offline benchmark regression > 'G10-01' 'Chat lạc đề phương trình' 1`] = `"SAFE | 0 |  |  |  | EWALLET_VN:VND | OFF_TOPIC,FINANCIAL_QA"`;
+
+exports[`offline benchmark regression > 'G10-02' 'Chat lạc đề thời tiết' 1`] = `"SAFE | 0 |  |  |  | VIETQR_NAPAS:VND | OFF_TOPIC,ACK"`;
+
+exports[`offline benchmark regression > 'G10-03' 'Chat cảm ơn tiếng Việt' 1`] = `"SAFE | 0 |  |  |  | EWALLET_VN:VND | ACK,FINANCIAL_QA"`;
+
+exports[`offline benchmark regression > 'G10-04' 'Chat bổ sung 500 triệu' 1`] = `"SAFE | 0 |  |  |  | VIETQR_NAPAS:VND | ACK,NEW_CONTEXT"`;
+
+exports[`offline benchmark regression > 'G10-05' 'Chat đòi thêm phí mở khóa' 1`] = `"SAFE | 0 |  |  |  | EWALLET_VN:VND | NEW_CONTEXT,FINANCIAL_QA"`;
+
+exports[`offline benchmark regression > 'G10-06' 'Chat đòi mã OTP' 1`] = `"SAFE | 0 |  |  |  | VIETQR_NAPAS:VND | NEW_CONTEXT,FINANCIAL_QA"`;

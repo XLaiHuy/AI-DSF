@@ -8,14 +8,14 @@ import { profileQuery, sessionQuery } from '@/lib/workspace-data'
 import { AccountPanel, AccountStatus } from './AccountPanel'
 import { FinancialProfileForm } from './FinancialProfileForm'
 
-export function ProfileCenter({ notice, returnTo }: { notice: string; returnTo: string }) {
+export function ProfileCenter({ notice, noticeVariant, returnTo }: { notice: string; noticeVariant: 'safe' | 'danger'; returnTo: string }) {
   const session = useQuery(sessionQuery)
-  const profile = useQuery({ ...profileQuery, enabled: session.isSuccess })
+  const profile = useQuery(profileQuery)
   const [saved, setSaved] = useState(false)
 
   return (
     <div className="space-y-5">
-      {notice && <p role="status" className="text-sm font-medium text-primary">{notice}</p>}
+      {notice && <Alert variant={noticeVariant} role={noticeVariant === 'safe' ? 'status' : 'alert'} className="font-medium">{notice}</Alert>}
       {session.isPending && <Card className="p-5 text-sm text-muted-foreground"><p role="status">Đang tải phiên của bạn…</p></Card>}
       {session.isError && (
         <Alert variant="danger" className="items-start">
@@ -25,7 +25,7 @@ export function ProfileCenter({ notice, returnTo }: { notice: string; returnTo: 
       )}
       {session.data && <AccountStatus session={session.data} />}
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        {session.isSuccess && profile.isPending && (
+        {profile.isPending && (
           <Card className="p-5 text-sm text-muted-foreground"><p role="status">Đang tải dữ liệu tài chính…</p></Card>
         )}
         {profile.isError && (
@@ -35,14 +35,13 @@ export function ProfileCenter({ notice, returnTo }: { notice: string; returnTo: 
           </Alert>
         )}
         {profile.data && (
-          <FinancialProfileForm key={profile.data.profile?.id ?? 'new'} initial={profile.data.profile} saved={saved} setSaved={setSaved} />
+          <FinancialProfileForm key={profile.data.profile?.id ?? 'new'} initial={profile.data.profile}
+            initialHealth={profile.data.health ?? null} saved={saved} setSaved={setSaved} />
         )}
-        {session.isSuccess && (
-          <aside className="min-w-0 space-y-5">
-            {session.data.kind === 'guest' && <AccountPanel session={session.data} returnTo={returnTo} />}
-            <AuditHistory />
-          </aside>
-        )}
+        <aside className="min-w-0 space-y-5">
+          {session.data?.kind === 'guest' && <AccountPanel session={session.data} returnTo={returnTo} />}
+          <AuditHistory />
+        </aside>
       </div>
     </div>
   )

@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { CalcMethod } from './enums'
 import { ThreatIndicatorSchema } from './dto/radar.dto'
+import { ReasoningFindingSchema } from './dto/forensic.dto'
+import { FinancialHealthRequestSchema, ProfileCoachAdviceSchema } from './dto/profile.dto'
 import { decimalString, nonnegativeDecimal } from './dto/decimal'
 
 const evidenceQuote = z.string().trim().min(1)
@@ -42,6 +44,7 @@ export const AI_TASK_SCHEMAS = {
     claimedEntityName: textEvidence.nullable(),
     visionBeneficiaryName: textEvidence.nullable(),
     nominalAmountVnd: nonnegativeDecimal.nullable(),
+    nominalAmountEvidenceQuote: evidenceQuote.nullable(),
     termMonths: z.strictObject({ value: z.number().int().min(1).max(600), evidenceQuote }).nullable(),
     upfrontFees: z.array(z.strictObject({
       amountVnd: nonnegativeDecimal,
@@ -49,12 +52,29 @@ export const AI_TASK_SCHEMAS = {
     })),
     quotedRatePct: z.strictObject({ value: decimalString, evidenceQuote }).nullable(),
     rateMethod: CalcMethod.nullable(),
+    documentTranscript: z.string().max(16_000).nullable(),
+    repaymentMethod: z.enum(['FLAT', 'DECLINING_EQUAL_PRINCIPAL', 'DECLINING_ANNUITY']).nullable(),
+    repaymentMethodEvidenceQuote: evidenceQuote.nullable(),
+    ratePhases: z.array(z.strictObject({
+      fromMonth: z.number().int().min(1).max(600), toMonth: z.number().int().min(1).max(600),
+      monthlyRatePct: nonnegativeDecimal, evidenceQuote,
+    })).nullable(),
+    recurringMonthlyFeeVnd: nonnegativeDecimal.nullable(),
+    recurringFeeEvidenceQuote: evidenceQuote.nullable(),
+    stressTriggerCondition: z.string().max(300).nullable(),
+    stressMonthlyRatePct: nonnegativeDecimal.nullable(),
+    stressEvidenceQuote: evidenceQuote.nullable(),
+    hasUncappedFloatingClause: z.boolean(),
+    uncappedFloatingQuote: evidenceQuote.nullable(),
     redFlagPhrases: z.array(z.strictObject({ type: z.string(), evidenceQuote })),
   }),
   FORENSIC_VERDICT_NARRATIVE: z.strictObject({
     narrative: z.string().trim().min(1).max(1500),
     immediateActions: z.array(z.string().trim().min(1).max(250)).max(5),
   }),
+  FORENSIC_DEEP_REASONING: z.strictObject({ findings: z.array(ReasoningFindingSchema).max(3), summary: z.string() }),
+  PROFILE_PARSE_NATURAL: FinancialHealthRequestSchema,
+  PROFILE_HEALTH_COACH: ProfileCoachAdviceSchema,
 } as const
 
 export type AiTaskType = keyof typeof AI_TASK_SCHEMAS

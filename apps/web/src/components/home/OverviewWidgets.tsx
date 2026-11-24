@@ -9,10 +9,11 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { Button, buttonVariants, Card, Input, Label } from '@/components/ui'
 import { formatVnd, profileQuery, sessionQuery } from '@/lib/workspace-data'
 import { cn } from '@/lib/utils'
+import { MoneyInput, stripSpacedAmount } from '@/components/ui/money-input'
 
 function ProfileStatus() {
   const session = useQuery(sessionQuery)
-  const profile = useQuery({ ...profileQuery, enabled: session.isSuccess })
+  const profile = useQuery(profileQuery)
   const savedProfile = profile.data?.profile
   const errored = session.isError || profile.isError
 
@@ -50,11 +51,12 @@ function ProfileStatus() {
 function QuickSurvey() {
   const router = useRouter()
   const [error, setError] = useState('')
+  const [loanAmount, setLoanAmount] = useState('50000000')
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const fields = new FormData(event.currentTarget)
-    const amount = String(fields.get('amount')).trim()
+    const amount = stripSpacedAmount(String(fields.get('amount')))
     const term = Number(fields.get('term'))
 
     if (!/^\d{1,16}$/.test(amount) || !/[1-9]/.test(amount) || !Number.isSafeInteger(term) || term < 1) {
@@ -77,7 +79,8 @@ function QuickSurvey() {
         <div className="grid gap-3 min-[440px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           <div className="grid gap-2">
             <Label htmlFor="quick-amount">Số tiền (VNĐ)</Label>
-            <Input id="quick-amount" name="amount" className="font-numeric h-11" required inputMode="numeric" pattern="[0-9]{1,16}" maxLength={16} defaultValue="50000000" />
+            <MoneyInput id="quick-amount" name="amount" className="font-numeric h-11" required integerOnly
+              value={loanAmount} onAmountChange={setLoanAmount} />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="quick-term">Kỳ hạn (tháng)</Label>

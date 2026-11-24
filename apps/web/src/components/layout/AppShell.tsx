@@ -12,7 +12,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
 } from 'lucide-react'
-import Link from 'next/link'
+import Link, { useLinkStatus } from 'next/link'
 import { usePathname } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { Badge, buttonVariants } from '@/components/ui'
@@ -27,6 +27,11 @@ const links = [
   { href: ROUTES.admin, label: 'Quản trị', icon: SlidersHorizontal },
 ]
 
+function NavigationLabel({ children }: { children: ReactNode }) {
+  const { pending } = useLinkStatus()
+  return <span className="app-nav-content" aria-busy={pending || undefined}>{children}</span>
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const profileHref = pathname === ROUTES.profile ? ROUTES.profile
@@ -40,6 +45,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <a className="skip-link" href="#main-content">Chuyển đến nội dung chính</a>
 
       <header className="topbar">
+        <div className="app-navigation-progress" aria-hidden="true" />
         <Link className="inline-flex items-center gap-2.5 whitespace-nowrap font-bold tracking-tight text-foreground" href={ROUTES.home}>
           <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground shadow-xs">
             <LayoutGrid size={17} aria-hidden="true" />
@@ -53,6 +59,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </span>
           <Badge variant="info" className="font-mono text-[11px]">AI-DSF</Badge>
         </div>
+        <Badge variant="outline" className="hidden gap-1.5 lg:inline-flex">
+          <ShieldCheck size={13} className="text-primary" aria-hidden="true" /> Đối chiếu Luật VN · Xóa ảnh gốc
+        </Badge>
 
         <div className="ml-auto flex items-center gap-2">
           <Link
@@ -80,11 +89,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             <li key={href}>
               <Link
                 href={href === ROUTES.profile ? profileHref : href}
+                prefetch={true}
                 className="app-nav-link"
                 aria-current={pathname === href ? 'page' : currentSection?.href === href ? 'location' : undefined}
               >
-                <Icon size={18} strokeWidth={1.85} className="shrink-0" aria-hidden="true" />
-                <span>{label}</span>
+                <NavigationLabel>
+                  <Icon size={18} strokeWidth={1.85} className="shrink-0" aria-hidden="true" />
+                  <span>{label}</span>
+                </NavigationLabel>
               </Link>
             </li>
           ))}

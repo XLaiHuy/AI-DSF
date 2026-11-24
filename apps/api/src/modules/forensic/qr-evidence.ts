@@ -1,4 +1,4 @@
-import { maskPii } from '../../common/pii-masker'
+import { maskAccount, maskPii } from '../../common/pii-masker'
 
 const knownSegments = /^(?:login|log-in|signin|sign-in|otp|kyc|verify|verification|install|download|auth|xac-minh|dang-nhap|payment|pay)$/i
 const httpLink = /https?:\/\/[^\s<>"'()[\]]+/giu
@@ -44,6 +44,7 @@ export function maskedQrLink(value: string): string {
 }
 
 export function maskForensicText(value: string): string {
-  return maskPii(value.replaceAll('\0', '').replace(httpLink, maskedQrLink))
+  return maskPii(value.replaceAll('\0', '').replace(httpLink, maskedQrLink)
+    .replace(/(?<![a-z0-9])(?:0x[a-f0-9]{40}|T[1-9A-HJ-NP-Za-km-z]{33}|[13][1-9A-HJ-NP-Za-km-z]{25,34}|bc1[ac-hj-np-z02-9]{11,71})(?![a-z0-9])/gi, maskAccount))
     .replace(/\b((?:OTP|PIN|CVV|CVC)\s*(?:là\s+|[:=]\s*)?)\d{3,8}\b/giu, '$1***')
 }

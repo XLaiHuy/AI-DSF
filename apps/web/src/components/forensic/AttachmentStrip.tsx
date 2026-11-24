@@ -45,6 +45,7 @@ function formatSize(size: number) {
 
 function ImagePreview({ file }: { file: File }) {
   const [src, setSrc] = useState<string>()
+  const [loadedSrc, setLoadedSrc] = useState<string>()
   useEffect(() => {
     const url = URL.createObjectURL(file)
     setSrc(url)
@@ -53,7 +54,8 @@ function ImagePreview({ file }: { file: File }) {
 
   return (
     <span className="relative block size-11 shrink-0 overflow-hidden rounded-md border border-border bg-muted">
-      {src && <Image src={src} alt="" fill unoptimized sizes="44px" className="object-contain" />}
+      {src && <Image src={src} alt="" fill unoptimized sizes="44px" className="scr-image object-contain"
+        data-loaded={loadedSrc === src} onLoad={() => setLoadedSrc(src)} />}
     </span>
   )
 }

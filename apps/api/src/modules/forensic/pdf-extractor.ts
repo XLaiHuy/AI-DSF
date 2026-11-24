@@ -6,7 +6,7 @@ function invalidPdf() {
   })
 }
 
-export async function extractPdf(buffer: Buffer, maxPages: number, rasterBudget = maxPages): Promise<{ text: string; images: Buffer[] }> {
+export async function extractPdf(buffer: Buffer, maxPages: number, rasterBudget = maxPages, forceRaster = false): Promise<{ text: string; images: Buffer[] }> {
   const { extractText, getDocumentProxy, renderPageAsImage } = await import('unpdf')
   const bytes = Uint8Array.from(buffer)
   const images: Buffer[] = []
@@ -18,7 +18,7 @@ export async function extractPdf(buffer: Buffer, maxPages: number, rasterBudget 
     })
     const extracted = await extractText(doc)
     const text = extracted.text.join('\n').trim()
-    if (text.replace(/\s/g, '').length / doc.numPages < 80) {
+    if (forceRaster || text.replace(/\s/g, '').length / doc.numPages < 80) {
       for (let pageNumber = 1; pageNumber <= Math.min(doc.numPages, rasterBudget); pageNumber++) {
         const page = await doc.getPage(pageNumber)
         const { width, height } = page.getViewport({ scale: 1 })

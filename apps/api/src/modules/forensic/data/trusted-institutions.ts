@@ -1,4 +1,4 @@
-import { LicenseIssuer, TrustStatus } from '@fincopilot/shared-types'
+import { InstitutionType, LicenseIssuer, TrustStatus } from '@fincopilot/shared-types'
 
 // NHNN BIN register: https://sbv.gov.vn/documents/d/sbv_portal/566440
 // NAPAS participants: https://www.napas.com.vn/dich-vu-chuyen-tien-nhanh-napas-247
@@ -130,6 +130,7 @@ export interface CatalogInstitution {
   name: string
   licenseIssuer: string
   trustStatus: string
+  institutionType?: string
   vietqrBin?: string | null
 }
 
@@ -149,9 +150,10 @@ function institutionKey(value: string): string {
 
 // This offline reference is a public-data snapshot. A matching DB entry takes priority.
 const fallbackInstitutions = [
-  ...banks.map(([vietqrBin, ...aliases]) => ({ aliases, vietqrBin, licenseIssuer: 'NHNN' })),
-  ...[...financeCompanies, ...wallets].map((aliases) => ({ aliases, licenseIssuer: 'NHNN' })),
-  ...securitiesAndFunds.map((aliases) => ({ aliases, licenseIssuer: 'UBCKNN' })),
+  ...banks.map(([vietqrBin, ...aliases]) => ({ aliases, vietqrBin, licenseIssuer: 'NHNN', institutionType: 'BANK' })),
+  ...financeCompanies.map((aliases) => ({ aliases, licenseIssuer: 'NHNN', institutionType: 'FINANCE_COMPANY' })),
+  ...wallets.map((aliases) => ({ aliases, licenseIssuer: 'NHNN', institutionType: 'EWALLET' })),
+  ...securitiesAndFunds.map((aliases) => ({ aliases, licenseIssuer: 'UBCKNN', institutionType: 'FUND_HOUSE' })),
 ].map((institution) => ({ ...institution, trustStatus: 'LICENSED' }))
 const names = new Map(fallbackInstitutions.flatMap((entry) =>
   entry.aliases.map((alias) => [institutionKey(alias), entry] as const)))
@@ -166,7 +168,10 @@ export function findInstitution(name: string, catalog: readonly CatalogInstituti
   const institution = resolved ?? fallback
   const issuer = LicenseIssuer.safeParse(institution?.licenseIssuer)
   const status = TrustStatus.safeParse(institution?.trustStatus)
-  return issuer.success && status.success ? { issuer: issuer.data, status: status.data } : null
+  const institutionType = InstitutionType.safeParse(institution?.institutionType ?? fallback?.institutionType)
+  return issuer.success && status.success
+    ? { issuer: issuer.data, status: status.data, institutionType: institutionType.data }
+    : null
 }
 
 // Source evidence for the four tactics:
@@ -177,7 +182,7 @@ export function findInstitution(name: string, catalog: readonly CatalogInstituti
 export const scamTactics = {
   recovery: {
     topic: /\b(thu hoi|lay lai|hoan lai|hoan tra|khoi phuc) (?:so )?(?:tien|tai san|von)\b/,
-    corroboration: /\b(chuyen phi|nop phi|tra phi|dong phi|phi truoc|phi xu ly|phi dich vu|phi hoan tien|phi khoi phuc|ma thu hoi)\b/,
+    corroboration: /\b(chuyen phi|nop phi|tra phi|dong phi|phi truoc|phi xu ly|phi dich vu|phi hoan tien|phi khoi phuc|ma thu hoi|xac minh nguon tien|kich hoat lenh hoan|ky quy hoan tra|tam ung hoan tien|dong thue de hoan|tam ung mot khoan moi mo ho so)\b/,
   },
   biometric: {
     topic: /\b(otp|sinh trac hoc|quet (?:nhan dien )?khuon mat|xac thuc khuon mat)\b/,

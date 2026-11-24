@@ -105,8 +105,9 @@ export class ProfileAuthService {
       const where = { authProvider: identity.provider, providerUserId: identity.subject }
       const account = await tx.user.findFirst({ where, select: publicUser })
       if (account) return account
-      const existing = await tx.user.findUnique({ where: { email: identity.email }, select: { id: true } })
-      if (existing) throw this.accountConflict()
+      // OAuthService only returns email addresses verified by the provider.
+      const existing = await tx.user.findUnique({ where: { email: identity.email }, select: publicUser })
+      if (existing) return existing
       return tx.user.create({
         data: { ...where, id: randomUUID(), email: identity.email, fullName: identity.name },
         select: publicUser,

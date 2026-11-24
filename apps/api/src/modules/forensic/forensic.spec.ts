@@ -7,6 +7,7 @@ import { maskAccount, maskPii } from '../../common/pii-masker'
 import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { validateFiles } from './file-guard'
 import { extractAuditEvidence } from './forensic-extraction'
+import { statedTransferAmount } from './forensic-follow-up'
 import { calculateFlatRateApr, evaluateHardRules, findLoanTerms } from './hard-rules.engine'
 import { extractPdf } from './pdf-extractor'
 import * as pdfExtractor from './pdf-extractor'
@@ -15,6 +16,60 @@ import { decodeVietQr, parseVietQr } from './vietqr-parser'
 const QR1 = '00020101021238540010A00000072701240006970422011009876543210208QRIBFTTA5303704540725000005802VN62250821PHI GIAI NGAN LOI 1026304CA92'
 const QR2 = '00020101021138540010A00000072701240006970436011010123456780208QRIBFTTA53037045802VN62230819COC HO SO VAY NHANH630415DB'
 const indicator = { id: 'a2714a2a-f21c-4c57-a1cc-ebfe63bd320e', indicatorText: '0987654321', indicatorType: 'BANK_ACCOUNT' }
+
+describe('periodic loans and evasive payment wording', () => {
+  const inspect = (source: string, options: Partial<Parameters<typeof evaluateHardRules>[0]> = {}) =>
+    evaluateHardRules({ evidence: [source], claimedEntityName: null, qrPayloads: [], institutions: [], indicators: [], ...options })
+
+  it.each([
+    ['Vay 10 000 000 đ, góp 400 000 đ/ngày trong 30 ngày.', 'DAY', 30, '400000', '444.9652', '8232.4913'],
+    ['Vay 10 triệu, trả góp 1,5 triệu/tuần trong 10 tuần.', 'WEEK', 10, '1500000', '424.6601', '5829.5057'],
+  ])('annualizes the actual repayment cadence for %s', (source, unit, count, paymentVnd, effectiveAprPct, effectiveEarPct) => {
+    const report = inspect(source)
+    expect(report.mathBreakdown).toMatchObject({
+      periodicRepayment: { unit, count, paymentVnd }, effectiveAprPct, effectiveEarPct,
+      legalReference: { status: 'POTENTIAL_USURY_CRIME', lawCitation: expect.stringContaining('Điều 201') },
+    })
+    expect(report.mathBreakdown?.monthlyPaymentVnd).toBeUndefined()
+    expect(report.findings.map(({ ruleCode }) => ruleCode)).toContain('RULE_06_FLAT_RATE_AND_USURY_APR')
+  })
+
+  it('does not treat weeks as days when duration evidence conflicts', () => {
+    expect(inspect('Vay 10 triệu, trả góp 1,5 triệu/tuần trong 30 ngày.').mathBreakdown).toBeNull()
+  })
+
+  it.each(['l0i 102', 'l.o.i 1-0-2', 'loi 1 0 2'])('matches the freeze evidence %s', (source) => {
+    expect(inspect(source + ', nộp tiền ngay.').findings).toContainEqual(expect.objectContaining({
+      ruleCode: 'RULE_02_ERROR_102_FREEZE_TRAP', evidenceQuote: expect.stringContaining(source),
+    }))
+  })
+
+  it.each(['chuyển hộ', 'chuyển giùm', 'chuyển giúp', 'nhờ chuyển'])('recognizes large transfers with %s', (verb) => {
+    const source = 'Chị kế toán ' + verb + ' 45tr gấp vào STK cá nhân.'
+    expect(statedTransferAmount(source)).toBe('45000000')
+    expect(inspect(source, { statedTransferAmountVnd: statedTransferAmount(source) }).findings)
+      .toContainEqual(expect.objectContaining({ ruleCode: 'RULE_16_TRANSFER_AMOUNT_REVIEW' }))
+  })
+
+  it.each(['0,5%/ngày', '3%/tuần', '10%/tháng'])('matches promised returns at %s', (rate) => {
+    expect(inspect('Cam kết lợi nhuận cố định ' + rate).findings).toContainEqual(expect.objectContaining({
+      ruleCode: 'RULE_07_PONZI_UNREALISTIC_RETURN',
+    }))
+  })
+
+  it('distinguishes funded task rewards from ordinary commerce and recovery advice', () => {
+    expect(inspect('Chốt đơn hộ, nạp tiền để nhận hoa hồng.').verdictLevel).toBe('HIGH_RISK')
+    expect(inspect('Chốt đơn mua đồ trên sàn, cửa hàng hoàn tiền mua hàng.').findings).toEqual([])
+    const intentSignals = { provider: 'fixture', recoveryScamProb: 0.7, biometricPhishingProb: 0, urgentCoercionProb: 0 }
+    expect(inspect('Nếu chuyển nhầm, liên hệ ngân hàng và lưu biên lai. Không trả phí để lấy lại tiền.', { intentSignals }).findings).toEqual([])
+    expect(inspect('Bên kia hứa thu hồi tiền, yêu cầu ký quỹ hoàn trả.').findings).toContainEqual(expect.objectContaining({
+      ruleCode: 'RULE_08_RECOVERY_SCAM_TRAP', severity: 'CRITICAL',
+    }))
+    expect(inspect('Bên kia hứa thu hồi tiền.', { intentSignals }).findings).toContainEqual(expect.objectContaining({
+      ruleCode: 'RULE_08_RECOVERY_SCAM_TRAP', severity: 'HIGH',
+    }))
+  })
+})
 
 describe('golden vector V5', () => {
   it.each([
@@ -62,10 +117,37 @@ describe('golden vector V2', () => {
   it('calculates net principal, APR and EAR exclusively from cash flows', () => {
     expect(calculateFlatRateApr(loan)).toMatchObject({
       principalNetVnd: '45000000', effectiveAprPct: '30.7436', effectiveEarPct: '35.4678',
+      termMonths: 24, monthlyPaymentVnd: '2533333', totalPayableVnd: '60800000', totalExtraCostVnd: '15800000',
+      flatRateExplainer: expect.stringContaining('ban đầu'),
+      legalReference: { status: 'EXCEEDS_CIVIL_CEILING', lawCitation: expect.stringContaining('Điều 468'),
+        legalCeilingPct: '20.00', excessOverCeilingPct: '10.74', multipleOfCeiling: '1.54' },
     })
     expect(calculateFlatRateApr({ ...loan, upfrontFeeVnd: '50000000' })).toBeNull()
     expect(calculateFlatRateApr({ ...loan, upfrontFeeVnd: '0', flatMonthlyRatePct: '0' }))
       .toMatchObject({ effectiveAprPct: '0.0000', effectiveEarPct: '0.0000' })
+  })
+
+  it('distinguishes the civil benchmark, possible usury review, and supervised credit institutions', () => {
+    expect(calculateFlatRateApr({ ...loan, upfrontFeeVnd: '0', flatMonthlyRatePct: '0' })?.legalReference)
+      .toMatchObject({ status: 'WITHIN_CIVIL_LIMIT', excessOverCeilingPct: '-20.00', multipleOfCeiling: '0.00' })
+    expect(calculateFlatRateApr({ ...loan, flatMonthlyRatePct: '10' })?.legalReference)
+      .toMatchObject({ status: 'POTENTIAL_USURY_CRIME', lawCitation: expect.stringContaining('Điều 201'), plainSummary: expect.stringContaining('thu lợi bất chính') })
+    expect(calculateFlatRateApr(loan, { issuer: 'NHNN', status: 'LICENSED' })?.legalReference)
+      .toMatchObject({ status: 'REGULATED_INSTITUTION_EXEMPT', lawCitation: expect.stringContaining('Luật Các tổ chức tín dụng 2024'), legalCeilingPct: null })
+    expect(calculateFlatRateApr(loan, { issuer: 'UBCKNN', status: 'LICENSED' })?.legalReference?.status)
+      .toBe('EXCEEDS_CIVIL_CEILING')
+    expect(calculateFlatRateApr(loan, { issuer: 'NHNN', status: 'LICENSED', institutionType: 'EWALLET' })?.legalReference?.status)
+      .toBe('EXCEEDS_CIVIL_CEILING')
+    expect(calculateFlatRateApr({ ...loan, principalNominalVnd: '100.75', upfrontFeeVnd: '0', flatMonthlyRatePct: '0' }))
+      .toMatchObject({ totalPayableVnd: '101', totalExtraCostVnd: '0.25' })
+  })
+
+  it('uses the exact 20% and 100% threshold boundaries', () => {
+    const oneMonth = { ...loan, termMonths: 1, flatMonthlyRatePct: '0' }
+    expect(calculateFlatRateApr({ ...oneMonth, principalNominalVnd: '6100', upfrontFeeVnd: '100' }))
+      .toMatchObject({ effectiveAprPct: '20.0000', legalReference: { status: 'WITHIN_CIVIL_LIMIT', excessOverCeilingPct: '0.00' } })
+    expect(calculateFlatRateApr({ ...oneMonth, principalNominalVnd: '13000', upfrontFeeVnd: '1000' }))
+      .toMatchObject({ effectiveAprPct: '100.0000', legalReference: { status: 'POTENTIAL_USURY_CRIME', multipleOfCeiling: '5.00' } })
   })
 
   it('extracts terms and preserves their source quote', () => {
@@ -83,6 +165,17 @@ function inspect(overrides: Partial<Parameters<typeof evaluateHardRules>[0]> = {
 }
 
 describe('11 hard rules', () => {
+  it.each([
+    ['EWALLET_VN', 'MoMo', 'mã ví điện tử MoMo'],
+    ['EMVCO_INTL', 'EMVCo', 'mã QR thanh toán quốc tế (EMVCo)'],
+  ] as const)('names the actual payment channel in RULE_01 for %s', (qrScheme, providerLabel, label) => {
+    const qr = { ...parseVietQr(QR1)!, qrScheme, providerLabel, currencyCode: 'VND' }
+    const result = inspect({ evidence: ['Cần chuyển phí giải ngân để mở khóa khoản vay.'], qrPayloads: [qr] })
+    const fee = result.findings.find(({ ruleCode }) => ruleCode === 'RULE_01_UPFRONT_FEE_QR')
+    expect(fee?.title).toContain(label)
+    expect(fee?.description).toContain(label)
+    expect(fee?.description).not.toContain('VietQR')
+  })
   it('locks the error 102 sample at 95 with a verified indicator fixture', () => {
     const qr = parseVietQr(QR1)!
     const result = inspect({
@@ -209,6 +302,22 @@ function makePdf(content: string, count = 1): Buffer {
 }
 
 describe('Vision image preparation', () => {
+  it('skips short text, parsed contracts and decoded text QR without marking degraded', async () => {
+    const ai = new AiGatewayService(new ConfigService())
+    const classify = vi.spyOn(ai, 'classifyForensicIntent').mockResolvedValue(null)
+    const generated = vi.spyOn(ai, 'generateWithProvider').mockRejectedValue(new Error('offline'))
+    const flat = 'Khoản vay 50 000 000 đồng. Kỳ hạn 12 tháng. Lãi phẳng 0,9%/tháng. Phí thu trước 5 000 000 đồng. ' + 'Đọc hợp đồng. '.repeat(8)
+    for (const fields of [{ rawText: 'Trả tiền ăn' }, { rawText: flat }, { rawText: 'Cần đối chiếu. '.repeat(20), rawQrString: QR1 }]) {
+      const result = await extractAuditEvidence(ai, fields, [], 20, 5)
+      expect(result.visionDegraded).toBe(false)
+    }
+    expect(generated).not.toHaveBeenCalled()
+    expect(classify).toHaveBeenCalledTimes(3)
+    const unstructured = await extractAuditEvidence(ai, { rawText: 'Có thêm đoạn thông tin tài chính chưa rõ. '.repeat(6) }, [], 20, 5)
+    expect(generated).toHaveBeenCalledWith('FORENSIC_VISION_EXTRACT', expect.anything(), expect.anything())
+    expect(unstructured.visionDegraded).toBe(true)
+  })
+
   it('caps rasterized pages and sends at most eight resized JPEGs, then wipes the buffers', async () => {
     const photo = sharp({ create: { width: 1800, height: 1500, channels: 3, background: 'white' } })
     const files = [
@@ -250,7 +359,7 @@ describe('Vision image preparation', () => {
     } finally {
       extract.mockRestore()
     }
-  })
+  }, 15_000)
 })
 
 describe('PDF extraction', () => {

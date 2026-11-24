@@ -11,6 +11,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { authCookie, guestCookie, GuestSessionGuard, sessionCookieOptions } from '../../common/guest-session.guard'
 import { ZodValidationPipe } from '../../common/zod-validation.pipe'
+import { calculateFinancialHealth } from './financial-health.engine'
 import { oauthCallbackPath, oauthLifetimeSeconds, OAuthProviderSchema, OAuthService, type OAuthProvider } from './oauth.service'
 import { ProfileAuthService } from './profile-auth.service'
 
@@ -129,7 +130,8 @@ export class ProfileAuthController {
 
   @Get('profile')
   async getProfile(@Req() request: FastifyRequest) {
-    return { profile: await this.profiles.getActiveProfile(request.session) }
+    const profile = await this.profiles.getActiveProfile(request.session)
+    return { profile, health: profile ? calculateFinancialHealth(profile) : null }
   }
 
   @Put('profile')
@@ -137,7 +139,8 @@ export class ProfileAuthController {
     @Body(new ZodValidationPipe(FinancialProfileUpdateSchema)) input: FinancialProfileUpdate,
     @Req() request: FastifyRequest,
   ) {
-    return { profile: await this.profiles.updateProfile(request.session, input) }
+    const profile = await this.profiles.updateProfile(request.session, input)
+    return { profile, health: calculateFinancialHealth(profile) }
   }
 
   private describeSession(user: SessionUser | null) {

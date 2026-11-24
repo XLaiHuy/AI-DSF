@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { AuthProvider, PrimaryGoal, RiskAppetite } from '../enums'
-import { nonnegativeDecimal } from './decimal'
+import { decimalString, nonnegativeDecimal } from './decimal'
 
 const financialProfileFields = z.strictObject({
   monthlyIncomeVnd: nonnegativeDecimal.nullable(),
@@ -19,6 +19,53 @@ export const FinancialProfileSchema = financialProfileFields.extend({
   userId: z.uuid().nullable(),
 })
 export type FinancialProfileDto = z.infer<typeof FinancialProfileSchema>
+
+const profileAmount = z.string().regex(/^\d{1,16}(?:\.\d{1,2})?$/).nullable()
+export const FinancialHealthRequestSchema = z.strictObject({
+  monthlyIncomeVnd: profileAmount,
+  monthlyExpenseVnd: profileAmount,
+  existingDebtPaymentVnd: profileAmount,
+  liquidSavingsVnd: profileAmount,
+})
+export type FinancialHealthRequest = z.infer<typeof FinancialHealthRequestSchema>
+export const ProfileCoachRequestSchema = FinancialHealthRequestSchema.extend({
+  riskAppetite: RiskAppetite.optional(),
+  primaryGoal: PrimaryGoal.optional(),
+})
+export type ProfileCoachRequest = z.infer<typeof ProfileCoachRequestSchema>
+
+export const FinancialHealthSchema = z.strictObject({
+  score: z.number().int().min(0).max(100).nullable(),
+  emergencyMonths: nonnegativeDecimal.nullable(),
+  savingsRatePct: decimalString.nullable(),
+  maxSafeEmiVnd: nonnegativeDecimal.nullable(),
+  dtiPct: nonnegativeDecimal.nullable(),
+  budget: z.strictObject({
+    needsVnd: nonnegativeDecimal,
+    wantsVnd: nonnegativeDecimal,
+    savingsAndDebtVnd: nonnegativeDecimal,
+  }).nullable(),
+})
+export type FinancialHealth = z.infer<typeof FinancialHealthSchema>
+export const FinancialProfileResponseSchema = z.strictObject({
+  profile: FinancialProfileSchema.nullable(),
+  health: FinancialHealthSchema.nullable().optional(),
+})
+
+export const ProfileNaturalRequestSchema = z.strictObject({ text: z.string().trim().min(1).max(1000) })
+export type ProfileNaturalRequest = z.infer<typeof ProfileNaturalRequestSchema>
+const profileCoachText = (max: number) => z.string().trim().min(1).max(max)
+export const ProfileCoachAdviceSchema = z.strictObject({
+  summary: profileCoachText(600),
+  actions: z.array(profileCoachText(240)).length(3),
+})
+const coachSource = z.enum(['AI', 'DETERMINISTIC'])
+export const ProfileNaturalResponseSchema = z.strictObject({ values: FinancialHealthRequestSchema, source: coachSource })
+export const ProfileCoachResponseSchema = ProfileCoachAdviceSchema.extend({
+  health: FinancialHealthSchema,
+  source: coachSource,
+})
+export type ProfileCoachResponse = z.infer<typeof ProfileCoachResponseSchema>
 
 export type SessionContext =
   | { kind: 'guest'; guestSessionId: string }

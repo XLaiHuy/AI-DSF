@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import sharp from 'sharp'
 import { prepareZXingModule, readBarcodes } from 'zxing-wasm/reader'
@@ -24,6 +25,7 @@ export interface ParsedQr extends Omit<ParsedVietQr, 'serviceCode'> {
   targetUrl: string | null
   walletNetwork: string | null
   merchantName: string | null
+  merchantCategoryCode?: string | null
   amount: string | null
 }
 
@@ -132,6 +134,8 @@ function walletQr(qr: ParsedQr, providerLabel: string): ParsedQr {
 }
 
 function parseEmvQr(qr: ParsedQr, fields: Map<string, string>, crcValid: boolean): ParsedQr {
+  const mcc = fields.get('52') ?? ''
+  qr = { ...qr, merchantCategoryCode: /^\d{4}$/.test(mcc) ? mcc : null }
   const napas = parseNapas(qr.raw, fields, crcValid)
   const napasQr: ParsedQr | null = napas ? {
     ...qr, ...napas, qrScheme: 'VIETQR_NAPAS', providerLabel: napas.bankName ?? 'VietQR NAPAS',
@@ -203,6 +207,32 @@ function parseQrUrl(qr: ParsedQr): ParsedQr | null {
   return provider ? walletQr(target, provider) : { ...target, qrScheme: 'URL_LINK', providerLabel: hostname }
 }
 
+const base58Alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+
+function isValidBitcoinLegacy(address: string): boolean {
+  let value = 0n
+  for (const char of address) {
+    const digit = base58Alphabet.indexOf(char)
+    if (digit < 0) return false
+    value = value * 58n + BigInt(digit)
+  }
+  const decoded: number[] = []
+  while (value > 0n) {
+    decoded.push(Number(value & 255n))
+    value >>= 8n
+  }
+  for (const char of address) {
+    if (char === '1') decoded.push(0)
+    else break
+  }
+  decoded.reverse()
+  if (decoded.length !== 25 || (decoded[0] !== 0x00 && decoded[0] !== 0x05)) return false
+  const bytes = Uint8Array.from(decoded)
+  const first = createHash('sha256').update(bytes.subarray(0, 21)).digest()
+  const checksum = createHash('sha256').update(first).digest()
+  return checksum.subarray(0, 4).every((byte, index) => byte === bytes[21 + index])
+}
+
 function parseCryptoQr(qr: ParsedQr): ParsedQr | null {
   const uri = /^(tron|ethereum|bitcoin|usdt):(?:\/\/)?([^?]+)(?:\?([^#]*))?$/i.exec(qr.raw)
   const scheme = uri?.[1].toLowerCase()
@@ -221,7 +251,7 @@ function parseCryptoQr(qr: ParsedQr): ParsedQr | null {
   if ((!scheme || scheme === 'ethereum' || scheme === 'usdt' && network !== 'trc20') && /^0x[a-f0-9]{40}$/i.test(account)) {
     return { ...qr, qrScheme: 'CRYPTO_WALLET', account, walletNetwork: 'ERC20', providerLabel: scheme === 'usdt' ? 'USDT ERC20' : 'Ethereum' }
   }
-  const legacyBitcoin = /^[13][1-9A-HJ-NP-Za-km-z]{25,34}$/.test(account)
+  const legacyBitcoin = /^[13][1-9A-HJ-NP-Za-km-z]{25,34}$/.test(account) && isValidBitcoinLegacy(account)
   const segwit = /^bc1[ac-hj-np-z02-9]{11,71}$/i.test(account)
     && (account === account.toLowerCase() || account === account.toUpperCase())
   if ((!scheme || scheme === 'bitcoin') && (legacyBitcoin || segwit)) {
@@ -237,6 +267,13 @@ export function parseAnyQr(raw: string): ParsedQr | null {
   const emv = parseEmv(payload)
   if (emv) return parseEmvQr(qr, emv.fields, emv.crcValid)
   return parseWalletPipe(qr) ?? parseQrUrl(qr) ?? parseCryptoQr(qr) ?? qr
+}
+
+export function findCryptoWallets(text: string): ParsedQr[] {
+  const context = text.normalize('NFD').replace(/\p{M}/gu, '').replace(/đ/gi, 'd')
+  if (!/\b(?:chuyen|gui|nap|thanh toan|dia chi vi|crypto|usdt|trc.?20|erc.?20|btc|bitcoin|eth|ethereum|tron)\b/i.test(context)) return []
+  const tokens = text.match(/(?<![\p{L}\p{N}])(?:(?:bitcoin|ethereum|tron|usdt):[^\s<>"'()[\],;]+|(?:0x[a-f0-9]{40}|T[1-9A-HJ-NP-Za-km-z]{33}|[13][1-9A-HJ-NP-Za-km-z]{25,34}|bc1[ac-hj-np-z02-9]{11,71}))(?![\p{L}\p{N}])/giu) ?? []
+  return tokens.map((token) => parseCryptoQr(emptyQr(token.replace(/[.!?]+$/u, '')))).filter((qr) => qr !== null)
 }
 
 let readerConfigured = false

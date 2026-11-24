@@ -60,7 +60,8 @@ export class GuestSessionGuard implements CanActivate {
     request.guestSessionId = guestSessionId
     request.session = { kind: 'guest', guestSessionId }
 
-    if (!parsed.success || unsigned?.renew) {
+    // Parallel reads can use an ephemeral guest ID. Only writes establish a new guest cookie.
+    if ((!parsed.success && request.method !== 'GET' && request.method !== 'HEAD') || unsigned?.renew) {
       reply.setCookie(guestCookie, guestSessionId, {
         ...sessionCookieOptions,
         maxAge: 60 * 60 * 24 * 30,
