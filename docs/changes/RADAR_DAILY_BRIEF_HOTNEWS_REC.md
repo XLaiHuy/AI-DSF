@@ -117,4 +117,4 @@
 
 - Nhánh: `feat/tai-radar-hotnews-rec`
 - Integration base: `353d485` (`origin/dev` tại lúc tạo nhánh).
-- Hash của commit triển khai sẽ được ghi bằng commit tài liệu kế tiếp.
+- Commit triển khai: `4b58766` — `feat(radar): add grounded daily brief and article imagery`.
