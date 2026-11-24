@@ -105,3 +105,26 @@ export const SurveyInvestResponseSchema = z.strictObject({
   })),
 })
 export type SurveyInvestResponse = z.infer<typeof SurveyInvestResponseSchema>
+
+export const ManualCompareRequestSchema = z.strictObject({
+  offers: z.array(z.strictObject({
+    label: z.string().trim().min(1).max(120),
+    principalVnd: positiveDecimal,
+    annualRatePct: nonnegativeDecimal,
+    termMonths: z.number().int().positive(),
+    upfrontFeeVnd: nonnegativeDecimal.optional(),
+  })).min(2).max(10),
+})
+export type ManualCompareRequest = z.infer<typeof ManualCompareRequestSchema>
+
+export const ManualCompareResponseSchema = z.strictObject({
+  sessionId: z.guid(),
+  offers: z.array(z.strictObject({
+    label: z.string(),
+    monthlyPaymentVnd: nonnegativeDecimal,
+    totalInterestVnd: nonnegativeDecimal,
+    totalPayableVnd: nonnegativeDecimal,
+    effectiveAprPct: decimalString,
+  })),
+})
+export type ManualCompareResponse = z.infer<typeof ManualCompareResponseSchema>

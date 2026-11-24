@@ -1,9 +1,19 @@
-import { describe, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import { assessDti, compoundDca, decliningPrincipalLoan, flatRateLoan, reducingBalanceLoan } from './index'
 
-// Golden inputs and expected outputs are specified in docs/specs/05_Agent_Coding_Spec.md §5.1–5.4.
 describe('Financial math golden vectors', () => {
-  it.todo('V1 — reducing-balance EMI and final instalment rounding')
-  it.todo('V2 — flat rate and upfront fee converted to APR and EAR')
-  it.todo('V3 — four DTI thresholds and disposable cashflow')
-  it.todo('V4 — open-end fund DCA, redemption fee and tax')
+  it('V1 - reducing balance EMI', () => {
+    const r = reducingBalanceLoan('50000000', '14.5', 24)
+    expect(r.monthlyPaymentVnd).toBe('2412471'); expect(r.totalInterestVnd).toBe('7899316'); expect(r.totalPayableVnd).toBe('57899316')
+    expect(r.schedule[0]).toEqual({ month: 1, paymentVnd: '2412471', principalVnd: '1808304', interestVnd: '604167', remainingBalanceVnd: '48191696' })
+    expect(r.schedule[23]).toEqual({ month: 24, paymentVnd: '2412483', principalVnd: '2383680', interestVnd: '28803', remainingBalanceVnd: '0' })
+  })
+  it('V2 - flat rate APR and EAR', () => { const r = flatRateLoan('50000000', '5000000', '0.9', 24); expect(r).toMatchObject({ principalNetVnd: '45000000', monthlyPaymentVnd: '2533333', totalPayableVnd: '60799992' }); expect(Number(r.effectiveAprPct)).toBeCloseTo(30.7436, 3); expect(Number(r.effectiveEarPct)).toBeCloseTo(35.4678, 3) })
+  it('equal principal amortisation has declining payments', () => {
+    const r = decliningPrincipalLoan('12000000', '12', 12)
+    expect(r.schedule[0]).toMatchObject({ paymentVnd: '1120000', principalVnd: '1000000', interestVnd: '120000' })
+    expect(r.schedule[11]).toMatchObject({ paymentVnd: '1010000', principalVnd: '1000000', interestVnd: '10000', remainingBalanceVnd: '0' })
+  })
+  it('V3 - DTI thresholds', () => { expect(assessDti('18000000', '8000000', '2000000', '2412471')).toEqual({ dtiPct: '24.51', disposableVnd: '5587529', riskBand: 'SAFE' }); expect(assessDti('18000000', '8000000', '4600000', '2412471').riskBand).toBe('MODERATE'); expect(assessDti('18000000', '8000000', '6000000', '2412471').riskBand).toBe('HIGH_PRESSURE'); expect(assessDti('18000000', '8000000', '7000000', '2412471').riskBand).toBe('CRITICAL_OVERLOAD') })
+  it('V4 - DCA, redemption fee and tax', () => { expect(compoundDca('20000000', '3000000', 24, '10.0', '0.5', '0.1')).toEqual({ totalContributedVnd: '92000000', grossValueVnd: '103748565', sellFeeVnd: '518743', taxVnd: '103749', netValueVnd: '103126073', netProfitVnd: '11126073' }) })
 })
