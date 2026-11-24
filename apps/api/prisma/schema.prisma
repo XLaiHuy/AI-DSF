@@ -36,20 +36,22 @@ model MarketSource {
 }
 
 model MarketArticle {
-  id             String                  @id @db.Uuid
-  canonicalUrl   String                  @unique @map("canonical_url") @db.Text
-  title          String                  @db.Text
-  publishedAt    DateTime?               @map("published_at") @db.Timestamptz(6)
-  contentHash    String                  @map("content_hash") @db.VarChar(64)
-  duplicateOfId  String?                 @map("duplicate_of_id") @db.Uuid
-  feedStatus     String                  @default("ACTIVE") @map("feed_status") @db.VarChar(10)
-  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime                @default(now()) @map("updated_at") @db.Timestamptz(6)
-  duplicateOf    MarketArticle?          @relation("ArticleDuplicates", fields: [duplicateOfId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  duplicates     MarketArticle[]         @relation("ArticleDuplicates")
-  sources        ArticleSource[]
-  categories     ArticleCategory[]
-  impactAnalyses ArticleImpactAnalysis[]
+  id                  String                  @id @db.Uuid
+  canonicalUrl        String                  @unique @map("canonical_url") @db.Text
+  title               String                  @db.Text
+  imageUrl            String?                 @map("image_url") @db.Text
+  publishedAt         DateTime?               @map("published_at") @db.Timestamptz(6)
+  contentHash         String                  @map("content_hash") @db.VarChar(64)
+  duplicateOfId       String?                 @map("duplicate_of_id") @db.Uuid
+  feedStatus          String                  @default("ACTIVE") @map("feed_status") @db.VarChar(10)
+  createdAt           DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                @default(now()) @map("updated_at") @db.Timestamptz(6)
+  duplicateOf         MarketArticle?          @relation("ArticleDuplicates", fields: [duplicateOfId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  duplicates          MarketArticle[]         @relation("ArticleDuplicates")
+  sources             ArticleSource[]
+  categories          ArticleCategory[]
+  impactAnalyses      ArticleImpactAnalysis[]
+  calculationSessions CalculationSession[]
 
   @@map("market_article")
 }
@@ -91,6 +93,7 @@ model ThreatAlert {
   updatedAt          DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
   evidence           ThreatEvidence[]
   indicators         ThreatIndicator[]
+  forensicAudits     ForensicAudit[]
 
   @@map("threat_alert")
 }
@@ -150,6 +153,7 @@ model FinancialProfile {
   user                   User?                   @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   impactAnalyses         ArticleImpactAnalysis[]
   calculationSessions    CalculationSession[]
+  forensicAudits         ForensicAudit[]
 
   @@map("financial_profiles")
 }
@@ -222,6 +226,8 @@ model CalculationSession {
   userId            String?           @map("user_id") @db.Uuid
   guestSessionId    String?           @map("guest_session_id") @db.Uuid
   profileId         String?           @map("profile_id") @db.Uuid
+  sourceArticleId   String?           @map("source_article_id") @db.Uuid
+  sourceAuditId     String?           @map("source_audit_id") @db.Uuid
   sessionMode       String            @map("session_mode") @db.VarChar(30)
   inputParamsJson   Json              @map("input_params_json") @db.JsonB
   mathResultsJson   Json              @map("math_results_json") @db.JsonB
@@ -233,33 +239,44 @@ model CalculationSession {
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   user              User?             @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   profile           FinancialProfile? @relation(fields: [profileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sourceArticle     MarketArticle?    @relation(fields: [sourceArticleId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  sourceAudit       ForensicAudit?    @relation(fields: [sourceAuditId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
+  @@index([sourceArticleId])
+  @@index([sourceAuditId])
   @@map("calculation_sessions")
 }
 
 model ForensicAudit {
-  id                    String              @id @db.Uuid
-  userId                String?             @map("user_id") @db.Uuid
-  guestSessionId        String?             @map("guest_session_id") @db.Uuid
-  claimedEntityName     String?             @map("claimed_entity_name") @db.VarChar(200)
-  inputChannels         Json                @map("input_channels") @db.JsonB
-  rawTextMasked         String?             @map("raw_text_masked") @db.Text
-  extractedClaimsJson   Json                @map("extracted_claims_json") @db.JsonB
-  principalNominalVnd   Decimal?            @map("principal_nominal_vnd") @db.Decimal(18, 2)
-  principalNetVnd       Decimal?            @map("principal_net_vnd") @db.Decimal(18, 2)
-  quotedRatePct         Decimal?            @map("quoted_rate_pct") @db.Decimal(7, 4)
-  effectiveAprPct       Decimal?            @map("effective_apr_pct") @db.Decimal(8, 4)
-  riskScore             Int                 @map("risk_score")
-  verdictLevel          String              @map("verdict_level") @db.VarChar(20)
-  deterministicOverride Boolean             @default(false) @map("deterministic_override")
-  aiExplanationText     String              @map("ai_explanation_text") @db.Text
-  llmProvider           String              @map("llm_provider") @db.VarChar(40)
-  sourceFilesPurgedAt   DateTime            @map("source_files_purged_at") @db.Timestamptz(6)
-  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  user                  User?               @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                    String               @id @db.Uuid
+  userId                String?              @map("user_id") @db.Uuid
+  guestSessionId        String?              @map("guest_session_id") @db.Uuid
+  profileId             String?              @map("profile_id") @db.Uuid
+  sourceAlertId         String?              @map("source_alert_id") @db.Uuid
+  claimedEntityName     String?              @map("claimed_entity_name") @db.VarChar(200)
+  inputChannels         Json                 @map("input_channels") @db.JsonB
+  rawTextMasked         String?              @map("raw_text_masked") @db.Text
+  extractedClaimsJson   Json                 @map("extracted_claims_json") @db.JsonB
+  principalNominalVnd   Decimal?             @map("principal_nominal_vnd") @db.Decimal(18, 2)
+  principalNetVnd       Decimal?             @map("principal_net_vnd") @db.Decimal(18, 2)
+  quotedRatePct         Decimal?             @map("quoted_rate_pct") @db.Decimal(7, 4)
+  effectiveAprPct       Decimal?             @map("effective_apr_pct") @db.Decimal(8, 4)
+  riskScore             Int                  @map("risk_score")
+  verdictLevel          String               @map("verdict_level") @db.VarChar(20)
+  deterministicOverride Boolean              @default(false) @map("deterministic_override")
+  aiExplanationText     String               @map("ai_explanation_text") @db.Text
+  llmProvider           String               @map("llm_provider") @db.VarChar(40)
+  sourceFilesPurgedAt   DateTime             @map("source_files_purged_at") @db.Timestamptz(6)
+  createdAt             DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  user                  User?                @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  profile               FinancialProfile?    @relation(fields: [profileId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  sourceAlert           ThreatAlert?         @relation(fields: [sourceAlertId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   qrPayloads            ForensicQrPayload[]
   findings              ForensicFinding[]
+  calculationSessions   CalculationSession[]
 
+  @@index([profileId])
+  @@index([sourceAlertId])
   @@map("forensic_audits")
 }
 
