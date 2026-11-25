@@ -358,6 +358,11 @@ erDiagram
         date effective_date
         varchar data_provenance
         boolean is_active
+        jsonb redemption_fee_tiers
+        numeric investment_tax_pct
+        int investment_tax_free_after_months
+        text rate_note
+        char catalog_sync_fingerprint
         timestamptz created_at
         timestamptz updated_at
     }
@@ -674,6 +679,11 @@ Table financial_products {
   effective_date date [not null]
   data_provenance varchar(20) [not null, default: 'CATALOG_VERIFIED', note: 'CATALOG_VERIFIED | WEB_REFERENCE']
   is_active boolean [not null, default: true]
+  redemption_fee_tiers jsonb [note: 'Tiered exit fee schedule for fund/saving products']
+  investment_tax_pct numeric(7,4) [note: 'Applicable investment/redemption tax %']
+  investment_tax_free_after_months int [note: 'Holding period after which investment tax is waived']
+  rate_note text [note: 'Disclosure/reference note for observed rate or historical return']
+  catalog_sync_fingerprint char(64) [note: 'Deterministic SHA-256 sync fingerprint for idempotent admin sync']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
 }
