@@ -49,6 +49,9 @@ export const SurveyLoanResponseSchema = z.strictObject({
   dtiAssessment: dtiAssessmentSchema.nullable(),
   offers: z.array(z.strictObject({
     ...offerSource,
+    trustScore: z.number().int().min(0).max(100),
+    fitScore: z.number().int().min(0).max(100).optional(),
+    sourceLabel: z.string(),
     rateType: RateType,
     principalNetVnd: nonnegativeDecimal,
     monthlyPaymentFirstVnd: nonnegativeDecimal,
@@ -97,11 +100,7 @@ export const SurveyInvestResponseSchema = z.strictObject({
   sessionId: z.guid(),
   offers: z.array(z.strictObject({
     ...offerSource,
-    scenarios: z.strictObject({
-      pessimistic: investmentScenarioSchema,
-      base: investmentScenarioSchema,
-      optimistic: investmentScenarioSchema,
-    }),
+    scenario: investmentScenarioSchema,
   })),
 })
 export type SurveyInvestResponse = z.infer<typeof SurveyInvestResponseSchema>

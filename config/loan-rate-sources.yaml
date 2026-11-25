@@ -1,0 +1,64 @@
+# Official bank product pages for the dedicated loan-rate crawler.
+# These pages are source candidates; extracted rates must keep the page URL,
+# effective date and product/category evidence before being activated in the catalog.
+sources:
+  - sourceKey: vietcombank-loans
+    institutionCode: VCB
+    institutionName: Vietcombank
+    sourceType: OFFICIAL_WEB
+    endpointUrl: https://vietcombank.com.vn/vi-VN/KHCN/SPDV/Vay
+    isTrustedForRates: true
+  - sourceKey: bidv-personal-loans
+    institutionCode: BIDV
+    institutionName: BIDV
+    sourceType: OFFICIAL_WEB
+    endpointUrl: https://bidv.com.vn/vn/ca-nhan/san-pham-dich-vu/vay-ca-nhan
+    isTrustedForRates: true
+  - sourceKey: techcombank-personal-loans
+    institutionCode: TCB
+    institutionName: Techcombank
+    sourceType: OFFICIAL_WEB
+    endpointUrl: https://techcombank.com/khach-hang-ca-nhan/vay
+    isTrustedForRates: true
+  - sourceKey: vpbank-personal-loans
+    institutionCode: VPB
+    institutionName: VPBank
+    sourceType: OFFICIAL_WEB
+    endpointUrl: https://www.vpbank.com.vn/ca-nhan/vay
+    isTrustedForRates: true
+  - sourceKey: mb-personal-loans
+    institutionCode: MBB
+    institutionName: MB Bank
+    sourceType: OFFICIAL_WEB
+    endpointUrl: https://www.mbbank.com.vn/ca-nhan/khach-hang-ca-nhan/vay-von
+    isTrustedForRates: true
+  - sourceKey: vib-loans
+    institutionCode: VIB
+    institutionName: VIB
+    sourceType: OFFICIAL_WEB
+    endpointUrl: https://www.vib.com.vn/vn/san-pham-vay
+    isTrustedForRates: true
+  - sourceKey: acb-loans
+    institutionCode: ACB
+    institutionName: ACB
+    sourceType: OFFICIAL_WEB
+    endpointUrl: https://acb.com.vn/vay-von
+    isTrustedForRates: true
+  - sourceKey: tpbank-personal-loans
+    institutionCode: TPB
+    institutionName: TPBank
+    sourceType: OFFICIAL_WEB
+    endpointUrl: https://tpb.vn/khach-hang-ca-nhan/cho-vay
+    isTrustedForRates: true
+  - sourceKey: sacombank-consumer-loans
+    institutionCode: STB
+    institutionName: Sacombank
+    sourceType: OFFICIAL_WEB
+    endpointUrl: https://www.sacombank.com.vn/ca-nhan/vay/vay-tieu-dung/vay-tieu-dung-phuc-vu-cuoc-song.html
+    isTrustedForRates: true
+  - sourceKey: ncb-personal-credit
+    institutionCode: NCB
+    institutionName: NCB
+    sourceType: OFFICIAL_WEB
+    endpointUrl: https://www.ncb-bank.vn/en/personal/tin-dung-ca-nhan
+    isTrustedForRates: true
