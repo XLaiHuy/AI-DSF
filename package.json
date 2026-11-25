@@ -12,7 +12,8 @@
     "test": "turbo run test",
     "db:migrate": "pnpm --filter api db:migrate",
     "db:seed": "pnpm --filter api db:seed",
-    "test:e2e": "playwright test --config tests/e2e/playwright.config.ts"
+    "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
+    "crawl:loan-rates": "node scripts/crawl-loan-rates.mjs"
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "~15.5.0",
