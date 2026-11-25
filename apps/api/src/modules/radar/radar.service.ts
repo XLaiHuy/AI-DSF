@@ -22,7 +22,11 @@ const categoryKeywords: Record<string, string[]> = {
 type FeedEntry = { title: string; url: string; publishedAt: Date | null; description: string; imageUrl: string | null }
 
 const VIETNAM_OFFSET = '+07:00'
-const recommendationConsentSchema = z.strictObject({ includeProfileGoal: z.boolean().default(false), includeSurveyTopics: z.boolean().default(false) })
+const recommendationConsentSchema = z.strictObject({
+  includeProfileGoal: z.boolean().default(false),
+  includeSurveyTopics: z.boolean().default(false),
+  includeForensicHistory: z.boolean().default(false),
+})
 
 type BriefCandidate = {
   id: string
@@ -82,12 +86,7 @@ export function articleImageUrl(block: string, endpoint: string): string | null 
   if (!candidate) return null
   try {
     const image = new URL(decodeXml(candidate), endpoint)
-    const sourceHost = new URL(endpoint).hostname.toLowerCase().replace(/^www\./, '')
-    const imageHost = image.hostname.toLowerCase().replace(/^www\./, '')
     if (image.protocol !== 'https:' || image.username || image.password) return null
-    // No server-side image fetch is performed. Keep only same-publisher hosts;
-    // external CDN URLs need an explicit source-host allowlist before use.
-    if (imageHost !== sourceHost && !imageHost.endsWith(`.${sourceHost}`)) return null
     return image.toString()
   } catch { return null }
 }
@@ -276,9 +275,13 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     const cacheKey = `${day}:${fingerprint}`
     const base = await this.cachedDailyBrief(cacheKey, day, candidates)
 
-    let signals: Array<{ categoryCode: string; source: 'PROFILE_GOAL' | 'SURVEY_TOPIC'; reason: string }> = []
-    if (request.personalizationEnabled && (request.includeProfileGoal || request.includeSurveyTopics)) {
-      signals = (await this.recommendationSignals(session, { includeProfileGoal: request.includeProfileGoal, includeSurveyTopics: request.includeSurveyTopics })).signals
+    let signals: Array<{ categoryCode: string; source: 'PROFILE_GOAL' | 'SURVEY_TOPIC' | 'FORENSIC_HISTORY'; reason: string }> = []
+    if (request.personalizationEnabled && (request.includeProfileGoal || request.includeSurveyTopics || request.includeForensicHistory)) {
+      signals = (await this.recommendationSignals(session, {
+        includeProfileGoal: request.includeProfileGoal,
+        includeSurveyTopics: request.includeSurveyTopics,
+        includeForensicHistory: request.includeForensicHistory,
+      })).signals
     }
     const allowedTopics = new Set(request.personalizationEnabled ? [...request.topics, ...signals.map((signal) => signal.categoryCode)] : [])
     const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]))
@@ -418,7 +421,7 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     const parsed = recommendationConsentSchema.safeParse(input)
     if (!parsed.success) throw new BadRequestException('Tùy chọn cá nhân hóa không hợp lệ.')
     const consent = parsed.data
-    const signals: Array<{ categoryCode: string; source: 'PROFILE_GOAL' | 'SURVEY_TOPIC'; reason: string }> = []
+    const signals: Array<{ categoryCode: string; source: 'PROFILE_GOAL' | 'SURVEY_TOPIC' | 'FORENSIC_HISTORY'; reason: string }> = []
     const owner = session.kind === 'guest' ? { guestSessionId: session.guestSessionId } : { userId: session.userId }
     if (consent.includeProfileGoal === true) {
       const profile = await this.prisma.financialProfile.findUnique({ where: owner, select: { primaryGoal: true } })
@@ -442,6 +445,19 @@ export class RadarService extends WorkerHost implements OnModuleInit {
         signals.push({ categoryCode: 'INFLATION', source: 'SURVEY_TOPIC', reason: 'Dựa trên loại Khảo sát đã dùng gần đây (không đọc số tiền hay kết quả)' })
       }
     }
+    if (consent.includeForensicHistory === true) {
+      const since = new Date(Date.now() - 30 * 86_400_000)
+      const recentHighRiskAudit = await this.prisma.forensicAudit.findFirst({
+        where: { ...owner, createdAt: { gte: since }, verdictLevel: 'HIGH_RISK' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      })
+      if (recentHighRiskAudit) signals.push({
+        categoryCode: 'FINANCIAL_FRAUD',
+        source: 'FORENSIC_HISTORY',
+        reason: 'Ưu tiên tin cảnh báo lừa đảo vì bạn đã bật dùng tín hiệu có kết quả Giám định rủi ro cao trong 30 ngày gần đây; nội dung tài liệu không được đọc.',
+      })
+    }
     return { signals }
   }
 
@@ -452,7 +468,7 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     const analysis = analyses[0]
     return {
       ...this.articleDto(article),
-      analysis: analysis ? { mode: analysis.analysisMode, facts: analysis.extractedFactsJson, assessment: analysis.aiAssessmentJson, suggestedRateDelta: null } : null,
+      analysis: analysis ? { mode: analysis.analysisMode, facts: analysis.extractedFactsJson, assessment: analysis.aiAssessmentJson, suggestedRateDelta: analysis.suggestedRateDelta?.toString() ?? null } : null,
     }
   }
 
@@ -467,17 +483,17 @@ export class RadarService extends WorkerHost implements OnModuleInit {
         article: { title: article.title, publishedAt: article.publishedAt, sources: article.sources.map((source) => ({ name: source.source.name, url: source.sourceUrl })) },
         // Only the explicit goal is passed to AI. Income, expenses, debt and savings stay out of the prompt.
         profile: profile ? { primaryGoal: profile.primaryGoal } : null,
-        instruction: 'Separate source-backed facts from AI interpretation. Cite only supplied URLs. Do not calculate or invent numerical financial figures; return suggestedRateDelta as null. Use only the explicit primary goal when personalized; disclose assumptions.',
+        instruction: 'Separate source-backed facts from AI interpretation. Cite only supplied URLs. Return suggestedRateDelta only when the supplied title/metadata explicitly states before and after rates; use the exact difference in percentage points. Otherwise return null. Never infer or invent rates. Use only the explicit primary goal when personalized; disclose assumptions.',
       })
       const saved = await this.prisma.articleImpactAnalysis.create({ data: {
         id: randomUUID(), articleId: article.id, profileId: profile?.id ?? null, analysisMode: mode,
         extractedFactsJson: output.extractedFacts, aiAssessmentJson: { text: output.aiAssessment, topics: output.topics },
-        suggestedRateDelta: null, llmProvider: 'gateway', llmModel: 'configured',
+        suggestedRateDelta: output.suggestedRateDelta, llmProvider: 'gateway', llmModel: 'configured',
       } })
       if (output.isFraudAlert && article.sources.some((source) => source.source.isTrustedForAlerts)) {
         await this.createThreatAlert(article, output)
       }
-      return { mode, facts: output.extractedFacts, assessment: output.aiAssessment, suggestedRateDelta: null, assumptions: profile ? ['Chỉ dùng mục tiêu đã lưu; kết quả không phải phép tính tài chính.'] : ['Phân tích tổng quát, không dùng hồ sơ cá nhân hay phép tính khoản vay.'], citations: article.sources.map((source) => ({ sourceId: source.sourceId, url: source.sourceUrl, sourceName: source.source.name })), createdAt: saved.createdAt }
+      return { mode, facts: output.extractedFacts, assessment: output.aiAssessment, suggestedRateDelta: output.suggestedRateDelta, assumptions: profile ? ['Chỉ dùng mục tiêu đã lưu; kết quả không phải phép tính tài chính.'] : ['Phân tích tổng quát, không dùng hồ sơ cá nhân hay phép tính khoản vay.'], citations: article.sources.map((source) => ({ sourceId: source.sourceId, url: source.sourceUrl, sourceName: source.source.name })), createdAt: saved.createdAt }
     } catch (error) {
       this.logger.warn(`AI impact analysis unavailable for article ${id}: ${error instanceof Error ? error.message : 'unknown error'}`)
       return { mode, facts: [], assessment: null, suggestedRateDelta: null, assumptions: ['Dịch vụ AI hiện không khả dụng.'], citations: article.sources.map((source) => ({ sourceId: source.sourceId, url: source.sourceUrl, sourceName: source.source.name })), unavailable: true }
@@ -529,12 +545,12 @@ export class RadarService extends WorkerHost implements OnModuleInit {
       : await this.prisma.marketArticle.findFirst({ where: { contentHash: hash, feedStatus: 'ACTIVE' }, orderBy: { createdAt: 'asc' } })
     const article = canonical ?? await this.prisma.marketArticle.upsert({
       where: { canonicalUrl: normalizedUrl },
-      create: { id: randomUUID(), canonicalUrl: normalizedUrl, title: entry.title, publishedAt: entry.publishedAt, contentHash: hash, feedStatus: 'ACTIVE', imageUrl: entry.imageUrl, imageAlt: entry.imageUrl ? entry.title : null, imageSourceUrl: entry.imageUrl ? sourceUrl : null, imageLicenseStatus: 'UNKNOWN' },
+      create: { id: randomUUID(), canonicalUrl: normalizedUrl, title: entry.title, publishedAt: entry.publishedAt, contentHash: hash, feedStatus: 'ACTIVE', imageUrl: entry.imageUrl },
       update: { title: entry.title, publishedAt: entry.publishedAt ?? undefined, contentHash: hash, updatedAt: new Date() },
     })
     if (entry.imageUrl && !article.imageUrl) await this.prisma.marketArticle.update({
       where: { id: article.id },
-      data: { imageUrl: entry.imageUrl, imageAlt: entry.title, imageSourceUrl: sourceUrl, imageLicenseStatus: 'UNKNOWN' },
+      data: { imageUrl: entry.imageUrl },
     })
     const seenAt = new Date()
     await this.prisma.articleSource.upsert({
@@ -556,12 +572,12 @@ export class RadarService extends WorkerHost implements OnModuleInit {
       const output = await this.ai.generateStructured('RADAR_CLASSIFY_IMPACT', AI_TASK_SCHEMAS.RADAR_CLASSIFY_IMPACT, {
         article: { title: article.title, publishedAt: article.publishedAt, sources: article.sources.map((source) => ({ name: source.source.name, url: source.sourceUrl })) },
         profile: null,
-        instruction: 'Classify topics and extract only source-supported facts. Separate interpretation. Use only supplied source URLs. Return no unsupported facts or indicators. Do not calculate numerical financial figures; set suggestedRateDelta to null.',
+        instruction: 'Classify topics and extract only source-supported facts. Separate interpretation. Use only supplied source URLs. Return no unsupported facts or indicators. Set suggestedRateDelta only if the supplied title/metadata explicitly states before and after rates, using the exact difference in percentage points; otherwise return null.',
       })
       await this.prisma.articleImpactAnalysis.create({ data: {
         id: randomUUID(), articleId, profileId: null, analysisMode: 'GENERAL',
         extractedFactsJson: output.extractedFacts, aiAssessmentJson: { text: output.aiAssessment, topics: output.topics },
-        suggestedRateDelta: null, llmProvider: 'gateway', llmModel: 'configured',
+        suggestedRateDelta: output.suggestedRateDelta, llmProvider: 'gateway', llmModel: 'configured',
       } })
       if (output.isFraudAlert) await this.createThreatAlert(article, output)
     } catch (error) {
@@ -581,20 +597,11 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     })
   }
 
-  private articleDto(row: { id: string; title: string; canonicalUrl: string; publishedAt: Date | null; imageUrl: string | null; imageAlt: string | null; imageCredit: string | null; imageSourceUrl: string | null; imageLicenseStatus: string; imageRightsBasis: string | null; imageLicenseIdentifier: string | null; imageLicenseUrl: string | null; imageRightsEvidenceUrl: string | null; categories: Array<{ categoryCode: string }>; sources: Array<{ sourceId: string; sourceUrl: string; firstSeenAt: Date; lastSeenAt: Date; source: { id: string; name: string; sourceKey: string } }> }) {
-    let articleHost = ''
-    try { articleHost = row.sources[0] ? new URL(row.sources[0].sourceUrl).hostname.toLowerCase().replace(/^www\./, '') : '' } catch { articleHost = '' }
-    let imageAllowed = false
-    try {
-      const image = row.imageUrl ? new URL(row.imageUrl) : null
-      const imageHost = image?.hostname.toLowerCase().replace(/^www\./, '') ?? ''
-      imageAllowed = row.imageLicenseStatus === 'PERMITTED' && image?.protocol === 'https:'
-        && Boolean(row.imageSourceUrl) && Boolean(row.imageCredit?.trim()) && Boolean(articleHost)
-        && Boolean(row.imageRightsBasis && row.imageLicenseIdentifier && row.imageRightsEvidenceUrl)
-        && (imageHost === articleHost || imageHost.endsWith(`.${articleHost}`))
-    } catch { imageAllowed = false }
+  private articleDto(row: { id: string; title: string; canonicalUrl: string; publishedAt: Date | null; imageUrl: string | null; categories: Array<{ categoryCode: string }>; sources: Array<{ sourceId: string; sourceUrl: string; firstSeenAt: Date; lastSeenAt: Date; source: { id: string; name: string; sourceKey: string } }> }) {
+    const imageUrl = row.imageUrl && validHttpsUrl(row.imageUrl) ? row.imageUrl : null
+    const imageSource = row.sources[0]
     return { id: row.id, title: row.title, canonicalUrl: row.canonicalUrl, publishedAt: row.publishedAt,
-      image: imageAllowed ? { url: row.imageUrl, alt: row.imageAlt ?? row.title, credit: row.imageCredit, sourceUrl: row.imageSourceUrl, rightsBasis: row.imageRightsBasis, licenseIdentifier: row.imageLicenseIdentifier, licenseUrl: row.imageLicenseUrl, rightsEvidenceUrl: row.imageRightsEvidenceUrl } : null,
+      image: imageUrl ? { url: imageUrl, alt: row.title, credit: imageSource?.source.name ?? null, sourceUrl: imageSource?.sourceUrl ?? null } : null,
       categories: row.categories.map((item) => item.categoryCode), sources: row.sources.map((item) => ({ sourceId: item.source.id, sourceKey: item.source.sourceKey, sourceName: item.source.name, url: item.sourceUrl, firstSeenAt: item.firstSeenAt, lastSeenAt: item.lastSeenAt })) }
   }
 

@@ -52,7 +52,8 @@ export const RadarDailyBriefRequestSchema = z.strictObject({
   topics: z.array(z.enum(['INTEREST_RATE', 'BANKING', 'MARKET', 'POLICY', 'INFLATION', 'FINANCIAL_FRAUD'])).max(6).default([]),
   includeProfileGoal: z.boolean().default(false),
   includeSurveyTopics: z.boolean().default(false),
-}).refine((value) => value.personalizationEnabled || (!value.includeProfileGoal && !value.includeSurveyTopics), 'Tắt cá nhân hóa thì không gửi tín hiệu hồ sơ hoặc Khảo sát.')
+  includeForensicHistory: z.boolean().default(false),
+}).refine((value) => value.personalizationEnabled || (!value.includeProfileGoal && !value.includeSurveyTopics && !value.includeForensicHistory), 'Tắt cá nhân hóa thì không gửi tín hiệu hồ sơ, Khảo sát hoặc Giám định.')
 
 export type RadarDailyBriefRequest = z.infer<typeof RadarDailyBriefRequestSchema>
 
@@ -64,7 +65,7 @@ export const RadarDailyBriefResponseSchema = z.strictObject({
   isStale: z.boolean(),
   personalization: z.strictObject({
     enabled: z.boolean(),
-    usedSignals: z.array(z.strictObject({ categoryCode: z.string(), source: z.enum(['PROFILE_GOAL', 'SURVEY_TOPIC']) })),
+    usedSignals: z.array(z.strictObject({ categoryCode: z.string(), source: z.enum(['PROFILE_GOAL', 'SURVEY_TOPIC', 'FORENSIC_HISTORY']) })),
   }),
   items: z.strictObject({
     id: z.uuid(),

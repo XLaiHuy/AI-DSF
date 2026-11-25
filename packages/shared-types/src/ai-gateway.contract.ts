@@ -13,8 +13,8 @@ export const AI_TASK_SCHEMAS = {
     topics: z.array(z.string()),
     extractedFacts: z.array(z.string()),
     aiAssessment: z.string(),
-    // Radar AI explains source-backed impact; numerical loan scenarios belong to deterministic math.
-    suggestedRateDelta: z.null(),
+    // Only return a delta when a source explicitly states the before/after rate values.
+    suggestedRateDelta: decimalString.nullable(),
     isFraudAlert: z.boolean(),
     indicators: z.array(ThreatIndicatorSchema),
   }),

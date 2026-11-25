@@ -303,7 +303,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.font-data { font-family: var(--font-mono), ui-monospace, monospace; }
 
 ::selection {
   background: var(--accent);
@@ -371,17 +370,10 @@ body {
 
 .app-nav-list {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0.2rem;
 }
 
-.app-nav-groups { display: flex; flex-direction: column; gap: 1.75rem; }
-.app-nav-heading { margin: 0 0 0.55rem 0.75rem; color: var(--muted-foreground); font-size: 0.6875rem; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase; }
-.app-nav-secondary-list { gap: 0.15rem; }
-.app-nav-more { position: relative; }
-.app-nav-overflow { position: absolute; inset-inline-end: 0.4rem; inset-block-end: calc(100% + 0.65rem); z-index: 30; width: min(14rem, calc(100vw - 1.5rem)); padding: 0.4rem; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card); box-shadow: 0 12px 28px rgba(19, 34, 28, 0.12); }
-.app-nav-overflow-link { display: flex; align-items: center; gap: 0.65rem; min-height: 2.75rem; padding: 0.55rem 0.7rem; border-radius: 0.5rem; color: var(--foreground); font-size: 0.875rem; }
-.app-nav-overflow-link:hover, .app-nav-overflow-link[aria-current] { background: var(--accent); color: var(--accent-foreground); }
 
 .app-nav-link {
   display: flex;
@@ -413,14 +405,6 @@ body {
   font-weight: 700;
 }
 
-.app-nav-link[aria-expanded="true"] { background: var(--muted); color: var(--foreground); }
-.app-nav-groups { display: flex; flex-direction: column; gap: 1.75rem; }
-.app-nav-heading { margin: 0 0 0.55rem 0.75rem; color: var(--muted-foreground); font-size: 0.6875rem; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase; }
-.app-nav-secondary-list { gap: 0.15rem; }
-.app-nav-more { position: relative; }
-.app-nav-overflow { position: absolute; inset-inline-end: 0.4rem; inset-block-end: calc(100% + 0.65rem); z-index: 30; width: min(14rem, calc(100vw - 1.5rem)); padding: 0.4rem; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card); box-shadow: 0 12px 28px rgba(19, 34, 28, 0.12); }
-.app-nav-overflow-link { display: flex; align-items: center; gap: 0.65rem; min-height: 2.75rem; padding: 0.55rem 0.7rem; border-radius: 0.5rem; color: var(--foreground); font-size: 0.875rem; }
-.app-nav-overflow-link:hover, .app-nav-overflow-link[aria-current] { background: var(--accent); color: var(--accent-foreground); }
 
 .app-main {
   grid-area: main;
@@ -556,9 +540,6 @@ body {
 .admin-product-form { border-radius: 0.5rem; background: color-mix(in srgb, var(--muted) 45%, transparent); }
 
 /* Radar-only art direction: the other routes retain the shared workspace frame. */
-.app-shell--radar { background: #f0f1ec; }
-.app-shell--radar .app-main { min-width: 0; padding: 0; background: #f0f1ec; }
-.app-shell--radar .topbar { background: #fff; backdrop-filter: none; }
 
 .radar-page {
   --radar-ink: #17231d;
@@ -1063,28 +1044,12 @@ body {
 }
 
 @media (max-width: 47.999rem) {
-  html:has(.app-shell--radar), body:has(.app-shell--radar) { block-size: 100dvh; overflow: hidden; }
-  .app-shell--radar {
-    height: 100dvh;
-    min-height: 100dvh;
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    grid-template-areas: "topbar" "main" "nav";
-    overflow: hidden;
-  }
-  .app-shell--radar .app-main {
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior-y: contain;
-    padding: 0;
-  }
-  .app-shell--radar .app-nav {
     position: relative;
     grid-area: nav;
     inset: auto;
     padding: 0.35rem 0.35rem max(0.45rem, env(safe-area-inset-bottom));
     backdrop-filter: none;
   }
-  .app-shell--radar .radar-page { min-height: 100%; padding-bottom: 1.5rem; }
 }
 
 @media (max-width: 22.5rem) {
@@ -1114,7 +1079,7 @@ body {
     block-size: calc(100dvh - 4rem);
     display: flex;
     flex-direction: column;
-    justify-content: flex-start;
+    justify-content: space-between;
     gap: 1.5rem;
     padding: 1.25rem 0.9rem;
     border-block-start: 0;
@@ -1128,7 +1093,6 @@ body {
     gap: 0.3rem;
   }
 
-  .app-nav-groups { width: 100%; }
 
   .app-nav-link {
     position: relative;
@@ -1153,15 +1117,6 @@ body {
   .app-main {
     padding: clamp(2rem, 4vw, 3.25rem) clamp(1.75rem, 4vw, 3.5rem);
   }
-
-  .app-shell--radar { grid-template-columns: 5.5rem minmax(0, 1fr); }
-  .app-shell--radar .app-nav { padding-inline: 0.65rem; }
-  .app-shell--radar .app-nav-privacy { display: none; }
-  .app-nav--radar .app-nav-heading { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .app-nav--radar .app-nav-link { width: 3rem; min-height: 3rem; justify-content: center; margin-inline: auto; padding: 0; }
-  .app-nav--radar .app-nav-link > span:not(.sr-only),
-  .app-nav--radar .app-nav-link .app-nav-content > span:not(.sr-only) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .app-shell--radar .app-main { padding: 0; }
   .forensic-workspace {
     height: calc(100dvh - 4rem);
     padding-bottom: 0.75rem;

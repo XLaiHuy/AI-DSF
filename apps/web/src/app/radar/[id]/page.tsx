@@ -9,7 +9,7 @@ import { Button } from '@/components/ui'
 import { CategoryArtwork } from '@/components/radar/CategoryArtwork'
 import { ApiError, apiClient } from '@/lib/api-client'
 
-type ArticleDetail = { id: string; title: string; publishedAt: string | null; image?: { url: string; alt: string; credit: string | null; sourceUrl: string | null; licenseIdentifier: string; licenseUrl: string | null; rightsEvidenceUrl: string | null } | null; categories: string[]; sources: { sourceName: string; sourceId: string; url: string; firstSeenAt: string; lastSeenAt: string }[]; analysis: { mode: string; facts: unknown; assessment: unknown; suggestedRateDelta: string | null } | null }
+type ArticleDetail = { id: string; title: string; publishedAt: string | null; image?: { url: string; alt: string; credit: string | null; sourceUrl: string | null } | null; categories: string[]; sources: { sourceName: string; sourceId: string; url: string; firstSeenAt: string; lastSeenAt: string }[]; analysis: { mode: string; facts: unknown; assessment: unknown; suggestedRateDelta: string | null } | null }
 type AlertDetail = { id: string; threatCategory: string; tacticSummary: string; preventionGuidance: string; verificationStatus: string; issuedAt: string | null; indicators: { indicatorType: string; indicatorText: string }[]; evidence: { articleId: string; title: string; sourceName: string; url: string; publishedAt: string | null }[] }
 type Analysis = { mode: string; facts: string[]; assessment: string | null; suggestedRateDelta: string | null; assumptions: string[]; citations: { sourceName: string; url: string }[]; unavailable?: boolean }
 
@@ -71,6 +71,7 @@ export default function RadarArticlePage() {
   const data = article.data!
   const assessment = analysis ?? (data.analysis?.assessment as { text?: string } | null)
   const assessmentText = analysis?.assessment ?? (typeof assessment === 'string' ? assessment : assessment && typeof assessment === 'object' && 'text' in assessment ? String(assessment.text ?? '') : '')
+  const suggestedRateDelta = analysis?.suggestedRateDelta ?? data.analysis?.suggestedRateDelta ?? null
   return <div className="radar-detail">
     <Link href="/radar" className="detail-back"><ArrowLeft size={15} aria-hidden="true"/> Tất cả tin và cảnh báo</Link>
     <header className="detail-header">
@@ -79,8 +80,8 @@ export default function RadarArticlePage() {
       <h1>{data.title}</h1>
       <p className="detail-time">{data.publishedAt ? <>Công bố <time dateTime={data.publishedAt}>{formatDateTime(data.publishedAt) ?? 'chưa rõ thời gian'}</time></> : 'Chưa rõ thời gian công bố'}</p>
     </header>
-      {data.image && <figure className="detail-source-image">{imageFailed ? <div role="img" aria-label="Ảnh nguồn không tải được">Ảnh nguồn không khả dụng</div> : <img src={data.image.url} alt={data.image.alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setImageFailed(true)} />}<figcaption>{data.image.credit ?? 'Ảnh từ nhà xuất bản'} · {data.image.licenseIdentifier}{data.image.licenseUrl && <> · <a href={data.image.licenseUrl} target="_blank" rel="noreferrer">Điều khoản giấy phép</a></>}{data.image.sourceUrl && <> · <a href={data.image.sourceUrl} target="_blank" rel="noreferrer">Bài nguồn</a></>}</figcaption></figure>}
-      {!data.image && <figure className="detail-source-image detail-image-fallback"><CategoryArtwork categories={data.categories} /><figcaption>Chưa có ảnh được duyệt. Minh họa chủ đề do FINCOPILOT sở hữu, không mô tả sự kiện cụ thể.</figcaption></figure>}
+      {data.image && <figure className="detail-source-image">{imageFailed ? <CategoryArtwork categories={data.categories} /> : <img src={data.image.url} alt={data.image.alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setImageFailed(true)} />}<figcaption>{imageFailed ? 'Minh họa theo chủ đề' : <>{data.image.credit ? `Ảnh từ ${data.image.credit}` : 'Ảnh từ nguồn bài viết'}{data.image.sourceUrl && <> · <a href={data.image.sourceUrl} target="_blank" rel="noreferrer">Bài nguồn</a></>}</>}</figcaption></figure>}
+      {!data.image && <figure className="detail-source-image detail-image-fallback"><CategoryArtwork categories={data.categories} /><figcaption>Chưa có ảnh bài viết; đây là minh họa chủ đề, không mô tả sự kiện cụ thể.</figcaption></figure>}
 
     <section className="detail-section provenance-section" aria-labelledby="provenance-heading">
       <div className="detail-section-heading"><h2 id="provenance-heading">Nguồn gốc</h2></div>
@@ -100,6 +101,7 @@ export default function RadarArticlePage() {
       {analysis && analysis.facts.length > 0 && <section className="analysis-copy"><h3>Dữ kiện trích xuất từ tiêu đề và metadata</h3><p className="detail-muted">Chưa đối chiếu toàn văn bài báo; các chi tiết dưới đây cần mở nguồn gốc để kiểm chứng.</p><ul>{analysis.facts.map((fact, i) => <li key={i}>{fact}</li>)}</ul></section>}
       {assessment && assessmentText && <section className="analysis-copy assessment-copy"><h3>Nhận định AI</h3><p>{assessmentText}</p></section>}
       {analysis?.assumptions.map((assumption) => <p key={assumption} className="assumption-note"><span>Giả định</span>{assumption}</p>)}
+      {suggestedRateDelta !== null && <Link className="detail-inline-link" href={`/survey?shockDelta=${encodeURIComponent(suggestedRateDelta)}&articleId=${encodeURIComponent(data.id)}`}>Mô phỏng cú sốc lãi suất {suggestedRateDelta} điểm phần trăm trong Khảo sát <ArrowUpRight size={14} aria-hidden="true" /></Link>}
       {analysis?.citations.length ? <section className="analysis-citations" aria-label="Nguồn AI trích dẫn"><p>Nguồn được AI trích dẫn</p>{analysis.citations.map((citation) => <a key={citation.url} href={citation.url} target="_blank" rel="noreferrer">{citation.sourceName}<ExternalLink size={12} aria-hidden="true"/></a>)}</section> : null}
     </section>
 

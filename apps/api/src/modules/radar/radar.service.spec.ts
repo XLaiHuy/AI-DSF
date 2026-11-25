@@ -7,6 +7,7 @@ describe('Radar V2 parsing and date rules', () => {
     const prisma = {
       threatAlert: { findMany: vi.fn().mockImplementation(() => Promise.resolve(alerts)) },
       marketArticle: { findMany: vi.fn().mockImplementation(() => Promise.resolve(articles)) },
+      forensicAudit: { findFirst: vi.fn().mockResolvedValue(null) },
       financialProfile: { findUnique: vi.fn().mockResolvedValue(null) },
       calculationSession: { findMany: vi.fn().mockResolvedValue([]) },
     }
@@ -37,19 +38,17 @@ describe('Radar V2 parsing and date rules', () => {
     }
   }
 
-  it('returns only permitted images with source and rights evidence', () => {
+  it('returns valid HTTPS source images without a manual rights review gate', () => {
     const service = Object.create(RadarService.prototype) as RadarService
     const imageDto = service as unknown as { articleDto: (row: Record<string, unknown>) => { image: { url: string } | null } }
     const row: Record<string, unknown> = {
       id: '00000000-0000-4000-8000-000000000119', title: 'Tin có ảnh', canonicalUrl: 'https://publisher.example/story', publishedAt: new Date(),
-      imageUrl: 'https://publisher.example/photo.jpg', imageAlt: 'Ảnh minh họa', imageCredit: 'Publisher', imageSourceUrl: 'https://publisher.example/story',
-      imageLicenseStatus: 'PERMITTED', imageRightsBasis: 'OPEN_LICENSE', imageLicenseIdentifier: 'CC BY 4.0', imageLicenseUrl: 'https://publisher.example/license', imageRightsEvidenceUrl: 'https://publisher.example/rights',
+      imageUrl: 'https://cdn.publisher-cdn.example/photo.jpg',
       categories: [{ categoryCode: 'MARKET' }], sources: [{ sourceId: 's1', sourceUrl: 'https://publisher.example/story', firstSeenAt: new Date(), lastSeenAt: new Date(), source: { id: 's1', name: 'Publisher', sourceKey: 'publisher' } }],
     }
-    expect(imageDto.articleDto(row).image?.url).toBe('https://publisher.example/photo.jpg')
-    expect(imageDto.articleDto({ ...row, imageLicenseStatus: 'UNKNOWN' }).image).toBeNull()
-    expect(imageDto.articleDto({ ...row, imageUrl: 'https://unrelated.example/photo.jpg' }).image).toBeNull()
-    expect(imageDto.articleDto({ ...row, imageRightsEvidenceUrl: null }).image).toBeNull()
+    expect(imageDto.articleDto(row).image).toMatchObject({ url: 'https://cdn.publisher-cdn.example/photo.jpg', credit: 'Publisher', sourceUrl: 'https://publisher.example/story' })
+    expect(imageDto.articleDto({ ...row, imageUrl: 'http://publisher.example/photo.jpg' }).image).toBeNull()
+    expect(imageDto.articleDto({ ...row, imageUrl: null }).image).toBeNull()
   })
 
   it('classifies inflation signals without manufacturing statistics', () => {
@@ -57,11 +56,11 @@ describe('Radar V2 parsing and date rules', () => {
     expect(categoriesFor('Lạm phát và sức mua hộ gia đình')).toContain('INFLATION')
   })
 
-  it('reads RSS media metadata but keeps unlicensed images unapproved', () => {
+  it('reads HTTPS RSS media URLs including publisher CDN hosts', () => {
     const feed = `<rss><channel><item><title>Giá tiêu dùng</title><link>https://cafef.vn/tin/1</link><pubDate>Tue, 24 Nov 2026 09:00:00 +0700</pubDate><media:content url="https://cafef.vn/images/tin.jpg" medium="image"/><description>CPI</description></item></channel></rss>`
     expect(parseFeed(feed, 'RSS', 'https://cafef.vn/rss').map((item) => item.imageUrl)).toEqual(['https://cafef.vn/images/tin.jpg'])
     expect(articleImageUrl('<media:content url="http://cafef.vn/image.jpg"/>', 'https://cafef.vn/rss')).toBeNull()
-    expect(articleImageUrl('<media:content url="https://evil.example/image.jpg"/>', 'https://cafef.vn/rss')).toBeNull()
+    expect(articleImageUrl('<media:content url="https://images.cdn-example.net/image.jpg"/>', 'https://cafef.vn/rss')).toBe('https://images.cdn-example.net/image.jpg')
   })
 
   it('treats date-only filters as Asia/Ho_Chi_Minh calendar days', () => {
@@ -102,12 +101,13 @@ describe('Radar V2 parsing and date rules', () => {
   })
 
   it('does not read profile or survey records without explicit consent', async () => {
-    const prisma = { financialProfile: { findUnique: vi.fn() }, calculationSession: { findMany: vi.fn() } }
+    const prisma = { financialProfile: { findUnique: vi.fn() }, calculationSession: { findMany: vi.fn() }, forensicAudit: { findFirst: vi.fn() } }
     const service = Object.create(RadarService.prototype) as RadarService
     ;(service as unknown as { prisma: PrismaService }).prisma = prisma as unknown as PrismaService
     expect(await service.recommendationSignals({ kind: 'guest', guestSessionId: 'guest-1' }, {})).toEqual({ signals: [] })
     expect(prisma.financialProfile.findUnique).not.toHaveBeenCalled()
     expect(prisma.calculationSession.findMany).not.toHaveBeenCalled()
+    expect(prisma.forensicAudit.findFirst).not.toHaveBeenCalled()
   })
 
   it('reads only the selected profile goal and survey mode for the current guest', async () => {
@@ -126,6 +126,25 @@ describe('Radar V2 parsing and date rules', () => {
     expect(JSON.stringify(prisma.calculationSession.findMany.mock.calls)).not.toContain('inputParamsJson')
     expect(result.signals.map(({ categoryCode }) => categoryCode)).toEqual(['MARKET', 'INFLATION', 'MARKET', 'INFLATION'])
     expect(result.signals.every(({ reason }) => reason.length > 0)).toBe(true)
+  })
+
+  it('reads only the current guest latest high-risk verdict with explicit forensic-history consent', async () => {
+    const prisma = {
+      financialProfile: { findUnique: vi.fn() },
+      calculationSession: { findMany: vi.fn() },
+      forensicAudit: { findFirst: vi.fn().mockResolvedValue({ id: 'audit-1' }) },
+    }
+    const service = Object.create(RadarService.prototype) as RadarService
+    ;(service as unknown as { prisma: PrismaService }).prisma = prisma as unknown as PrismaService
+    const result = await service.recommendationSignals({ kind: 'guest', guestSessionId: 'guest-1' }, { includeForensicHistory: true })
+    expect(prisma.forensicAudit.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ guestSessionId: 'guest-1', verdictLevel: 'HIGH_RISK' }),
+      select: { id: true },
+    }))
+    expect(result.signals).toEqual([expect.objectContaining({ categoryCode: 'FINANCIAL_FRAUD', source: 'FORENSIC_HISTORY' })])
+    expect(JSON.stringify(prisma.forensicAudit.findFirst.mock.calls)).not.toContain('rawTextMasked')
+    expect(prisma.financialProfile.findUnique).not.toHaveBeenCalled()
+    expect(prisma.calculationSession.findMany).not.toHaveBeenCalled()
   })
 
   it('rejects unknown personalization consent fields', async () => {

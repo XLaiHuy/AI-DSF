@@ -11,11 +11,11 @@ import { ApiError, apiClient } from '@/lib/api-client'
 
 type Source = { sourceKey: string; name: string; lastFetchStatus: string | null; lastAttemptAt: string | null; lastSuccessAt: string | null }
 type ArticleSource = { sourceName: string; url: string; firstSeenAt?: string | null; lastSeenAt?: string | null }
-type Article = { id: string; title: string; canonicalUrl: string; publishedAt: string | null; image?: { url: string; alt: string; credit: string | null; sourceUrl: string | null; licenseIdentifier: string; licenseUrl: string | null } | null; categories: string[]; sources: ArticleSource[] }
+type Article = { id: string; title: string; canonicalUrl: string; publishedAt: string | null; image?: { url: string; alt: string; credit: string | null; sourceUrl: string | null } | null; categories: string[]; sources: ArticleSource[] }
 type ArticlePage = { items: Article[]; page: { hasMore: boolean; nextCursor: string | null }; sources: Source[] }
 type AlertItem = { id: string; threatCategory: string; tacticSummary: string; verificationStatus: string; publishedAt: string | null; evidence: { articleId?: string; sourceName: string; title?: string; url?: string }[] }
 type Highlight = Article & { editorialPriority?: 'HIGH' | 'STANDARD'; priorityReasons?: string[] | null }
-type RecommendationSignal = { categoryCode: string; source: 'PROFILE_GOAL' | 'SURVEY_TOPIC'; reason: string }
+type RecommendationSignal = { categoryCode: string; source: 'PROFILE_GOAL' | 'SURVEY_TOPIC' | 'FORENSIC_HISTORY'; reason: string }
 
 const categoryLabels: Record<string, string> = {
   INTEREST_RATE: 'Lãi suất', BANKING: 'Ngân hàng', MARKET: 'Thị trường', POLICY: 'Chính sách', INFLATION: 'Lạm phát', FINANCIAL_FRAUD: 'Lừa đảo tài chính',
@@ -68,20 +68,21 @@ function SourceLinks({ article, compact = false }: { article: Article; compact?:
   </span>
 }
 
-function ArticleImage({ image, className }: { image: NonNullable<Article['image']>; className: string }) {
-  const [failed, setFailed] = useState(false)
-  if (failed) return <div className={`${className} radar-image-fallback`} role="img" aria-label="Ảnh nguồn không tải được">Ảnh nguồn không khả dụng</div>
-  return <img className={className} src={image.url} alt={image.alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+function ArticleImage({ article, className, onError }: { article: Article; className: string; onError: () => void }) {
+  if (!article.image) return <CategoryArtwork categories={article.categories} className={className} />
+  return <img className={className} src={article.image.url} alt={article.image.alt} loading="lazy" referrerPolicy="no-referrer" onError={onError} />
 }
 
 function StoryThumbnail({ article }: { article: Article }) {
+  const [imageFailed, setImageFailed] = useState(false)
   return <figure className="radar-story-thumb">
-    {article.image ? <><ArticleImage image={article.image} className="radar-story-thumb-image" /><figcaption>{article.image.credit || 'Nguồn ảnh'}</figcaption></> : <><CategoryArtwork categories={article.categories} /><figcaption>Minh họa theo chủ đề</figcaption></>}
+    {article.image && !imageFailed ? <><ArticleImage article={article} className="radar-story-thumb-image" onError={() => setImageFailed(true)} /><figcaption>{article.image.credit ? `Nguồn ảnh: ${article.image.credit}` : 'Ảnh từ nguồn bài viết'}</figcaption></> : <><CategoryArtwork categories={article.categories} /><figcaption>Minh họa theo chủ đề</figcaption></>}
   </figure>
 }
 
 function FeatureStory({ article, index }: { article: Article; index: number }) {
   const isLead = index === 0
+  const [imageFailed, setImageFailed] = useState(false)
   return <article className={`radar-feature ${isLead ? 'radar-feature--lead' : 'radar-feature--second'}`}>
     <div className="radar-feature-copy">
       <p className="radar-feature-index"><span>{isLead ? 'Mới nhất' : 'Tiếp theo'}</span><span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span></p>
@@ -92,7 +93,7 @@ function FeatureStory({ article, index }: { article: Article; index: number }) {
         <SourceLinks article={article} compact />
       </div>
     </div>
-    <figure className="radar-feature-visual">{article.image ? <><ArticleImage image={article.image} className="radar-feature-image" /><figcaption>{article.image.credit} · {article.image.licenseIdentifier}{article.image.sourceUrl && <> · <a href={article.image.sourceUrl} target="_blank" rel="noreferrer">Bài nguồn</a></>}</figcaption></> : <CategoryArtwork categories={article.categories} />}</figure>
+    <figure className="radar-feature-visual">{article.image && !imageFailed ? <><ArticleImage article={article} className="radar-feature-image" onError={() => setImageFailed(true)} /><figcaption>{article.image.credit ? `Ảnh: ${article.image.credit}` : 'Ảnh từ nguồn bài viết'}{article.image.sourceUrl && <> · <a href={article.image.sourceUrl} target="_blank" rel="noreferrer">Bài nguồn</a></>}</figcaption></> : <><CategoryArtwork categories={article.categories} /><figcaption>Minh họa theo chủ đề</figcaption></>}</figure>
   </article>
 }
 
@@ -125,6 +126,7 @@ export default function RadarPage() {
   const [personalizationEnabled, setPersonalizationEnabled] = useState(false)
   const [includeProfileGoal, setIncludeProfileGoal] = useState(false)
   const [includeSurveyTopics, setIncludeSurveyTopics] = useState(false)
+  const [includeForensicHistory, setIncludeForensicHistory] = useState(false)
   const [dailyBriefDay, setDailyBriefDay] = useState(vietnamCalendarDay)
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>
@@ -139,21 +141,22 @@ export default function RadarPage() {
   }, [])
   useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem('fincopilot.radar.interests') ?? 'null') as { enabled?: boolean; topics?: string[]; includeProfileGoal?: boolean; includeSurveyTopics?: boolean } | null
+      const saved = JSON.parse(localStorage.getItem('fincopilot.radar.interests') ?? 'null') as { enabled?: boolean; topics?: string[]; includeProfileGoal?: boolean; includeSurveyTopics?: boolean; includeForensicHistory?: boolean } | null
       setInterests(saved?.topics?.filter((topic) => topic in categoryLabels) ?? [])
       setPersonalizationEnabled(saved?.enabled === true)
       setIncludeProfileGoal(saved?.includeProfileGoal === true)
       setIncludeSurveyTopics(saved?.includeSurveyTopics === true)
-    } catch { /* Ignore malformed local preferences; no profile data is read. */ }
+      setIncludeForensicHistory(saved?.includeForensicHistory === true)
+    } catch { /* Ignore malformed local preferences. */ }
   }, [])
   function saveInterests(enabled: boolean, topics: string[]) {
     setPersonalizationEnabled(enabled)
     setInterests(topics)
-    localStorage.setItem('fincopilot.radar.interests', JSON.stringify({ enabled, topics, includeProfileGoal, includeSurveyTopics }))
+    localStorage.setItem('fincopilot.radar.interests', JSON.stringify({ enabled, topics, includeProfileGoal, includeSurveyTopics, includeForensicHistory }))
   }
-  function saveConsent(profile: boolean, survey: boolean) {
-    setIncludeProfileGoal(profile); setIncludeSurveyTopics(survey)
-    localStorage.setItem('fincopilot.radar.interests', JSON.stringify({ enabled: personalizationEnabled, topics: interests, includeProfileGoal: profile, includeSurveyTopics: survey }))
+  function saveConsent(profile: boolean, survey: boolean, forensic: boolean) {
+    setIncludeProfileGoal(profile); setIncludeSurveyTopics(survey); setIncludeForensicHistory(forensic)
+    localStorage.setItem('fincopilot.radar.interests', JSON.stringify({ enabled: personalizationEnabled, topics: interests, includeProfileGoal: profile, includeSurveyTopics: survey, includeForensicHistory: forensic }))
   }
   const articlesQuery = useInfiniteQuery({
     queryKey: ['radar-articles', category, search, period, year, dateFrom, dateTo],
@@ -169,19 +172,20 @@ export default function RadarPage() {
   const fraudArticlesQuery = useQuery({ queryKey: ['radar-fraud-articles'], queryFn: () => apiClient.get<ArticlePage>('/radar/articles?category=FINANCIAL_FRAUD&limit=5') })
   const highlightsQuery = useQuery({ queryKey: ['radar-highlights'], queryFn: () => apiClient.get<{ items: Highlight[]; ranking: string }>('/radar/articles/highlights') })
   const dailyBriefQuery = useQuery({
-    queryKey: ['radar-daily-brief', dailyBriefDay, personalizationEnabled, interests, includeProfileGoal, includeSurveyTopics],
+    queryKey: ['radar-daily-brief', dailyBriefDay, personalizationEnabled, interests, includeProfileGoal, includeSurveyTopics, includeForensicHistory],
     queryFn: () => apiClient.post<DailyBriefResponse>('/radar/daily-brief', {
       personalizationEnabled, topics: personalizationEnabled ? interests : [],
       includeProfileGoal: personalizationEnabled && includeProfileGoal,
       includeSurveyTopics: personalizationEnabled && includeSurveyTopics,
+      includeForensicHistory: personalizationEnabled && includeForensicHistory,
     }),
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: true,
   })
   const signalsQuery = useQuery({
-    queryKey: ['radar-recommendation-signals', includeProfileGoal, includeSurveyTopics],
-    queryFn: () => apiClient.post<{ signals: RecommendationSignal[] }>('/radar/recommendation-signals', { includeProfileGoal, includeSurveyTopics }),
-    enabled: personalizationEnabled && (includeProfileGoal || includeSurveyTopics),
+    queryKey: ['radar-recommendation-signals', includeProfileGoal, includeSurveyTopics, includeForensicHistory],
+    queryFn: () => apiClient.post<{ signals: RecommendationSignal[] }>('/radar/recommendation-signals', { includeProfileGoal, includeSurveyTopics, includeForensicHistory }),
+    enabled: personalizationEnabled && (includeProfileGoal || includeSurveyTopics || includeForensicHistory),
   })
   const articles = useMemo(() => articlesQuery.data?.pages.flatMap((page) => page.items) ?? [], [articlesQuery.data])
   const sources = articlesQuery.data?.pages[0]?.sources ?? []
@@ -201,13 +205,15 @@ export default function RadarPage() {
       const matchedTopics = article.categories.filter((topic) => selectedTopics.includes(topic))
       const matchedTopic = matchedTopics[0] ?? ''
       const ageDays = article.publishedAt ? Math.max(0, (Date.now() - new Date(article.publishedAt).getTime()) / 86_400_000) : Number.POSITIVE_INFINITY
-      const score = matchedTopics.length * 25 + (ageDays <= 1 ? 10 : ageDays <= 7 ? 5 : 0) + (highPriorityIds.has(article.id) ? 16 : 0) + Math.min(article.sources.length, 3) * 2
+      const forensicFraudPriority = matchedTopics.includes('FINANCIAL_FRAUD') && signalsQuery.data?.signals.some((signal) => signal.source === 'FORENSIC_HISTORY') ? 45 : 0
+      const score = matchedTopics.length * 25 + forensicFraudPriority + (ageDays <= 1 ? 10 : ageDays <= 7 ? 5 : 0) + (highPriorityIds.has(article.id) ? 16 : 0) + Math.min(article.sources.length, 3) * 2
       const reasons = matchedTopics.flatMap((topic) => {
         const signal = signalsQuery.data?.signals.find((item) => item.categoryCode === topic)
         return [signal?.reason ?? `Chủ đề bạn đã chọn: ${categoryLabels[topic]?.toLocaleLowerCase('vi')}`]
       })
       if (ageDays <= 7) reasons.push('Bài mới công bố')
       if (highPriorityIds.has(article.id)) reasons.push('Đạt tiêu chí ưu tiên biên tập')
+      if (forensicFraudPriority) reasons.push('Ưu tiên cảnh báo lừa đảo theo tín hiệu Giám định gần đây đã bật')
       if (article.sources.length > 1) reasons.push(`Được ${article.sources.length} nguồn ghi nhận`)
       return { article, score, matchedTopic, reason: reasons.join(' · ') }
     }).sort((a, b) => b.score - a.score || new Date(b.article.publishedAt ?? 0).getTime() - new Date(a.article.publishedAt ?? 0).getTime())
@@ -277,20 +283,21 @@ export default function RadarPage() {
           return <button type="button" key={code} aria-pressed={interests.includes(code)} onClick={() => saveInterests(personalizationEnabled, next)}>{label}</button>
         })}</div>
         <fieldset className="radar-consent-options"><legend>Cho phép dùng thêm tín hiệu (tùy chọn)</legend>
-          <label><input type="checkbox" checked={includeProfileGoal} onChange={(event) => saveConsent(event.target.checked, includeSurveyTopics)} /> Mục tiêu trong hồ sơ tài chính</label>
-          <label><input type="checkbox" checked={includeSurveyTopics} onChange={(event) => saveConsent(includeProfileGoal, event.target.checked)} /> Loại Khảo sát đã dùng gần đây</label>
+          <label><input type="checkbox" checked={includeProfileGoal} onChange={(event) => saveConsent(event.target.checked, includeSurveyTopics, includeForensicHistory)} /> Mục tiêu trong hồ sơ tài chính</label>
+          <label><input type="checkbox" checked={includeSurveyTopics} onChange={(event) => saveConsent(includeProfileGoal, event.target.checked, includeForensicHistory)} /> Loại Khảo sát đã dùng gần đây</label>
+          <label><input type="checkbox" checked={includeForensicHistory} onChange={(event) => saveConsent(includeProfileGoal, includeSurveyTopics, event.target.checked)} /> Kết quả Giám định rủi ro cao trong 30 ngày</label>
         </fieldset>
-        <p className="radar-consent-summary">Gợi ý dùng chủ đề bạn chọn và chỉ dùng mục tiêu hoặc loại Khảo sát gần đây nếu bạn bật quyền tương ứng. Không đọc thu nhập, số tiền vay, kết quả tính hay tài liệu Giám định.</p>
+        <p className="radar-consent-summary">Chỉ dùng từng tín hiệu khi bạn bật quyền tương ứng. Với Giám định, hệ thống chỉ kiểm tra có kết quả rủi ro cao trong 30 ngày hay không; không đọc nội dung tài liệu, QR hay thông tin tổ chức.</p>
         <details className="radar-consent-details">
           <summary>Chi tiết về dữ liệu và quyền kiểm soát</summary>
-          <p>Lựa chọn chủ đề được lưu trên thiết bị này. Bạn có thể tắt gợi ý bất cứ lúc nào; cảnh báo công khai vẫn luôn hiển thị. Khi không có tín hiệu được phép dùng, danh sách dựa trên tiêu chí tin công khai và được ghi rõ như vậy.</p>
+          <p>Lựa chọn chủ đề và quyền dùng tín hiệu được lưu trên thiết bị này. Bạn có thể tắt gợi ý hoặc bỏ từng quyền bất cứ lúc nào; cảnh báo công khai vẫn luôn hiển thị. Khi không có tín hiệu được phép dùng, danh sách dựa trên tiêu chí tin công khai.</p>
         </details>
       </div>
       {personalizationEnabled && <section className="radar-v2-recommendations" aria-labelledby="radar-recommendations-title">
         <div className="radar-recommendations-heading">
           <div><p className="radar-context-kicker">{interests.length || signalsQuery.data?.signals.length ? 'THEO CHỦ ĐỀ ĐÃ CHỌN' : 'THEO TIN CÔNG KHAI'}</p><h3 id="radar-recommendations-title">{interests.length || signalsQuery.data?.signals.length ? 'Gợi ý cho bạn' : 'Tin ưu tiên công khai'}</h3></div>
         </div>
-        {signalsQuery.isError && (includeProfileGoal || includeSurveyTopics) && <p role="status" className="radar-recommendation-status">Không tải được tín hiệu được phép; vẫn dùng chủ đề đã chọn.</p>}
+        {signalsQuery.isError && (includeProfileGoal || includeSurveyTopics || includeForensicHistory) && <p role="status" className="radar-recommendation-status">Không tải được tín hiệu được phép; vẫn dùng chủ đề đã chọn.</p>}
         {recommendations.length ? <div className="radar-recommendation-list">{recommendations.map(({ article, reason }) => <RecommendationStory key={article.id} article={article} reason={reason} />)}</div> : interests.length || signalsQuery.data?.signals.length ? <p className="radar-recommendation-empty">Chưa có bài phù hợp trong các tin đã tải. Không suy đoán sở thích khác.</p> : <>
           <p className="radar-recommendation-empty">Chưa có tín hiệu cá nhân được phép dùng; các tin dưới đây theo tiêu chí công khai.</p>
           <div className="radar-recommendation-list">{coldStart.map((article) => <RecommendationStory key={article.id} article={article} reason={highlightReasons(article).join(' · ') || 'Ưu tiên công khai theo thời gian công bố'} />)}</div>

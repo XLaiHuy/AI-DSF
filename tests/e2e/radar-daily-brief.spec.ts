@@ -119,7 +119,7 @@ test('Daily brief tự làm mới khi qua nửa đêm tại Việt Nam', async (
   expect(requests).toBeGreaterThanOrEqual(2)
 })
 
-test('Tin thứ cấp chỉ dùng ảnh được phép và có minh họa rõ nhãn khi thiếu ảnh', async ({ page }) => {
+test('Tin thứ cấp hiện ảnh có nguồn và dùng minh họa chủ đề nếu thiếu ảnh', async ({ page }) => {
   const articles = Array.from({ length: 4 }, (_, index) => ({
     id: `11111111-1111-4111-8111-${String(index + 1).padStart(12, '0')}`,
     title: `Tin thứ cấp minh họa ${index + 1}`, canonicalUrl: `https://example.test/article-${index + 1}`,
