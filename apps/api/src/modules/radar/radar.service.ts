@@ -9,6 +9,7 @@ import { ProfileAuthService } from '../profile-auth/profile-auth.service'
 import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { AI_TASK_SCHEMAS, RadarDailyBriefRequestSchema } from '@fincopilot/shared-types'
 import type { SessionContext } from '@fincopilot/shared-types'
+import { fetchPublicDocument, fetchPublicImage } from '../admin/threat-safety'
 import { attachThreatDraft, publicThreatAlertWhere } from '../forensic/threat-draft'
 import { ThreatMemoryService } from '../forensic/threat-memory.service'
 
@@ -80,17 +81,70 @@ function todayInVietnam(): string {
   return `${values.year}-${values.month}-${values.day}`
 }
 
+const trackingImageUrl = /(?:1x1|pixel|spacer|blank\.gif|clear\.gif|doubleclick|scorecardresearch|beacon)/i
+
+function decodeEntities(value: string): string {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
+    .trim()
+}
+
+function normalizeHttpsImageUrl(candidate: string | undefined | null, base: string): string | null {
+  if (!candidate) return null
+  const decoded = decodeEntities(candidate)
+  if (!decoded || /^data:/i.test(decoded) || trackingImageUrl.test(decoded)) return null
+  try {
+    const image = new URL(decoded, base)
+    if (image.protocol !== 'https:' || image.username || image.password) return null
+    return image.toString()
+  } catch {
+    return null
+  }
+}
+
+function extractHtmlImageCandidate(block: string): string | undefined {
+  const sections = [
+    /<content:encoded\b[^>]*>([\s\S]*?)<\/content:encoded>/i.exec(block)?.[1],
+    /<description\b[^>]*>([\s\S]*?)<\/description>/i.exec(block)?.[1],
+    /<summary\b[^>]*>([\s\S]*?)<\/summary>/i.exec(block)?.[1],
+    block,
+  ].filter((part): part is string => Boolean(part))
+  for (const section of sections) {
+    const html = section.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+      .replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
+    for (const [, attrs] of html.matchAll(/<img\b([^>]*)>/gi)) {
+      if (/\b(?:width|height)\s*=\s*["']?(?:0|1)["']?(?:\s|$)/i.test(attrs)) continue
+      const src = /\b(?:data-src|data-original|src)\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1]
+      if (src && !/^data:/i.test(src) && !trackingImageUrl.test(src)) return src
+    }
+  }
+  return undefined
+}
+
+export function extractOgImageUrl(html: string, pageUrl: string): string | null {
+  for (const [, attrs] of html.matchAll(/<meta\b([^>]*)>/gi)) {
+    const key = /\b(?:property|name)\s*=\s*["'](og:image(?::secure_url)?|twitter:image(?::src)?)["']/i.exec(attrs)?.[1]
+    if (!key) continue
+    const content = /\bcontent\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1]
+    const resolved = normalizeHttpsImageUrl(content, pageUrl)
+    if (resolved) return resolved
+  }
+  return null
+}
+
 export function articleImageUrl(block: string, endpoint: string): string | null {
   const mediaElement = /<(media:content|media:thumbnail|enclosure)\b([^>]*)>/i.exec(block)
   if (mediaElement?.[1].toLowerCase() === 'enclosure' && !/\btype=["']image\//i.test(mediaElement[2])) return null
-  const candidate = (mediaElement?.[2] ? /\burl=["']([^"']+)["']/i.exec(mediaElement[2])?.[1] : undefined)
+  const mediaCandidate = (mediaElement?.[2] ? /\burl=["']([^"']+)["']/i.exec(mediaElement[2])?.[1] : undefined)
     ?? /<image\b[^>]*>[\s\S]*?<url[^>]*>([\s\S]*?)<\/url>[\s\S]*?<\/image>/i.exec(block)?.[1]
-  if (!candidate) return null
-  try {
-    const image = new URL(decodeXml(candidate), endpoint)
-    if (image.protocol !== 'https:' || image.username || image.password) return null
-    return image.toString()
-  } catch { return null }
+  const candidate = mediaCandidate ?? extractHtmlImageCandidate(block)
+  return normalizeHttpsImageUrl(candidate, endpoint)
 }
 
 function decodeXml(value: string): string {
@@ -525,7 +579,8 @@ export class RadarService extends WorkerHost implements OnModuleInit {
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const body = (await response.text()).slice(0, 2_000_000)
       const entries = parseFeed(body, source.sourceType, source.endpointUrl)
-      for (const entry of entries) await this.upsertEntry(source, entry)
+      const ogBudget = { remaining: 5 }
+      for (const entry of entries) await this.upsertEntry(source, entry, ogBudget)
       await this.prisma.marketSource.update({ where: { id: source.id }, data: { lastFetchStatus: 'SUCCESS', lastAttemptAt: attemptedAt, lastSuccessAt: new Date(), updatedAt: new Date() } })
       return { sourceKey: source.sourceKey, status: 'SUCCESS', items: entries.length }
     } catch (error) {
@@ -535,7 +590,17 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     }
   }
 
-  private async upsertEntry(source: { id: string }, entry: FeedEntry) {
+  private async resolveOgFallback(sourceUrl: string): Promise<string | null> {
+    if (!validHttpsUrl(sourceUrl)) return null
+    try {
+      const { text, url } = await fetchPublicDocument(sourceUrl, { timeoutMs: 3_500 })
+      return extractOgImageUrl(text, url)
+    } catch {
+      return null
+    }
+  }
+
+  private async upsertEntry(source: { id: string }, entry: FeedEntry, ogBudget?: { remaining: number }) {
     let sourceUrl: string
     let normalizedUrl: string
     try { sourceUrl = new URL(entry.url, 'https://invalid.local').toString(); normalizedUrl = normalizeUrl(sourceUrl) } catch { return }
@@ -545,14 +610,19 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     const canonical = exact
       ? await this.prisma.marketArticle.findUnique({ where: { id: exact.articleId } })
       : await this.prisma.marketArticle.findFirst({ where: { contentHash: hash, feedStatus: 'ACTIVE' }, orderBy: { createdAt: 'asc' } })
+    let resolvedImageUrl = entry.imageUrl
+    if (!resolvedImageUrl && !canonical?.imageUrl && ogBudget && ogBudget.remaining > 0) {
+      ogBudget.remaining -= 1
+      resolvedImageUrl = await this.resolveOgFallback(sourceUrl)
+    }
     const article = canonical ?? await this.prisma.marketArticle.upsert({
       where: { canonicalUrl: normalizedUrl },
-      create: { id: randomUUID(), canonicalUrl: normalizedUrl, title: entry.title, publishedAt: entry.publishedAt, contentHash: hash, feedStatus: 'ACTIVE', imageUrl: entry.imageUrl },
+      create: { id: randomUUID(), canonicalUrl: normalizedUrl, title: entry.title, publishedAt: entry.publishedAt, contentHash: hash, feedStatus: 'ACTIVE', imageUrl: resolvedImageUrl },
       update: { title: entry.title, publishedAt: entry.publishedAt ?? undefined, contentHash: hash, updatedAt: new Date() },
     })
-    if (entry.imageUrl && !article.imageUrl) await this.prisma.marketArticle.update({
+    if (resolvedImageUrl && !article.imageUrl) await this.prisma.marketArticle.update({
       where: { id: article.id },
-      data: { imageUrl: entry.imageUrl },
+      data: { imageUrl: resolvedImageUrl },
     })
     const seenAt = new Date()
     await this.prisma.articleSource.upsert({
@@ -602,11 +672,15 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     }))
   }
 
+  proxyArticleImage(rawUrl: string) {
+    return fetchPublicImage(rawUrl, { timeoutMs: 6_000 })
+  }
+
   private articleDto(row: { id: string; title: string; canonicalUrl: string; publishedAt: Date | null; imageUrl: string | null; categories: Array<{ categoryCode: string }>; sources: Array<{ sourceId: string; sourceUrl: string; firstSeenAt: Date; lastSeenAt: Date; source: { id: string; name: string; sourceKey: string } }> }) {
     const imageUrl = row.imageUrl && validHttpsUrl(row.imageUrl) ? row.imageUrl : null
     const imageSource = row.sources[0]
     return { id: row.id, title: row.title, canonicalUrl: row.canonicalUrl, publishedAt: row.publishedAt,
-      image: imageUrl ? { url: imageUrl, alt: row.title, credit: imageSource?.source.name ?? null, sourceUrl: imageSource?.sourceUrl ?? null } : null,
+      image: imageUrl ? { url: imageUrl, proxyUrl: `/api/v1/radar/image-proxy?url=${encodeURIComponent(imageUrl)}`, alt: row.title, credit: imageSource?.source.name ?? null, sourceUrl: imageSource?.sourceUrl ?? null } : null,
       categories: row.categories.map((item) => item.categoryCode), sources: row.sources.map((item) => ({ sourceId: item.source.id, sourceKey: item.source.sourceKey, sourceName: item.source.name, url: item.sourceUrl, firstSeenAt: item.firstSeenAt, lastSeenAt: item.lastSeenAt })) }
   }
 

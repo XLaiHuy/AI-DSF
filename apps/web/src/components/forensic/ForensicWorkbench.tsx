@@ -155,7 +155,8 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
     if (handoff.from === 'survey-apr' && handoff.amount && handoff.term && handoff.annualRatePct) {
       return `${handoff.label ? handoff.label + '\n' : ''}Kiểm tra khoản vay ${formatVnd(handoff.amount)}, kỳ hạn ${handoff.term} tháng, APR ${handoff.annualRatePct}%/năm.`
     }
-    return ''
+    if (handoff.from === 'home-quick-check' && handoff.prefillText) return handoff.prefillText
+    return handoff.prefillText ?? ''
   })
   const [refusals, setRefusals] = useState<{ question: string; answer: string }[]>([])
   const [demo, setDemo] = useState<typeof examples[number]>()

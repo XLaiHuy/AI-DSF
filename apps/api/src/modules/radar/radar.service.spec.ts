@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { PrismaService } from '../../common/prisma.service'
-import { articleImageUrl, categoriesFor, dateOnly, parseFeed, RadarService } from './radar.service'
+import { articleImageUrl, categoriesFor, dateOnly, extractOgImageUrl, parseFeed, RadarService } from './radar.service'
 
 describe('Radar V2 parsing and date rules', () => {
   function dailyBriefHarness({ articles = [], alerts = [], aiResult, aiFailure }: { articles?: unknown[]; alerts?: unknown[]; aiResult?: unknown; aiFailure?: Error } = {}) {
@@ -76,11 +76,14 @@ describe('Radar V2 parsing and date rules', () => {
     expect(categoriesFor('Lạm phát và sức mua hộ gia đình')).toContain('INFLATION')
   })
 
-  it('reads HTTPS RSS media URLs including publisher CDN hosts', () => {
+  it('reads HTTPS RSS media URLs including publisher CDN hosts and CDATA description img tags', () => {
     const feed = `<rss><channel><item><title>Giá tiêu dùng</title><link>https://cafef.vn/tin/1</link><pubDate>Tue, 24 Nov 2026 09:00:00 +0700</pubDate><media:content url="https://cafef.vn/images/tin.jpg" medium="image"/><description>CPI</description></item></channel></rss>`
     expect(parseFeed(feed, 'RSS', 'https://cafef.vn/rss').map((item) => item.imageUrl)).toEqual(['https://cafef.vn/images/tin.jpg'])
     expect(articleImageUrl('<media:content url="http://cafef.vn/image.jpg"/>', 'https://cafef.vn/rss')).toBeNull()
     expect(articleImageUrl('<media:content url="https://images.cdn-example.net/image.jpg"/>', 'https://cafef.vn/rss')).toBe('https://images.cdn-example.net/image.jpg')
+    expect(articleImageUrl('<description><![CDATA[<img width="1" height="1" src="https://vnexpress.net/pixel.gif"/><img data-src="https://vneconomy.vn/uploads/chart.png?w=800&amp;h=450"/>]]></description>', 'https://vneconomy.vn/rss')).toBe('https://vneconomy.vn/uploads/chart.png?w=800&h=450')
+    expect(articleImageUrl('<description>&lt;a href="https://cafef.vn"&gt;&lt;img src="https://cafefcdn.com/thumb.jpg" /&gt;&lt;/a&gt;</description>', 'https://cafef.vn/rss')).toBe('https://cafefcdn.com/thumb.jpg')
+    expect(extractOgImageUrl('<html><head><meta property="og:image" content="https://cafefcdn.com/hero.webp"/></head></html>', 'https://cafef.vn/bai-1')).toBe('https://cafefcdn.com/hero.webp')
   })
 
   it('treats date-only filters as Asia/Ho_Chi_Minh calendar days', () => {

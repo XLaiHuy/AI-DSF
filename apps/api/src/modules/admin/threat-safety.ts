@@ -142,6 +142,62 @@ export async function fetchPublicDocument(raw: string, options: { timeoutMs?: nu
   throw new Error('Nguồn chuyển hướng quá nhiều lần.')
 }
 
+export async function fetchPublicImage(raw: string, options: { timeoutMs?: number } = {}) {
+  let url = new URL(raw)
+  if (url.protocol !== 'https:') throw new Error('Chỉ hỗ trợ ảnh qua HTTPS.')
+  const signal = AbortSignal.timeout(options.timeoutMs ?? 6_000)
+  for (let hop = 0; hop < 4; hop += 1) {
+    const { address, family } = await new Promise<Awaited<ReturnType<typeof resolvePublicTarget>>>((resolve, reject) => {
+      const onAbort = () => reject(signal.reason)
+      signal.throwIfAborted()
+      signal.addEventListener('abort', onAbort, { once: true })
+      void resolvePublicTarget(url).then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+    })
+    const next = await new Promise<{ redirect: string } | { buffer: Buffer; contentType: string }>((resolve, reject) => {
+      const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
+        agent: false, signal, family, method: 'GET',
+        lookup: (_host, _options, callback) => callback(null, address, family),
+        headers: {
+          accept: 'image/avif,image/webp,image/png,image/jpeg,image/gif,*/*;q=0.5',
+          'user-agent': 'Mozilla/5.0 (compatible; FinCopilotImageProxy/1.0)',
+        },
+      }, (response) => {
+        response.on('error', reject)
+        const status = response.statusCode ?? 0
+        if (status >= 300 && status < 400 && response.headers.location) {
+          response.destroy()
+          resolve({ redirect: response.headers.location })
+          return
+        }
+        const contentType = (response.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase()
+        if (status !== 200 || !/^image\/(?:png|jpe?g|webp|gif|avif)$/i.test(contentType)) {
+          response.destroy()
+          reject(new Error('Nguồn không trả về định dạng ảnh hợp lệ.'))
+          return
+        }
+        const chunks: Buffer[] = []
+        let bytes = 0
+        response.on('data', (chunk: Buffer) => {
+          bytes += chunk.length
+          if (bytes > 5_242_880) response.destroy(new Error('Ảnh vượt quá giới hạn 5 MB.'))
+          else chunks.push(chunk)
+        })
+        response.on('end', () => {
+          const buffer = Buffer.concat(chunks)
+          if (buffer.length < 128) reject(new Error('Ảnh quá nhỏ hoặc là tracking pixel.'))
+          else resolve({ buffer, contentType })
+        })
+      })
+      request.on('error', reject)
+      request.end()
+    })
+    if ('buffer' in next) return next
+    url = new URL(next.redirect, url)
+    if (!['https:', 'http:'].includes(url.protocol)) throw new Error('URL chuyển hướng không hợp lệ.')
+  }
+  throw new Error('Ảnh chuyển hướng quá nhiều lần.')
+}
+
 export function stripDocument(value: string) {
   return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
     .replace(/<!--[\s\S]*?-->/g, ' ')

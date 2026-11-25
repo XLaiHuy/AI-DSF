@@ -1,7 +1,36 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common'
-import type { FastifyRequest } from 'fastify'
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common'
+import type { FastifyReply, FastifyRequest } from 'fastify'
 import { GuestSessionGuard } from '../../common/guest-session.guard'
 import { RadarService } from './radar.service'
+
+@Controller('radar')
+export class RadarMediaController {
+  constructor(private readonly service: RadarService) {}
+
+  @Get('image-proxy')
+  async proxyImage(@Query('url') rawUrl: string | undefined, @Res() reply: FastifyReply) {
+    if (!rawUrl || rawUrl.length > 2048) throw new BadRequestException('URL ảnh không hợp lệ.')
+    let parsed: URL
+    try {
+      parsed = new URL(rawUrl)
+    } catch {
+      throw new BadRequestException('URL ảnh không hợp lệ.')
+    }
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+      throw new BadRequestException('Chỉ hỗ trợ ảnh qua HTTPS công khai.')
+    }
+    try {
+      const { buffer, contentType } = await this.service.proxyArticleImage(parsed.toString())
+      return reply
+        .header('Content-Type', contentType)
+        .header('Cache-Control', 'public, max-age=86400')
+        .header('X-Content-Type-Options', 'nosniff')
+        .send(buffer)
+    } catch {
+      throw new NotFoundException('Không tải được ảnh bài viết.')
+    }
+  }
+}
 
 @Controller('radar')
 @UseGuards(GuestSessionGuard)

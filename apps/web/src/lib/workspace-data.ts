@@ -1,6 +1,6 @@
 import {
   AuthSessionResponseSchema, FinancialProfileResponseSchema, ForensicAuditListResponseSchema,
-  ForensicAuditResponseSchema, RadarDailyBriefResponseSchema, ROUTES,
+  ForensicAuditResponseSchema, HomeMarketResponseSchema, RadarDailyBriefResponseSchema, ROUTES,
 } from '@fincopilot/shared-types'
 import { queryOptions } from '@tanstack/react-query'
 import { z } from 'zod'
@@ -50,25 +50,16 @@ export function surveySessionLabel(mode: string) {
   }
 }
 
-export function surveySessionHref(mode: string) {
+export function surveySessionHref(mode: string, sessionId?: string) {
   const tab = mode === 'INVESTMENT_SURVEY' ? 'invest' : mode === 'MANUAL_COMPARE' ? 'manual' : 'loan'
-  return ROUTES.survey + '?mode=' + tab
+  const query = new URLSearchParams({ mode: tab })
+  if (sessionId) query.set('sessionId', sessionId)
+  return `${ROUTES.survey}?${query}`
 }
-
-const marketOverviewSchema = z.object({
-  alert: z.object({ id: z.uuid(), tacticSummary: z.string(), preventionGuidance: z.string(), publishedAt: z.iso.datetime() }).nullable(),
-  articles: z.array(z.object({
-    id: z.uuid(),
-    title: z.string(),
-    imageUrl: z.string().nullish(),
-    publishedAt: z.iso.datetime().nullable(),
-    categories: z.array(z.string()).optional(),
-  })),
-})
 
 export const marketOverviewQuery = queryOptions({
   queryKey: ['home', 'market'],
-  queryFn: ({ signal }) => apiClient.get('/home/market', { schema: marketOverviewSchema, signal }),
+  queryFn: ({ signal }) => apiClient.get('/home/market', { schema: HomeMarketResponseSchema, signal }),
   retry: false,
 })
 

@@ -82,3 +82,59 @@ export const RadarDailyBriefResponseSchema = z.strictObject({
   }).array().max(10),
 })
 export type RadarDailyBriefResponse = z.infer<typeof RadarDailyBriefResponseSchema>
+
+export const TrendingArticleSchema = z.strictObject({
+  rank: z.union([z.literal(1), z.literal(2)]),
+  id: z.uuid(),
+  title: z.string(),
+  summary: z.string().nullable(),
+  imageUrl: z.string().nullable(),
+  proxyUrl: z.string().nullable(),
+  sourceName: z.string().nullable(),
+  publishedAt: z.iso.datetime().nullable(),
+  readMinutes: z.number().int().positive(),
+  categories: z.array(z.string()),
+  suggestedRateDelta: decimalString.nullable(),
+  trendReason: z.string(),
+})
+export type TrendingArticle = z.infer<typeof TrendingArticleSchema>
+
+export const ScamFinanceRailItemSchema = z.strictObject({
+  id: z.uuid(),
+  kind: z.enum(['ALERT', 'SCAM_NEWS', 'FINANCE_NEWS']),
+  title: z.string(),
+  badge: z.string(),
+  imageUrl: z.string().nullable(),
+  proxyUrl: z.string().nullable(),
+  sourceName: z.string().nullable(),
+  publishedAt: z.iso.datetime().nullable(),
+  handoffHref: z.string(),
+})
+export type ScamFinanceRailItem = z.infer<typeof ScamFinanceRailItemSchema>
+
+export const MarketRateBenchmarkSchema = z.strictObject({
+  category: z.string(),
+  label: z.string(),
+  minRatePct: z.number(),
+  medianRatePct: z.number(),
+  maxRatePct: z.number(),
+  sampleCount: z.number().int().nonnegative(),
+})
+export type MarketRateBenchmark = z.infer<typeof MarketRateBenchmarkSchema>
+
+export const HomeMarketResponseSchema = z.strictObject({
+  alert: z.object({ id: z.uuid(), tacticSummary: z.string(), preventionGuidance: z.string(), publishedAt: z.iso.datetime() }).nullable(),
+  articles: z.array(z.object({
+    id: z.uuid(),
+    title: z.string(),
+    imageUrl: z.string().nullish(),
+    proxyUrl: z.string().nullish(),
+    sourceName: z.string().nullish(),
+    publishedAt: z.iso.datetime().nullable(),
+    categories: z.array(z.string()).optional(),
+  })),
+  trending: z.array(TrendingArticleSchema).optional(),
+  scamFinanceRail: z.array(ScamFinanceRailItemSchema).optional(),
+  marketRates: z.array(MarketRateBenchmarkSchema).optional(),
+})
+export type HomeMarketResponse = z.infer<typeof HomeMarketResponseSchema>

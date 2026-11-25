@@ -51,6 +51,13 @@ const highAprHandoff = z.strictObject({
   annualRatePct: positiveDecimal,
   label: z.string().trim().min(1).max(200).optional(),
 })
+const homeQuickForensicHandoff = z.strictObject({
+  prefillText: z.string().trim().min(1).max(2000),
+})
+const surveySessionHandoff = z.strictObject({
+  sessionId: z.uuid(),
+  mode: z.enum(['loan', 'invest', 'manual']).optional(),
+})
 
 export type RouteHandoffParams = {
   radarToSurvey: z.infer<typeof radarHandoff>
@@ -59,6 +66,8 @@ export type RouteHandoffParams = {
   radarAlertToForensic: z.infer<typeof radarAlertHandoff>
   surveyHighAprToForensic: z.infer<typeof highAprHandoff>
   quickSurvey: z.infer<typeof quickSurveyHandoff>
+  homeQuickForensic: z.infer<typeof homeQuickForensicHandoff>
+  surveySession: z.infer<typeof surveySessionHandoff>
 }
 
 function withQuery(route: string, fields: Record<string, string | number | undefined>): string {
@@ -82,6 +91,12 @@ export const handoffRoutes = {
     withQuery(ROUTES.forensic, { ...highAprHandoff.parse(params), from: 'survey-apr' }),
   quickSurvey: (params: RouteHandoffParams['quickSurvey']) =>
     withQuery(ROUTES.survey, { mode: 'loan', ...quickSurveyHandoff.parse(params) }),
+  homeQuickForensic: (params: RouteHandoffParams['homeQuickForensic']) =>
+    withQuery(ROUTES.forensic, { ...homeQuickForensicHandoff.parse(params), from: 'home-quick-check' }),
+  surveySession: (params: RouteHandoffParams['surveySession']) => {
+    const parsed = surveySessionHandoff.parse(params)
+    return withQuery(ROUTES.survey, { mode: parsed.mode ?? 'loan', sessionId: parsed.sessionId })
+  },
 }
 
 export type RouteSearchParams = Record<string, string | string[] | undefined>
@@ -91,14 +106,15 @@ const surveyQuerySchema = z.object({
   amount: positiveDecimal.optional().catch(undefined),
   term: termQuery.optional().catch(undefined),
   shockDelta: decimalString.optional().catch(undefined),
-  from: z.enum(['radar', 'forensic']).optional().catch(undefined),
+  from: z.enum(['radar', 'forensic', 'profile']).optional().catch(undefined),
   articleId: z.uuid().optional().catch(undefined),
   auditId: z.uuid().optional().catch(undefined),
+  sessionId: z.uuid().optional().catch(undefined),
 })
 
 export const forensicQuerySchema = z.object({
   claimedEntity: trustFilterHandoff.shape.claimedEntity.optional().catch(undefined),
-  from: z.enum(['trust-filter', 'radar', 'survey-apr']).optional().catch(undefined),
+  from: z.enum(['trust-filter', 'radar', 'survey-apr', 'home-quick-check']).optional().catch(undefined),
   alertId: radarAlertHandoff.shape.alertId.optional().catch(undefined),
   indicator: radarAlertHandoff.shape.indicator.catch(undefined),
   summary: radarAlertHandoff.shape.summary.catch(undefined),
@@ -106,6 +122,7 @@ export const forensicQuerySchema = z.object({
   term: termQuery.optional().catch(undefined),
   annualRatePct: highAprHandoff.shape.annualRatePct.optional().catch(undefined),
   label: highAprHandoff.shape.label.catch(undefined),
+  prefillText: homeQuickForensicHandoff.shape.prefillText.optional().catch(undefined),
 })
 
 export type ForensicHandoff = z.infer<typeof forensicQuerySchema>
