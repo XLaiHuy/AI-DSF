@@ -69,7 +69,7 @@ describe('grounded second-pass reasoning', () => {
     const data = create.mock.calls[0]?.[0].data
     expect(data?.extractedClaimsJson).toMatchObject({ complexityTier: 'HARD', reasoningFindings: audit.reasoningFindings })
     const persisted: Prisma.ForensicAuditGetPayload<{ include: { qrPayloads: true; findings: true } }> = {
-      id: audit.auditId, userId: null, guestSessionId: session.guestSessionId, claimedEntityName: null, inputChannels: ['TEXT'],
+      id: audit.auditId, userId: null, guestSessionId: session.guestSessionId, profileId: null, sourceAlertId: null, claimedEntityName: null, inputChannels: ['TEXT'],
       principalNominalVnd: null, principalNetVnd: null, quotedRatePct: null, effectiveAprPct: null,
       rawTextMasked: audit.privacyProof.rawTextMasked, verdictLevel: audit.verdictLevel, riskScore: audit.riskScore,
       deterministicOverride: audit.deterministicOverride, aiExplanationText: audit.aiNarrative, llmProvider: 'deterministic',

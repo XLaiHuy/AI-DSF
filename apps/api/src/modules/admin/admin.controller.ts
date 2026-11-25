@@ -17,21 +17,6 @@ export class AdminController {
     return this.service.sources()
   }
 
-  @Get('radar/images/review')
-  radarImageReviewQueue() {
-    return this.service.imageReviewQueue()
-  }
-
-  @Get('radar/images/reviews')
-  radarImageReviewHistory() {
-    return this.service.imageReviewHistory()
-  }
-
-  @Patch('radar/articles/:id/image-rights')
-  reviewRadarImage(@Param('id') id: string, @Body() body: unknown) {
-    return this.service.reviewArticleImage(id, body)
-  }
-
   @Post('radar/sources/:sourceKey/retry')
   retryRadarSource(@Param('sourceKey') sourceKey: string) {
     return this.service.fetch(sourceKey)

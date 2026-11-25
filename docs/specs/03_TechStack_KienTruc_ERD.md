@@ -162,19 +162,19 @@ flowchart LR
 | :--- | :---: | :--- | :--- | :--- |
 | **Hệ thống** | 1 | `schema_migrations` | Kế thừa `ERD.png` | Theo dõi lịch sử phiên bản di trú lược đồ DB. |
 | **Phân hệ 1** | 2 | `market_source` | Kế thừa `ERD.png` | Danh sách nguồn tin & cảnh báo (CafeF, VnEconomy, Vietstock, NHNN, NCSC), cờ `is_trusted_for_alerts` và trạng thái fetch (`last_fetch_status`, `last_success_at`). |
-| **Phân hệ 1** | 3 | `market_article` | Kế thừa `ERD.png` | Bài viết chuẩn hóa đã khử trùng qua `canonical_url` và `content_hash`. |
+| **Phân hệ 1** | 3 | `market_article` | Kế thừa `ERD.png` | Bài viết chuẩn hóa đã khử trùng qua `canonical_url` và `content_hash`, bổ sung `image_url` cho ảnh đại diện tin tức. |
 | **Phân hệ 1** | 4 | `article_source` | Kế thừa `ERD.png` | Liên kết N-N giữa bài viết và nhiều nguồn đưa tin trùng. |
 | **Phân hệ 1** | 5 | `article_category` | Kế thừa `ERD.png` | Phân loại chủ đề bài viết (Lãi suất, Ngân hàng, Thị trường, Chính sách, Lừa đảo). |
 | **Phân hệ 1** | 6 | `threat_alert` | Kế thừa `ERD.png` | Bản ghi cảnh báo thủ đoạn lừa đảo, cách phòng tránh & `verification_status` (`VERIFIED`/`UNVERIFIED`). |
 | **Phân hệ 1** | 7 | `threat_evidence` | Kế thừa `ERD.png` | Gắn bằng chứng bài báo & nguồn xác thực vào mỗi `threat_alert`. |
-| **Phân hệ 1→3** | 8 | `threat_indicator` | Kế thừa `ERD.png` | Chỉ dấu lừa đảo cụ thể (STK, SĐT, domain, mẫu lỗi 102) dùng để Phân hệ 3 đối chiếu tự động (`RULE_05`). |
-| **Phân hệ 0** | 9 | `users` | **Bảng mới** | Tài khoản đăng nhập tùy chọn (Email / Google OAuth). |
+| **Phân hệ 1→3** | 8 | `threat_indicator` | Kế thừa `ERD.png` | Chỉ dấu lừa đảo cụ thể (STK, SĐT, domain, ví tiền mã hóa, mẫu lỗi 102) dùng để Phân hệ 3 đối chiếu tự động (`RULE_05`). |
+| **Phân hệ 0** | 9 | `users` | **Bảng mới** | Tài khoản đăng nhập tùy chọn (Email / Google / GitHub OAuth). |
 | **Phân hệ 0** | 10 | `financial_profiles` | **Bảng mới** | Hồ sơ tài chính cá nhân gắn theo `user_id` hoặc `guest_session_id` (thu nhập, chi phí, nợ hiện tại, tiền nhàn rỗi, khẩu vị rủi ro). |
 | **Phân hệ 1** | 11 | `article_impact_analyses` | **Bảng mới** | Lưu kết quả AI phân tích tách bạch *Dữ kiện gốc* vs *Nhận định AI* theo từng bài báo và hồ sơ người dùng (nhánh `R07`). |
 | **Phân hệ 2→3** | 12 | `financial_institutions` | **Bảng mới** | Danh mục tổ chức tài chính được NHNN/UBCKNN cấp phép (kèm `vietqr_bin` và `trust_status`) phục vụ cả Trust Filter (P2) lẫn đối chiếu pháp nhân (P3). |
 | **Phân hệ 2** | 13 | `financial_products` | **Bảng mới** | Biểu lãi suất & biểu phí chuẩn hóa của các sản phẩm Vay, Tiết kiệm, Ví tích lũy, Quỹ mở (kèm `source_url`, `effective_date`, `data_provenance`). |
-| **Phân hệ 2** | 14 | `calculation_sessions` | **Bảng mới** | Lưu lịch sử các phiên Khảo sát & Tính Vay/Đầu tư/DTI/Cú sốc lãi suất và giải thích AI. |
-| **Phân hệ 3** | 15 | `forensic_audits` | **Bảng mới** | Hồ sơ giám định đa phương thức (kết quả JSON đã che PII, APR thực, điểm rủi ro 0–100, phán quyết 3 mức, `deterministic_override`, mốc xóa file gốc). |
+| **Phân hệ 2** | 14 | `calculation_sessions` | **Bảng mới** | Lưu lịch sử các phiên Khảo sát & Tính Vay/Đầu tư/DTI/Cú sốc lãi suất, giải thích AI và liên kết nguồn (`source_article_id`, `source_audit_id`). |
+| **Phân hệ 3** | 15 | `forensic_audits` | **Bảng mới** | Hồ sơ giám định đa phương thức (kết quả JSON đã che PII, APR thực, điểm rủi ro 0–100, phán quyết 3 mức, `deterministic_override`, mốc xóa file gốc) kèm liên kết `profile_id` và `source_alert_id`. |
 | **Phân hệ 3** | 16 | `forensic_qr_payloads` | **Bảng mới** | Dữ liệu giải mã VietQR chuẩn EMVCo/NAPAS 247 (`acq_bin`, ngân hàng, STK đã che, `service_code`, số tiền, tên chủ TK đọc từ Vision, cờ lệch thực thể). |
 | **Phân hệ 3** | 17 | `forensic_findings` | **Bảng mới** | Chi tiết từng Luật Cứng (`RULE_01..RULE_07`) bị kích hoạt trong phiên giám định kèm trích dẫn nguyên văn (`evidence_quote`). |
 
@@ -209,6 +209,7 @@ erDiagram
         uuid id PK
         text canonical_url UK
         text title
+        text image_url
         timestamptz published_at
         varchar content_hash
         uuid duplicate_of_id FK
@@ -341,6 +342,8 @@ erDiagram
         uuid user_id FK
         uuid guest_session_id
         uuid profile_id FK
+        uuid source_article_id FK
+        uuid source_audit_id FK
         varchar session_mode
         jsonb input_params_json
         jsonb math_results_json
@@ -356,6 +359,8 @@ erDiagram
         uuid id PK
         uuid user_id FK
         uuid guest_session_id
+        uuid profile_id FK
+        uuid source_alert_id FK
         varchar claimed_entity_name
         jsonb input_channels
         text raw_text_masked
@@ -416,6 +421,11 @@ erDiagram
     financial_profiles ||--o{ article_impact_analyses : "personalizes"
     market_article ||--o{ article_impact_analyses : "analyzed_in"
     financial_profiles ||--o{ calculation_sessions : "informs_dti"
+    financial_profiles ||--o{ forensic_audits : "assesses_personal_impact"
+
+    market_article ||--o{ calculation_sessions : "triggers_rate_shock"
+    forensic_audits ||--o{ calculation_sessions : "suggests_safe_loan"
+    threat_alert ||--o{ forensic_audits : "triggers_verification"
 
     financial_institutions ||--o{ financial_products : "offers"
     forensic_audits ||--o{ forensic_qr_payloads : "decodes_qr"
@@ -462,6 +472,7 @@ Table market_article {
   id uuid [pk]
   canonical_url text [unique, not null]
   title text [not null]
+  image_url text [note: 'Ảnh đại diện bài báo trích từ RSS/Web']
   published_at timestamptz
   content_hash varchar(64) [not null]
   duplicate_of_id uuid [ref: > market_article.id]
@@ -523,7 +534,7 @@ Table threat_indicator {
   id uuid [pk]
   threat_alert_id uuid [not null, ref: > threat_alert.id]
   indicator_text text [not null]
-  indicator_type varchar(50) [not null, note: 'BANK_ACCOUNT | PHONE | DOMAIN | KEYWORD | QR_PATTERN']
+  indicator_type varchar(50) [not null, note: 'BANK_ACCOUNT | PHONE | DOMAIN | CRYPTO_WALLET | KEYWORD | QR_PATTERN']
 }
 
 // ==========================================
@@ -534,7 +545,7 @@ Table users {
   id uuid [pk]
   email varchar(255) [unique, not null]
   full_name varchar(150)
-  auth_provider varchar(30) [not null, default: 'EMAIL', note: 'EMAIL | GOOGLE']
+  auth_provider varchar(30) [not null, default: 'EMAIL', note: 'EMAIL | GOOGLE | GITHUB']
   provider_user_id varchar(255)
   password_hash text
   created_at timestamptz [not null, default: `now()`]
@@ -613,6 +624,8 @@ Table calculation_sessions {
   user_id uuid [ref: > users.id]
   guest_session_id uuid
   profile_id uuid [ref: > financial_profiles.id]
+  source_article_id uuid [ref: > market_article.id, note: 'Cầu 1: Radar -> Khảo sát']
+  source_audit_id uuid [ref: > forensic_audits.id, note: 'Cầu 4: Giám định -> Khảo sát']
   session_mode varchar(30) [not null, note: 'LOAN_SURVEY | INVESTMENT_SURVEY | MANUAL_COMPARE']
   input_params_json jsonb [not null]
   math_results_json jsonb [not null, note: 'Kết quả tính toán chính xác bằng decimal.js']
@@ -622,12 +635,19 @@ Table calculation_sessions {
   ai_explanation_json jsonb
   llm_provider varchar(40)
   created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    source_article_id
+    source_audit_id
+  }
 }
 
 Table forensic_audits {
   id uuid [pk]
   user_id uuid [ref: > users.id]
   guest_session_id uuid
+  profile_id uuid [ref: > financial_profiles.id, note: 'Hồ sơ tài chính dùng tính tác động cá nhân']
+  source_alert_id uuid [ref: > threat_alert.id, note: 'Cầu 2: Cảnh báo Radar -> Giám định']
   claimed_entity_name varchar(200)
   input_channels jsonb [not null, note: 'VD: ["CHAT_IMAGE", "PDF", "VIETQR_IMAGE"]']
   raw_text_masked text [note: 'Văn bản đã che CCCD/SĐT sau khi xóa file gốc']
@@ -643,6 +663,11 @@ Table forensic_audits {
   llm_provider varchar(40) [not null]
   source_files_purged_at timestamptz [not null, note: 'Chứng minh thời điểm đã xóa tệp ảnh/PDF gốc']
   created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    profile_id
+    source_alert_id
+  }
 }
 
 Table forensic_qr_payloads {

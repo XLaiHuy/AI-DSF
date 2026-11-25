@@ -32,41 +32,13 @@ Table market_article {
   id uuid [pk]
   canonical_url text [unique, not null]
   title text [not null]
+  image_url text [note: 'Ảnh đại diện bài báo trích từ RSS/Web']
   published_at timestamptz
-  image_url text [note: 'RSS media metadata; chỉ API trả khi quyền được duyệt']
-  image_alt text
-  image_credit text
-  image_source_url text
-  image_license_status varchar(30) [not null, default: 'UNKNOWN', note: 'UNKNOWN | REVIEW_REQUIRED | PERMITTED | PROHIBITED']
-  image_rights_basis varchar(40) [note: 'PUBLISHER_PERMISSION | OPEN_LICENSE | PUBLIC_DOMAIN | FINCOPILOT_OWNED']
-  image_license_identifier varchar(120)
-  image_license_url text
-  image_rights_evidence_url text
-  image_rights_note text
-  image_reviewed_at timestamptz
   content_hash varchar(64) [not null]
   duplicate_of_id uuid [ref: > market_article.id]
   feed_status varchar(10) [not null, default: 'ACTIVE']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
-}
-
-Table article_image_rights_reviews {
-  id uuid [pk]
-  article_id uuid [not null, ref: > market_article.id]
-  previous_status varchar(30) [not null]
-  decision_status varchar(30) [not null, note: 'UNKNOWN | REVIEW_REQUIRED | PERMITTED | PROHIBITED']
-  rights_basis varchar(40)
-  license_identifier varchar(120)
-  license_url text
-  evidence_url text
-  note text [not null]
-  reviewer_label varchar(120) [not null, note: 'Nhãn tự khai; chưa phải định danh xác thực']
-  reviewed_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (article_id, reviewed_at) [name: 'article_image_rights_review_history_idx']
-  }
 }
 
 Table article_source {
@@ -122,7 +94,7 @@ Table threat_indicator {
   id uuid [pk]
   threat_alert_id uuid [not null, ref: > threat_alert.id]
   indicator_text text [not null]
-  indicator_type varchar(50) [not null, note: 'BANK_ACCOUNT | PHONE | DOMAIN | KEYWORD | QR_PATTERN']
+  indicator_type varchar(50) [not null, note: 'BANK_ACCOUNT | PHONE | DOMAIN | CRYPTO_WALLET | KEYWORD | QR_PATTERN']
 }
 
 // ==========================================
@@ -133,7 +105,7 @@ Table users {
   id uuid [pk]
   email varchar(255) [unique, not null]
   full_name varchar(150)
-  auth_provider varchar(30) [not null, default: 'EMAIL', note: 'EMAIL | GOOGLE']
+  auth_provider varchar(30) [not null, default: 'EMAIL', note: 'EMAIL | GOOGLE | GITHUB']
   provider_user_id varchar(255)
   password_hash text
   created_at timestamptz [not null, default: `now()`]
@@ -212,6 +184,8 @@ Table calculation_sessions {
   user_id uuid [ref: > users.id]
   guest_session_id uuid
   profile_id uuid [ref: > financial_profiles.id]
+  source_article_id uuid [ref: > market_article.id, note: 'Cầu 1: Radar -> Khảo sát']
+  source_audit_id uuid [ref: > forensic_audits.id, note: 'Cầu 4: Giám định -> Khảo sát']
   session_mode varchar(30) [not null, note: 'LOAN_SURVEY | INVESTMENT_SURVEY | MANUAL_COMPARE']
   input_params_json jsonb [not null]
   math_results_json jsonb [not null, note: 'Kết quả tính toán chính xác bằng decimal.js']
@@ -221,12 +195,19 @@ Table calculation_sessions {
   ai_explanation_json jsonb
   llm_provider varchar(40)
   created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    source_article_id
+    source_audit_id
+  }
 }
 
 Table forensic_audits {
   id uuid [pk]
   user_id uuid [ref: > users.id]
   guest_session_id uuid
+  profile_id uuid [ref: > financial_profiles.id, note: 'Hồ sơ tài chính dùng tính tác động cá nhân']
+  source_alert_id uuid [ref: > threat_alert.id, note: 'Cầu 2: Cảnh báo Radar -> Giám định']
   claimed_entity_name varchar(200)
   input_channels jsonb [not null, note: 'VD: ["CHAT_IMAGE", "PDF", "VIETQR_IMAGE"]']
   raw_text_masked text [note: 'Văn bản đã che CCCD/SĐT sau khi xóa file gốc']
@@ -242,6 +223,11 @@ Table forensic_audits {
   llm_provider varchar(40) [not null]
   source_files_purged_at timestamptz [not null, note: 'Chứng minh thời điểm đã xóa tệp ảnh/PDF gốc']
   created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    profile_id
+    source_alert_id
+  }
 }
 
 Table forensic_qr_payloads {
