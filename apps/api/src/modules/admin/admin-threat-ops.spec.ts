@@ -97,7 +97,11 @@ describe('admin threat operations', () => {
         },
       },
       articleSource: { upsert: vi.fn() },
-      threatAlert: { findFirst: vi.fn(async () => ({ id: 'existing-alert' })), findMany: async () => [], create: createAlert, update: updateAlert },
+      threatAlert: {
+        findFirst: vi.fn(async ({ where }: { where: { OR: unknown[] } }) =>
+          where.OR.length > 1 ? { id: 'existing-alert' } : null),
+        findMany: async () => [], create: createAlert, update: updateAlert,
+      },
       threatEvidence: { createMany: vi.fn(async () => ({ count: 1 })) },
     }
     const prisma = {

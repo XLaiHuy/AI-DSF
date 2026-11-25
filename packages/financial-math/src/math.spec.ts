@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import { assessDti, compoundDca, decliningPrincipalLoan, flatRateLoan, reducingBalanceLoan } from './index'
 
+it.each([reducingBalanceLoan, decliningPrincipalLoan])('reconciles a rounded 600-month schedule', (calculate) => {
+  const result = calculate('100000', '0', 600)
+  expect(result.schedule).toHaveLength(600)
+  for (const row of result.schedule) {
+    expect(BigInt(row.remainingBalanceVnd)).toBeGreaterThanOrEqual(0n)
+    expect(BigInt(row.principalVnd)).toBeGreaterThanOrEqual(0n)
+    expect(BigInt(row.paymentVnd)).toBe(BigInt(row.principalVnd) + BigInt(row.interestVnd))
+  }
+  expect(result.schedule.at(-1)?.remainingBalanceVnd).toBe('0')
+  expect(result.schedule.reduce((sum, row) => sum + BigInt(row.principalVnd), 0n)).toBe(100000n)
+  expect(result.schedule.reduce((sum, row) => sum + BigInt(row.paymentVnd), 0n).toString()).toBe(result.totalPayableVnd)
+})
+
+it('reports DTI as unavailable if there is no positive income', () => {
+  expect(assessDti('0', '100', '0', '200')).toEqual({ dtiPct: null, disposableVnd: '-300', riskBand: 'UNAVAILABLE' })
+})
+
 describe('Financial math golden vectors', () => {
   it('V1 - reducing balance EMI', () => {
     const r = reducingBalanceLoan('50000000', '14.5', 24)

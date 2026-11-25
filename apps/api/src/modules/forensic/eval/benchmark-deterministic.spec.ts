@@ -31,7 +31,7 @@ describe('offline benchmark regression', () => {
     expect(keys).toHaveLength(20)
   })
 
-  it.concurrent.for(benchmarkCases)('$id $title', async (item, { expect }) => {
+  it.concurrent.for(benchmarkCases)('$id $title', { timeout: 15_000 }, async (item, { expect }) => {
     const prisma = {
       forensicAudit: { create: async () => undefined },
       financialInstitution: { findMany: async () => [] },

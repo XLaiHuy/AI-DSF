@@ -9,6 +9,8 @@ import { ProfileAuthService } from '../profile-auth/profile-auth.service'
 import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { AI_TASK_SCHEMAS, RadarDailyBriefRequestSchema } from '@fincopilot/shared-types'
 import type { SessionContext } from '@fincopilot/shared-types'
+import { attachThreatDraft, publicThreatAlertWhere } from '../forensic/threat-draft'
+import { ThreatMemoryService } from '../forensic/threat-memory.service'
 
 const categoryKeywords: Record<string, string[]> = {
   INTEREST_RATE: ['lãi suất', 'lãi vay', 'lãi suất huy động', 'rate'],
@@ -152,6 +154,7 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     private readonly config: ConfigService,
     private readonly ai: AiGatewayService,
     private readonly profiles: ProfileAuthService,
+    private readonly threatMemory: ThreatMemoryService,
   ) { super() }
 
   async onModuleInit() {
@@ -316,7 +319,7 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     const since = new Date(Date.now() - 14 * 86_400_000)
     const [alerts, articles] = await Promise.all([
       this.prisma.threatAlert.findMany({
-        where: { publishedAt: { not: null } }, orderBy: [{ publishedAt: 'desc' }], take: 30,
+        where: publicThreatAlertWhere, orderBy: [{ publishedAt: 'desc' }], take: 30,
         include: {
           indicators: true,
           evidence: { include: { articleSource: { include: { source: true, article: true } } } },
@@ -349,8 +352,7 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     })
     const priority = (item: BriefCandidate) => item.kind === 'ALERT'
       ? item.verificationStatus === 'VERIFIED' && item.publishedAt && Date.now() - item.publishedAt.getTime() <= 48 * 60 * 60_000 ? 4
-        : item.verificationStatus !== 'VERIFIED' && item.publishedAt && Date.now() - item.publishedAt.getTime() <= 48 * 60 * 60_000 ? 3
-          : item.verificationStatus === 'VERIFIED' ? 2 : 1
+        : 2
       : item.categories.includes('FINANCIAL_FRAUD') ? 2 : 1
     return [...alertItems, ...articleItems]
       .filter((item) => item.sources.some((source) => validHttpsUrl(source.url)))
@@ -502,17 +504,17 @@ export class RadarService extends WorkerHost implements OnModuleInit {
 
   async listAlerts() {
     const alerts = await this.prisma.threatAlert.findMany({
-      where: { publishedAt: { not: null } }, orderBy: { publishedAt: 'desc' }, take: 50,
+      where: publicThreatAlertWhere, orderBy: { publishedAt: 'desc' }, take: 50,
       include: { indicators: true, evidence: { include: { articleSource: { include: { source: true, article: true } } } } },
     })
     return { items: alerts.map((alert) => this.alertDto(alert)) }
   }
 
   async alertDetail(id: string) {
-    const alert = await this.prisma.threatAlert.findUnique({
-      where: { id }, include: { indicators: true, evidence: { include: { articleSource: { include: { source: true, article: true } } } } },
+    const alert = await this.prisma.threatAlert.findFirst({
+      where: { id, ...publicThreatAlertWhere }, include: { indicators: true, evidence: { include: { articleSource: { include: { source: true, article: true } } } } },
     })
-    if (!alert || !alert.publishedAt) throw new NotFoundException('Không tìm thấy cảnh báo.')
+    if (!alert) throw new NotFoundException('Không tìm thấy cảnh báo.')
     return this.alertDto(alert)
   }
 
@@ -588,13 +590,16 @@ export class RadarService extends WorkerHost implements OnModuleInit {
   private async createThreatAlert(article: { id: string; title: string; publishedAt: Date | null; sources: Array<{ sourceId: string; sourceUrl: string; source: { isTrustedForAlerts: boolean } }> }, output: z.infer<typeof AI_TASK_SCHEMAS.RADAR_CLASSIFY_IMPACT>) {
     const trustedLink = article.sources.find((item) => item.source.isTrustedForAlerts)
     if (!trustedLink || output.indicators.length === 0) return
-    const tacticSummary = output.aiAssessment.trim() || article.title
-    const existing = await this.prisma.threatEvidence.findFirst({ where: { articleId: article.id, sourceId: trustedLink.sourceId } })
-    if (existing) return
-    await this.prisma.$transaction(async (tx) => {
-      const alertId = randomUUID()
-      await tx.threatAlert.create({ data: { id: alertId, threatCategory: 'PHISHING', tacticSummary, preventionGuidance: 'Không chia sẻ mã OTP, không chuyển phí để mở khóa khoản vay; xác minh trực tiếp với tổ chức qua kênh chính thức.', verificationStatus: 'UNVERIFIED', issuedAt: article.publishedAt, publishedAt: new Date(), evidence: { create: { articleId: article.id, sourceId: trustedLink.sourceId } }, indicators: { create: output.indicators.map((item) => ({ id: randomUUID(), indicatorType: item.indicatorType, indicatorText: item.indicatorText })) } } })
-    })
+    const { trusted } = await this.threatMemory.get()
+    await this.prisma.$transaction((tx) => attachThreatDraft(tx, this.threatMemory, {
+      source: { articleId: article.id, sourceId: trustedLink.sourceId, url: trustedLink.sourceUrl, title: article.title, publishedAt: article.publishedAt },
+      draft: {
+        threatCategory: 'PHISHING', tacticSummary: (output.aiAssessment.trim() || article.title).slice(0, 800),
+        preventionGuidance: 'Không chia sẻ mã OTP, không chuyển phí để mở khóa khoản vay. Hãy xác minh trực tiếp qua kênh chính thức.',
+        indicators: output.indicators.slice(0, 40),
+      },
+      trusted, origin: 'RADAR_AUTO',
+    }))
   }
 
   private articleDto(row: { id: string; title: string; canonicalUrl: string; publishedAt: Date | null; imageUrl: string | null; categories: Array<{ categoryCode: string }>; sources: Array<{ sourceId: string; sourceUrl: string; firstSeenAt: Date; lastSeenAt: Date; source: { id: string; name: string; sourceKey: string } }> }) {

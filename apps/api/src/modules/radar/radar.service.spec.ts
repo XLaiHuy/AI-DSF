@@ -5,7 +5,10 @@ import { articleImageUrl, categoriesFor, dateOnly, parseFeed, RadarService } fro
 describe('Radar V2 parsing and date rules', () => {
   function dailyBriefHarness({ articles = [], alerts = [], aiResult, aiFailure }: { articles?: unknown[]; alerts?: unknown[]; aiResult?: unknown; aiFailure?: Error } = {}) {
     const prisma = {
-      threatAlert: { findMany: vi.fn().mockImplementation(() => Promise.resolve(alerts)) },
+      threatAlert: {
+        findMany: vi.fn().mockImplementation(() => Promise.resolve(alerts)),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
       marketArticle: { findMany: vi.fn().mockImplementation(() => Promise.resolve(articles)) },
       forensicAudit: { findFirst: vi.fn().mockResolvedValue(null) },
       financialProfile: { findUnique: vi.fn().mockResolvedValue(null) },
@@ -19,6 +22,23 @@ describe('Radar V2 parsing and date rules', () => {
     })
     return { service, prisma, ai }
   }
+
+  it('requires verified, published alerts at every public read entry point', async () => {
+    const { service, prisma } = dailyBriefHarness()
+    const session = { kind: 'guest', guestSessionId: '11111111-1111-4111-8111-111111111111' } as const
+    await service.listAlerts()
+    await service.dailyBrief(session, {})
+    await expect(service.alertDetail('draft')).rejects.toMatchObject({ status: 404 })
+    expect(prisma.threatAlert.findMany).toHaveBeenCalledTimes(2)
+    for (const call of [1, 2]) {
+      expect(prisma.threatAlert.findMany).toHaveBeenNthCalledWith(call, expect.objectContaining({
+        where: { verificationStatus: 'VERIFIED', publishedAt: { not: null } },
+      }))
+    }
+    expect(prisma.threatAlert.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'draft', verificationStatus: 'VERIFIED', publishedAt: { not: null } },
+    }))
+  })
 
   function briefArticle(id: string, publishedAt = new Date('2026-11-24T08:00:00.000Z')) {
     return {

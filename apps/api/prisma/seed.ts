@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client'
 import { AuthLoginSchema } from '@fincopilot/shared-types'
 import { parse } from 'yaml'
 import { hashPassword } from '../src/modules/profile-auth/password'
-import { stableUuid } from './seed-id'
+import { stableUuid } from '../src/common/stable-uuid'
 import { seedProducts } from './seed-products'
 import { seedRadarAlerts } from './seed-radar-alerts'
 

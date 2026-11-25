@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { decimalString, positiveDecimal } from './dto/decimal'
+import { SurveyTermMonthsSchema } from './dto/survey.dto'
 
 export const ROUTES = {
   home: '/',
@@ -34,8 +35,8 @@ export function safeReturnTo(value: unknown): string {
   return ROUTES.profile
 }
 
-const termQuery = z.string().regex(/^[1-9]\d*$/).transform((term) => Number(term)).pipe(z.number().int().positive())
-const loanFields = { amount: positiveDecimal, term: z.number().int().positive() }
+const termQuery = z.string().regex(/^[1-9]\d*$/).transform((term) => Number(term)).pipe(SurveyTermMonthsSchema)
+const loanFields = { amount: positiveDecimal, term: SurveyTermMonthsSchema }
 const radarHandoff = z.strictObject({ shockDelta: decimalString, articleId: z.string().min(1) })
 const auditHandoff = z.strictObject({ ...loanFields, auditId: z.string().min(1) })
 const trustFilterHandoff = z.strictObject({ claimedEntity: z.string().trim().min(1).max(200) })
@@ -86,13 +87,13 @@ export const handoffRoutes = {
 export type RouteSearchParams = Record<string, string | string[] | undefined>
 
 const surveyQuerySchema = z.object({
-  mode: z.literal('loan').optional().catch(undefined),
+  mode: z.enum(['loan', 'invest', 'manual']).optional().catch(undefined),
   amount: positiveDecimal.optional().catch(undefined),
   term: termQuery.optional().catch(undefined),
   shockDelta: decimalString.optional().catch(undefined),
   from: z.enum(['radar', 'forensic']).optional().catch(undefined),
-  articleId: z.string().min(1).optional().catch(undefined),
-  auditId: z.string().min(1).optional().catch(undefined),
+  articleId: z.uuid().optional().catch(undefined),
+  auditId: z.uuid().optional().catch(undefined),
 })
 
 export const forensicQuerySchema = z.object({

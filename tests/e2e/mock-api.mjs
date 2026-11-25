@@ -1,4 +1,10 @@
-import { createServer } from 'node:http'
+import { createServer, request as httpRequest } from 'node:http'
+
+function proxyHeaders(headers) {
+  const hopByHop = new Set(['connection', 'keep-alive', 'proxy-connection', 'te', 'trailer', 'transfer-encoding', 'upgrade'])
+  for (const header of String(headers.connection ?? '').split(',')) hopByHop.add(header.trim().toLowerCase())
+  return Object.fromEntries(Object.entries(headers).filter(([name]) => !hopByHop.has(name)))
+}
 
 const articleId = '11111111-1111-4111-8111-111111111111'
 const alertId = '22222222-2222-4222-8222-222222222222'
@@ -23,10 +29,10 @@ const alert = {
   threatCategory: 'PHISHING',
   tacticSummary: 'Mạo danh ngân hàng yêu cầu phí mở khóa',
   preventionGuidance: 'Không chia sẻ OTP.',
-  verificationStatus: 'UNVERIFIED',
+  verificationStatus: 'VERIFIED',
   issuedAt: null,
   publishedAt: '2026-11-20T08:00:00.000Z',
-  verifiedAt: null,
+  verifiedAt: '2026-11-20T08:00:00.000Z',
   indicators: [{ id: '44444444-4444-4444-8444-444444444444', indicatorType: 'KEYWORD', indicatorText: 'lỗi 102' }],
   evidence: [{ articleId, title: 'Cảnh báo NCSC', sourceId: '55555555-5555-4555-8555-555555555555', sourceName: 'NCSC', url: 'https://example.test/ncsc', publishedAt: null }],
 }
@@ -45,8 +51,38 @@ const sources = [
 
 const server = createServer(async (request, response) => {
   response.setHeader('content-type', 'application/json; charset=utf-8')
+  const liveRequest = /(?:^|;\s*)fincopilot_e2e_mode=phase-two(?:;|$)/.test(request.headers.cookie ?? '')
+  if (liveRequest &&
+      /^\/api\/v1\/(?:auth|profile|forensic|survey)(?:[/?]|$)/.test(request.url ?? '')) {
+    const upstream = httpRequest({
+      hostname: '127.0.0.1', port: Number(process.env.PLAYWRIGHT_PHASE_TWO_API_PORT), path: request.url,
+      method: request.method, headers: proxyHeaders(request.headers), agent: false,
+    }, (reply) => {
+      response.writeHead(reply.statusCode ?? 502, proxyHeaders(reply.headers))
+      reply.pipe(response)
+    })
+    response.on('close', () => { if (!response.writableFinished) upstream.destroy() })
+    upstream.on('error', () => {
+      if (!response.headersSent && !response.destroyed) response.writeHead(502)
+      response.end()
+    })
+    request.pipe(upstream)
+    return
+  }
   if (request.url === '/api/v1/health') {
     response.end(JSON.stringify({ status: 'ok' }))
+    return
+  }
+  if (request.method === 'GET' && request.url === '/api/v1/auth/session') {
+    response.end(JSON.stringify({ kind: 'guest', user: null, oauthProviders: { google: false, github: false } }))
+    return
+  }
+  if (request.method === 'GET' && request.url === '/api/v1/profile') {
+    response.end(JSON.stringify({ profile: null, health: null }))
+    return
+  }
+  if (request.method === 'GET' && request.url === '/api/v1/survey/history') {
+    response.end(JSON.stringify({ sessions: [] }))
     return
   }
   if (process.env.MOCK_RADAR_ERROR === '1' && request.method === 'GET' && request.url?.startsWith('/api/v1/radar/articles')) {
@@ -79,7 +115,7 @@ const server = createServer(async (request, response) => {
     let body = ''
     for await (const chunk of request) body += chunk
     const mode = JSON.parse(body || '{}').mode === 'PERSONALIZED' ? 'PERSONALIZED' : 'GENERAL'
-    response.end(JSON.stringify({ mode, facts: ['Nguồn nêu diễn biến lãi suất.'], assessment: 'Có thể ảnh hưởng chi phí vay; đây là nhận định tổng quát.', suggestedRateDelta: null, assumptions: ['Không có hồ sơ R07.'], citations: [{ sourceName: 'NHNN', url: 'https://example.test/rate-news' }] }))
+    response.end(JSON.stringify({ mode, facts: ['Nguồn nêu diễn biến lãi suất.'], assessment: 'Có thể ảnh hưởng chi phí vay; đây là nhận định tổng quát.', suggestedRateDelta: '-1.0', assumptions: [], citations: [{ sourceName: 'NHNN', url: 'https://example.test/rate-news' }] }))
     return
   }
   if (request.method === 'GET' && request.url === '/api/v1/radar/alerts') {

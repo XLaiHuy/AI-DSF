@@ -1,75 +1,298 @@
-import { Injectable, UnprocessableEntityException } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
+import { BadRequestException, Injectable, Logger, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common'
+import { Prisma, type FinancialProduct } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
-import { assessDti, compoundDca, decliningPrincipalLoan, reducingBalanceLoan } from '@fincopilot/financial-math'
-import type { ManualCompareRequest, SessionContext, SurveyInvestRequest, SurveyLoanRequest } from '@fincopilot/shared-types'
+import {
+  AI_TASK_SCHEMAS, DataProvenance, InvestmentCategory, RateType, handoffRoutes,
+  type ManualCompareRequest, type ManualCompareResponse, type SessionContext,
+  type SurveyInvestRequest, type SurveyInvestResponse, type SurveyLoanRequest, type SurveyLoanResponse,
+} from '@fincopilot/shared-types'
+import { amortizeLoan, assessDti, compoundDca, effectiveLoanApr } from '@fincopilot/financial-math'
 import { PrismaService } from '../../common/prisma.service'
+import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
+import { normalizeVietnamese } from '../forensic/data/trusted-institutions'
+import { redemptionFeeTiers, syncProductCatalog } from './product-catalog'
 
-type CatalogProduct = { id: string; institutionName: string; productName: string; rate: string; url: string; calcMethod: string; rateType: 'FIXED' | 'VARIABLE_NAV'; dataProvenance: 'CATALOG_VERIFIED' | 'WEB_REFERENCE'; effectiveDate: string; trustScore: number; sourceLabel: string }
-const fallbackProducts: CatalogProduct[] = [
-  { id: 'prod-acb-01', institutionName: 'Ngân hàng TMCP Á Châu (ACB)', productName: 'Vay tín chấp linh hoạt', rate: '14.5', url: 'https://www.acb.com.vn/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'CATALOG_VERIFIED', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 92, sourceLabel: 'Website chính thức + catalog đã xác minh' },
-  { id: 'prod-vcb-01', institutionName: 'Ngân hàng TMCP Ngoại thương Việt Nam (Vietcombank)', productName: 'Vay tiêu dùng theo lương', rate: '12.9', url: 'https://www.vietcombank.com.vn/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'CATALOG_VERIFIED', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 96, sourceLabel: 'Website chính thức + catalog đã xác minh' },
-  { id: 'prod-mbb-01', institutionName: 'Ngân hàng TMCP Quân Đội (MB)', productName: 'Vay tiêu dùng cá nhân', rate: '15.2', url: 'https://www.mbbank.com.vn/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'CATALOG_VERIFIED', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 93, sourceLabel: 'Website chính thức + catalog đã xác minh' },
-  { id: 'ref-agribank-01', institutionName: 'Agribank', productName: 'Vay tín chấp · mức tham khảo', rate: '7.0', url: 'https://timo.vn/blogs/so-sanh-lai-suat-vay-ngan-hang-cap-nhat-moi-nhat/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'WEB_REFERENCE', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 72, sourceLabel: 'Timo · tham khảo, cần đối chiếu Agribank' },
-  { id: 'ref-techcombank-01', institutionName: 'Techcombank', productName: 'Vay tín chấp · mức tham khảo', rate: '13.78', url: 'https://timo.vn/blogs/so-sanh-lai-suat-vay-ngan-hang-cap-nhat-moi-nhat/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'WEB_REFERENCE', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 72, sourceLabel: 'Timo · tham khảo, cần đối chiếu Techcombank' },
-  { id: 'ref-bvbank-01', institutionName: 'BVBank', productName: 'Vay tín chấp · mức tham khảo', rate: '14.0', url: 'https://timo.vn/blogs/so-sanh-lai-suat-vay-ngan-hang-cap-nhat-moi-nhat/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'WEB_REFERENCE', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 72, sourceLabel: 'Timo · tham khảo, cần đối chiếu BVBank' },
-  { id: 'ref-tpbank-01', institutionName: 'TPBank', productName: 'Vay tín chấp · mức tham khảo', rate: '8.7', url: 'https://timo.vn/blogs/so-sanh-lai-suat-vay-ngan-hang-cap-nhat-moi-nhat/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'WEB_REFERENCE', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 72, sourceLabel: 'Timo · tham khảo, cần đối chiếu TPBank' },
-  { id: 'ref-hdbank-01', institutionName: 'HDBank', productName: 'Vay tín chấp · mức tham khảo', rate: '13.0', url: 'https://timo.vn/blogs/so-sanh-lai-suat-vay-ngan-hang-cap-nhat-moi-nhat/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'WEB_REFERENCE', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 72, sourceLabel: 'Timo · tham khảo, cần đối chiếu HDBank' },
-  { id: 'ref-sacombank-01', institutionName: 'Sacombank', productName: 'Vay tín chấp · mức tham khảo', rate: '9.6', url: 'https://timo.vn/blogs/so-sanh-lai-suat-vay-ngan-hang-cap-nhat-moi-nhat/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'WEB_REFERENCE', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 72, sourceLabel: 'Timo · tham khảo, cần đối chiếu Sacombank' },
-  { id: 'ref-vib-01', institutionName: 'VIB', productName: 'Vay tín chấp · mức tham khảo', rate: '16.0', url: 'https://timo.vn/blogs/so-sanh-lai-suat-vay-ngan-hang-cap-nhat-moi-nhat/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'WEB_REFERENCE', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 72, sourceLabel: 'Timo · tham khảo, cần đối chiếu VIB' },
-  { id: 'ref-shb-01', institutionName: 'SHB', productName: 'Vay tín chấp · mức tham khảo', rate: '8.5', url: 'https://timo.vn/blogs/so-sanh-lai-suat-vay-ngan-hang-cap-nhat-moi-nhat/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'WEB_REFERENCE', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 72, sourceLabel: 'Timo · tham khảo, cần đối chiếu SHB' },
-  { id: 'ref-ocb-01', institutionName: 'OCB', productName: 'Vay tín chấp · mức tham khảo', rate: '20.2', url: 'https://timo.vn/blogs/so-sanh-lai-suat-vay-ngan-hang-cap-nhat-moi-nhat/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'WEB_REFERENCE', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 72, sourceLabel: 'Timo · tham khảo, cần đối chiếu OCB' },
-  { id: 'ref-msb-01', institutionName: 'MSB', productName: 'Vay tín chấp · mức tham khảo', rate: '9.6', url: 'https://timo.vn/blogs/so-sanh-lai-suat-vay-ngan-hang-cap-nhat-moi-nhat/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'WEB_REFERENCE', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 72, sourceLabel: 'Timo · tham khảo, cần đối chiếu MSB' },
-  { id: 'ref-vietinbank-01', institutionName: 'VietinBank', productName: 'Vay tín chấp · mức tham khảo', rate: '9.6', url: 'https://timo.vn/blogs/so-sanh-lai-suat-vay-ngan-hang-cap-nhat-moi-nhat/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'WEB_REFERENCE', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 72, sourceLabel: 'Timo · tham khảo, cần đối chiếu VietinBank' },
-  { id: 'ref-bidv-01', institutionName: 'BIDV', productName: 'Vay tín chấp · mức tham khảo', rate: '11.9', url: 'https://timo.vn/blogs/so-sanh-lai-suat-vay-ngan-hang-cap-nhat-moi-nhat/', calcMethod: 'REDUCING_BALANCE', rateType: 'FIXED', dataProvenance: 'WEB_REFERENCE', effectiveDate: new Date().toISOString().slice(0, 10), trustScore: 72, sourceLabel: 'Timo · tham khảo, cần đối chiếu BIDV' },
-]
-const blocked = ['app vay', 'vay nóng', 'tín dụng đen', 'tindungden', 'ponzi', 'lừa đảo', 'bao lời']
+const D = Prisma.Decimal
+const investmentCategories = InvestmentCategory.options
+const loanMethods = ['REDUCING_BALANCE', 'DECLINING_PRINCIPAL', 'FLAT_RATE'] as const
+const blockedTerms = ['app vay', 'vay nong', 'tin dung den', 'tindungden', 'ponzi', 'lua dao', 'bao loi']
+const fallbackExplanation = {
+  summary: 'Kết quả được tính từ dòng tiền của từng phương án.',
+  tradeoffs: ['Khoản trả tháng thấp có thể đi kèm tổng chi phí cao hơn.', 'Kiểm tra phí và điều kiện thay đổi lãi suất trước khi ký.'],
+}
+
+function owner(session: SessionContext) {
+  return session.kind === 'guest' ? { guestSessionId: session.guestSessionId } : { userId: session.userId }
+}
+
+function invalid(message: string): never {
+  throw new BadRequestException({ errorCode: 'ERR_VALIDATION_FAILED', message })
+}
+
+function validateRate(rate: Prisma.Decimal) {
+  if (rate.lt(0) || rate.gt(200)) invalid('Lãi suất hằng năm sau điều chỉnh phải từ 0% đến 200%.')
+  return rate
+}
+
+function disbursement(principal: Prisma.Decimal, fee: Prisma.Decimal) {
+  if (fee.gte(principal)) invalid('Phí trả trước phải nhỏ hơn số tiền vay.')
+  const net = principal.sub(fee).toDecimalPlaces(0)
+  if (!net.gt(0)) invalid('Số tiền thực nhận phải lớn hơn 0 đồng.')
+  return net
+}
+
+function offerSource(product: FinancialProduct & { institution: { name: string } }) {
+  const dataProvenance = DataProvenance.parse(product.dataProvenance)
+  return {
+    productId: product.id, institutionName: product.institution.name, productName: product.productName,
+    dataProvenance, sourceUrl: product.sourceUrl, effectiveDate: product.effectiveDate.toISOString().slice(0, 10),
+    rateType: RateType.parse(product.rateType),
+    sourceLabel: dataProvenance === 'CATALOG_VERIFIED' ? 'Danh mục đã xác minh' : 'Tham khảo từ nguồn công bố',
+  }
+}
+
+function dtiAssessment(input: SurveyLoanRequest['dtiOverride'], payment: string) {
+  if (!input) return null
+  const dti = assessDti(input.monthlyIncomeVnd, input.monthlyExpenseVnd, input.existingDebtPaymentVnd, payment)
+  return {
+    bestOfferDtiPct: dti.dtiPct, riskBand: dti.riskBand, disposableCashflowVnd: dti.disposableVnd,
+    disclaimer: 'Kết quả ước tính không thay thế đánh giá tín dụng của tổ chức cho vay.',
+  }
+}
 
 @Injectable()
 export class SurveyCalcService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(SurveyCalcService.name)
 
-  private async catalogProducts(input: SurveyLoanRequest): Promise<CatalogProduct[]> {
+  constructor(private readonly prisma: PrismaService, private readonly ai: AiGatewayService) {}
+
+  syncTrustedProducts() {
+    return syncProductCatalog(this.prisma)
+  }
+
+  private async catalog(category: string | { in: string[] }, input: {
+    enableWebFallback?: boolean; termMonths: number; amount: Prisma.Decimal
+  }, calcMethod: Prisma.StringFilter) {
+    const base = {
+      isActive: true, productCategory: category, calcMethod, institution: { trustStatus: 'LICENSED' },
+      effectiveDate: { lte: new Date() },
+      dataProvenance: { in: input.enableWebFallback === false ? ['CATALOG_VERIFIED'] : [...DataProvenance.options] },
+    } satisfies Prisma.FinancialProductWhereInput
     try {
-      const rows = await this.prisma.financialProduct.findMany({ where: { isActive: true, productCategory: input.productCategory, minAmountVnd: { lte: new Prisma.Decimal(input.principalVnd) }, maxAmountVnd: { gte: new Prisma.Decimal(input.principalVnd) }, minTermMonths: { lte: input.termMonths }, maxTermMonths: { gte: input.termMonths }, institution: { trustStatus: 'LICENSED' } }, include: { institution: true }, orderBy: { nominalRateMin: 'asc' } })
-      if (rows.length === 0) return input.productCategory === 'UNSECURED_LOAN' ? fallbackProducts : []
-      return rows.map((row) => ({ id: row.id, institutionName: row.institution.name, productName: row.productName, rate: row.nominalRateMin.toString(), url: row.sourceUrl, calcMethod: row.calcMethod, rateType: row.rateType === 'VARIABLE_NAV' ? 'VARIABLE_NAV' : 'FIXED', dataProvenance: row.dataProvenance === 'WEB_REFERENCE' ? 'WEB_REFERENCE' : 'CATALOG_VERIFIED', effectiveDate: row.effectiveDate.toISOString().slice(0, 10), trustScore: row.dataProvenance === 'CATALOG_VERIFIED' ? 94 : 78, sourceLabel: row.dataProvenance === 'CATALOG_VERIFIED' ? 'Catalog đã xác minh' : 'Nguồn web cần đối chiếu' }))
-    } catch { return input.productCategory === 'UNSECURED_LOAN' ? fallbackProducts : [] }
+      const products = await this.prisma.financialProduct.findMany({
+        where: { ...base, minAmountVnd: { lte: input.amount }, maxAmountVnd: { gte: input.amount },
+          minTermMonths: { lte: input.termMonths }, maxTermMonths: { gte: input.termMonths } },
+        include: { institution: { select: { name: true } } }, orderBy: [{ nominalRateMin: 'asc' }, { id: 'asc' }],
+      })
+      if (products.length) return { products, catalogStatus: 'AVAILABLE' as const }
+      const active = await this.prisma.financialProduct.count({ where: base })
+      return { products, catalogStatus: active ? 'NO_MATCH' as const : 'EMPTY_CATALOG' as const }
+    } catch {
+      this.logger.warn({ event: 'survey_catalog_unavailable' })
+      return { products: [], catalogStatus: 'CATALOG_UNAVAILABLE' as const }
+    }
   }
 
   private async checkTrust(name?: string) {
     if (!name?.trim()) return
-    const normalized = name.trim().toLocaleLowerCase('vi-VN')
-    if (blocked.some((item) => normalized.includes(item))) this.block(name)
+    const normalized = normalizeVietnamese(name)
+    const block = () => { throw new UnprocessableEntityException({
+      errorCode: 'ERR_TRUST_FILTER_BLOCKED',
+      message: 'Tên tổ chức chưa được xác minh. Hãy chuyển sang Giám định để kiểm tra.',
+      details: { claimedEntity: name, redirect: handoffRoutes.trustFilterToForensic({ claimedEntity: name }) },
+    }) }
+    if (blockedTerms.some((term) => normalized.includes(term))) block()
+    let institutions
     try {
-      const matches = await this.prisma.financialInstitution.count({ where: { trustStatus: 'LICENSED', name: { contains: name.trim(), mode: 'insensitive' } } })
-      if (matches === 0) this.block(name)
+      institutions = await this.prisma.financialInstitution.findMany({
+        where: { trustStatus: 'LICENSED' }, select: { name: true, code: true },
+      })
     } catch {
-      const known = ['vietcombank', 'vcb', 'acb', 'mbbank', 'mb', 'techcombank', 'tpbank', 'vpbank', 'bidv', 'agribank', 'hdbank', 'shinhan', 'fubon']
-      if (!known.some((item) => normalized.includes(item))) this.block(name)
+      throw new ServiceUnavailableException({ errorCode: 'ERR_SERVICE_UNAVAILABLE', message: 'Chưa kết nối được danh mục để xác minh tổ chức.' })
+    }
+    const aliases: Record<string, string[]> = {
+      VCB: ['ngan hang tmcp ngoai thuong viet nam'], BIDV: ['ngan hang tmcp dau tu va phat trien viet nam'],
+      MBB: ['mb', 'ngan hang tmcp quan doi'], ACB: ['ngan hang tmcp a chau'],
+      CTG: ['ngan hang tmcp cong thuong viet nam'], AGR: ['ngan hang nong nghiep va phat trien nong thon viet nam'],
+    }
+    if (!institutions.some(({ name: registeredName, code }) =>
+      [normalizeVietnamese(registeredName), normalizeVietnamese(code), ...(aliases[code] ?? [])].includes(normalized),
+    )) block()
+  }
+
+  private async profile(session: SessionContext) {
+    try {
+      return await this.prisma.financialProfile.findUnique({ where: owner(session) })
+    } catch {
+      this.logger.warn({ event: 'survey_profile_unavailable' })
+      return null
     }
   }
 
-  private block(name: string): never { throw new UnprocessableEntityException({ errorCode: 'ERR_TRUST_FILTER_BLOCKED', message: 'Tên tổ chức chưa được xác minh hoặc có dấu hiệu rủi ro. Hãy chuyển sang Giám định để kiểm tra.', details: { claimedEntity: name, redirect: '/forensic?claimedEntity=' + encodeURIComponent(name) } }) }
-
-  private async saveSession(session: SessionContext, mode: string, input: unknown, result: { sessionId: string; aiExplanation?: unknown }, dti?: { dtiPct: string; riskBand: string }, shock?: string) {
-    try { await this.prisma.calculationSession.create({ data: { id: result.sessionId, sessionMode: mode, inputParamsJson: input as Prisma.InputJsonValue, mathResultsJson: result as Prisma.InputJsonValue, guestSessionId: session.kind === 'guest' ? session.guestSessionId : undefined, userId: session.kind === 'user' ? session.userId : undefined, dtiRatioPct: dti ? new Prisma.Decimal(dti.dtiPct) : undefined, dtiRiskBand: dti?.riskBand, rateShockDelta: shock ? new Prisma.Decimal(shock) : undefined, aiExplanationJson: result.aiExplanation as Prisma.InputJsonValue } }) } catch { /* DB is optional in local degraded mode; math response remains available. */ }
+  private async sourceLinks(input: SurveyLoanRequest, session: SessionContext) {
+    const { sourceArticleId, sourceAuditId } = input
+    if (sourceArticleId && !await this.prisma.marketArticle.findFirst({
+      where: { id: sourceArticleId, feedStatus: 'ACTIVE' }, select: { id: true },
+    })) invalid('Bài viết nguồn không khả dụng.')
+    if (sourceAuditId && !await this.prisma.forensicAudit.findFirst({
+      where: { id: sourceAuditId, ...owner(session) }, select: { id: true },
+    })) invalid('Kết quả giám định nguồn không khả dụng trong phiên này.')
+    return { sourceArticleId, sourceAuditId }
   }
 
-  async loan(input: SurveyLoanRequest, session: SessionContext) {
+  private async saveSession(
+    session: SessionContext, mode: string, input: object, result: { sessionId: string; aiExplanation?: unknown },
+    links: { profileId?: string; sourceArticleId?: string; sourceAuditId?: string } = {},
+    dti?: NonNullable<SurveyLoanResponse['dtiAssessment']> | null, shock?: string,
+  ) {
+    try {
+      await this.prisma.calculationSession.create({ data: {
+        id: result.sessionId, sessionMode: mode, ...owner(session), ...links,
+        inputParamsJson: input as Prisma.InputJsonValue, mathResultsJson: result as Prisma.InputJsonValue,
+        dtiRatioPct: dti?.bestOfferDtiPct, dtiRiskBand: dti?.riskBand, rateShockDelta: shock,
+        aiExplanationJson: result.aiExplanation ? result.aiExplanation as Prisma.InputJsonValue : undefined,
+      } })
+      return true
+    } catch (error) {
+      const code = error instanceof Prisma.PrismaClientKnownRequestError ? error.code : undefined
+      this.logger.warn({ event: 'survey_session_save_failed', mode, code })
+      return false
+    }
+  }
+
+  async loan(input: SurveyLoanRequest, session: SessionContext): Promise<SurveyLoanResponse> {
     await this.checkTrust(input.checkEntityName)
-    const shock = input.rateShockDeltaPct ?? '0'; const products = await this.catalogProducts(input)
-    const offers = products.map((product) => { const rate = new Prisma.Decimal(product.rate).add(new Prisma.Decimal(shock)).toString(); const calc = product.calcMethod === 'DECLINING_PRINCIPAL' ? decliningPrincipalLoan(input.principalVnd, rate, input.termMonths) : reducingBalanceLoan(input.principalVnd, rate, input.termMonths); const dti = input.dtiOverride ? assessDti(input.dtiOverride.monthlyIncomeVnd, input.dtiOverride.monthlyExpenseVnd, input.dtiOverride.existingDebtPaymentVnd, calc.monthlyPaymentVnd) : null; const fitScore = dti ? Math.max(0, Math.min(100, 100 - Number(dti.dtiPct))) : 50; return { productId: product.id, institutionName: product.institutionName, productName: product.productName, dataProvenance: product.dataProvenance, sourceUrl: product.url, effectiveDate: product.effectiveDate, rateType: product.rateType, sourceLabel: product.sourceLabel, trustScore: product.trustScore, fitScore: Math.round(fitScore), principalNetVnd: input.principalVnd, monthlyPaymentFirstVnd: calc.monthlyPaymentVnd, totalInterestAndFeesVnd: calc.totalInterestVnd, totalPayableVnd: calc.totalPayableVnd, effectiveAprPct: new Prisma.Decimal(rate).toFixed(4), dtiPct: dti?.dtiPct ?? null, schedule: calc.schedule } })
-    const ranked = [...offers].sort((a, b) => b.trustScore - a.trustScore || b.fitScore - a.fitScore || (input.priority === 'LOWEST_APR' ? Number(a.effectiveAprPct) - Number(b.effectiveAprPct) : input.priority === 'LOWEST_TOTAL_COST' ? Number(a.totalPayableVnd) - Number(b.totalPayableVnd) : Number(a.monthlyPaymentFirstVnd) - Number(b.monthlyPaymentFirstVnd))); const best = ranked[0]; const dti = input.dtiOverride && best?.dtiPct ? assessDti(input.dtiOverride.monthlyIncomeVnd, input.dtiOverride.monthlyExpenseVnd, input.dtiOverride.existingDebtPaymentVnd, best.monthlyPaymentFirstVnd) : null
-    const result = { sessionId: randomUUID(), trustFilterSummary: { totalLicensedFound: products.length, blockedEntities: [] }, dtiAssessment: dti ? { bestOfferDtiPct: dti.dtiPct, riskBand: dti.riskBand, disposableCashflowVnd: dti.disposableVnd, disclaimer: 'Kết quả là ước tính hỗ trợ quyết định, không phải phê duyệt tín dụng của ngân hàng.' } : null, offers: ranked, aiExplanation: { summary: 'Kết quả được tính bằng bộ công thức quyết định, không để AI thay đổi số liệu.', tradeoffs: ['Gói có khoản trả tháng thấp hơn có thể có tổng chi phí cao hơn.', 'Kiểm tra phí tất toán trước hạn và điều kiện lãi suất trước khi ký.'] }, meta: { degradedMode: true, errorCode: 'ERR_AI_DEGRADED_FALLBACK' as const } }
-    await this.saveSession(session, 'LOAN_SURVEY', input, result, dti ?? undefined, shock); return result
+    const shock = new D(input.rateShockDeltaPct ?? 0).toDecimalPlaces(3)
+    if (shock.abs().gt(200)) invalid('Mức điều chỉnh lãi suất nằm ngoài phạm vi mô phỏng.')
+    const principal = new D(input.principalVnd).toDecimalPlaces(0)
+    if (!principal.gt(0)) invalid('Số tiền vay phải từ 1 đồng.')
+    const [links, profile, catalog] = await Promise.all([
+      this.sourceLinks(input, session), this.profile(session),
+      this.catalog(input.productCategory, { ...input, amount: principal }, { in: [...loanMethods] }),
+    ])
+    const dtiInput = input.dtiOverride ?? (profile?.monthlyIncomeVnd != null && profile.monthlyExpenseVnd != null && profile.existingDebtPaymentVnd != null
+      ? { monthlyIncomeVnd: profile.monthlyIncomeVnd.toString(), monthlyExpenseVnd: profile.monthlyExpenseVnd.toString(),
+        existingDebtPaymentVnd: profile.existingDebtPaymentVnd.toString() }
+      : undefined)
+    const offers = catalog.products.flatMap((product): SurveyLoanResponse['offers'] => {
+      const calcMethod = loanMethods.find((method) => method === product.calcMethod)
+      if (!calcMethod) return []
+      const source = offerSource(product)
+      const initialRate = validateRate(product.nominalRateMin.add(shock))
+      let rateAssumption = product.rateNote ?? undefined
+      let laterRate
+      if (source.rateType === 'FLOATING' || source.rateType === 'PROMO_THEN_FLOATING') {
+        const hasLaterRate = source.rateType === 'PROMO_THEN_FLOATING' && product.promoMonths != null
+          && product.promoMonths < input.termMonths && product.nominalRateMax.gt(product.nominalRateMin)
+        if (hasLaterRate && product.promoMonths != null) {
+          const rate = validateRate(product.nominalRateMax.add(shock))
+          laterRate = { afterMonths: product.promoMonths, annualRatePct: rate }
+          rateAssumption = [rateAssumption, 'Kịch bản dùng mức lãi cao trong danh mục sau ưu đãi. Hợp đồng thực tế có thể theo lãi tham chiếu' +
+            (product.floatingMargin ? ' cộng ' + product.floatingMargin + ' điểm phần trăm.' : '.')].filter(Boolean).join(' ')
+        } else {
+          rateAssumption = [rateAssumption, 'Mô phỏng giữ mức lãi công bố vì danh mục chưa có lãi tham chiếu cho các kỳ tiếp theo.'].filter(Boolean).join(' ')
+        }
+      }
+      const upfrontFee = principal.mul(product.upfrontFeeRate ?? 0).div(100).toDecimalPlaces(0)
+      const monthlyFee = new D(product.monthlyFeeVnd ?? 0).toDecimalPlaces(0)
+      const net = disbursement(principal, upfrontFee)
+      const calculation = amortizeLoan(principal, initialRate, input.termMonths, calcMethod, { monthlyFeeVnd: monthlyFee, laterRate })
+      const dti = dtiAssessment(dtiInput, calculation.monthlyPaymentVnd)
+      const fitScore = dti?.bestOfferDtiPct == null ? 50
+        : D.max(0, D.min(100, new D(100).sub(dti.bestOfferDtiPct))).toDecimalPlaces(0).toNumber()
+      return [{
+        ...source, calcMethod, rateAssumption, upfrontFeeVnd: upfrontFee.toFixed(0), monthlyFeeVnd: monthlyFee.toFixed(0),
+        principalNetVnd: net.toFixed(0), monthlyPaymentFirstVnd: calculation.monthlyPaymentVnd,
+        effectiveAprPct: effectiveLoanApr(net, calculation.schedule), totalPayableVnd: calculation.totalPayableVnd,
+        totalInterestAndFeesVnd: new D(calculation.totalPayableVnd).sub(net).toFixed(0),
+        trustScore: source.dataProvenance === 'CATALOG_VERIFIED' ? 94 : 78, fitScore,
+        dtiPct: dti?.bestOfferDtiPct ?? null, dtiAssessment: dti, schedule: calculation.schedule,
+      }]
+    })
+    const priorityField = {
+      LOWEST_APR: 'effectiveAprPct', LOWEST_MONTHLY_PAYMENT: 'monthlyPaymentFirstVnd', LOWEST_TOTAL_COST: 'totalInterestAndFeesVnd',
+    } as const
+    const field = priorityField[input.priority]
+    offers.sort((a, b) => b.trustScore - a.trustScore || new D(a[field]).cmp(b[field]) || (b.fitScore ?? 0) - (a.fitScore ?? 0))
+    let aiExplanation: SurveyLoanResponse['aiExplanation'] = offers.length ? fallbackExplanation : null
+    let degradedMode = false
+    if (offers.length) {
+      try {
+        aiExplanation = await this.ai.generateStructured('SURVEY_EXPLAIN', AI_TASK_SCHEMAS.SURVEY_EXPLAIN, {
+          instruction: 'Giải thích bằng tiếng Việt sự đánh đổi giữa khoản trả tháng và tổng chi phí. Không tính lại, sửa số liệu, nhắc thông tin định danh hay khuyên chọn một gói.',
+          termMonths: input.termMonths,
+          offers: offers.slice(0, 5).map(({ monthlyPaymentFirstVnd, totalInterestAndFeesVnd, effectiveAprPct, rateType }) =>
+            ({ monthlyPaymentFirstVnd, totalInterestAndFeesVnd, effectiveAprPct, rateType })),
+        })
+      } catch {
+        degradedMode = true
+      }
+    }
+    const dti = offers[0]?.dtiAssessment ?? null
+    const result = {
+      sessionId: randomUUID(), offers, dtiAssessment: dti, aiExplanation,
+      trustFilterSummary: { totalLicensedFound: offers.length, blockedEntities: [] },
+    }
+    const savedToHistory = await this.saveSession(session, 'LOAN_SURVEY', input, result, { ...links, profileId: profile?.id }, dti, shock.toString())
+    return { ...result, meta: { degradedMode, catalogStatus: catalog.catalogStatus, savedToHistory,
+      ...(degradedMode ? { errorCode: 'ERR_AI_DEGRADED_FALLBACK' as const } : {}) } }
   }
 
-  async investment(input: SurveyInvestRequest, session: SessionContext) {
-    const annualReturnPct = '5'; const calculation = compoundDca(input.initialVnd, input.monthlyContributionVnd, input.termMonths, annualReturnPct, '0.5', '0.1'); const result = { sessionId: randomUUID(), offers: [{ productId: 'fund-open-01', institutionName: 'Quỹ mở mẫu đã xác minh', productName: 'Danh mục tích lũy quỹ mở', dataProvenance: 'CATALOG_VERIFIED' as const, sourceUrl: 'https://www.sbv.gov.vn/', effectiveDate: new Date().toISOString().slice(0, 10), rateType: 'VARIABLE_NAV' as const, scenario: { annualReturnPct, ...calculation } }] }; await this.saveSession(session, 'INVESTMENT_SURVEY', input, result); return result
+  async investment(input: SurveyInvestRequest, session: SessionContext): Promise<SurveyInvestResponse> {
+    await this.checkTrust(input.checkEntityName)
+    const initial = new D(input.initialVnd)
+    const monthly = new D(input.monthlyContributionVnd)
+    const [profile, catalog] = await Promise.all([
+      this.profile(session),
+      this.catalog(input.productCategory ?? { in: investmentCategories }, {
+        ...input, amount: initial.isZero() ? monthly : initial,
+      }, { equals: 'COMPOUND_DCA' }),
+    ])
+    const offers = catalog.products.map((product) => {
+      const source = offerSource(product)
+      const productCategory = InvestmentCategory.parse(product.productCategory)
+      const annualReturnPct = product.nominalRateMin.toString()
+      const tiers = redemptionFeeTiers.safeParse(product.redemptionFeeTiers)
+      const calculation = compoundDca(initial, monthly, input.termMonths, annualReturnPct, '0',
+        product.investmentTaxPct ?? 0, { effectiveAnnualYield: source.rateType === 'VARIABLE_NAV',
+          taxFreeAfterMonths: product.investmentTaxFreeAfterMonths ?? undefined,
+          redemptionFeeTiers: tiers.success ? tiers.data : undefined })
+      return {
+        ...source, productCategory,
+        sourceLabel: product.rateNote ?? source.sourceLabel,
+        scenario: { annualReturnPct, ...calculation },
+      }
+    })
+    const result = { sessionId: randomUUID(), offers }
+    const savedToHistory = await this.saveSession(session, 'INVESTMENT_SURVEY', input, result, { profileId: profile?.id })
+    return { ...result, meta: { catalogStatus: catalog.catalogStatus, savedToHistory } }
   }
 
-  async manualCompare(input: ManualCompareRequest, session: SessionContext) { const offers = input.offers.map((item) => { const calc = reducingBalanceLoan(item.principalVnd, item.annualRatePct, item.termMonths); return { label: item.label, monthlyPaymentVnd: calc.monthlyPaymentVnd, totalInterestVnd: calc.totalInterestVnd, totalPayableVnd: calc.totalPayableVnd, effectiveAprPct: new Prisma.Decimal(item.annualRatePct).toFixed(4) } }); const result = { sessionId: randomUUID(), offers }; await this.saveSession(session, 'MANUAL_COMPARE', input, result); return result }
+  async manualCompare(input: ManualCompareRequest, session: SessionContext): Promise<ManualCompareResponse> {
+    const offers = input.offers.map((item) => {
+      const principal = new D(item.principalVnd).toDecimalPlaces(0)
+      const fee = new D(item.upfrontFeeVnd ?? 0).toDecimalPlaces(0)
+      const net = disbursement(principal, fee)
+      const calc = amortizeLoan(principal, validateRate(new D(item.annualRatePct)), item.termMonths, 'REDUCING_BALANCE')
+      return {
+        label: item.label, monthlyPaymentVnd: calc.monthlyPaymentVnd, totalInterestVnd: calc.totalInterestVnd,
+        totalPayableVnd: calc.totalPayableVnd, effectiveAprPct: effectiveLoanApr(net, calc.schedule),
+        principalNetVnd: net.toFixed(0), upfrontFeeVnd: fee.toFixed(0),
+      }
+    })
+    const profile = await this.profile(session)
+    const result = { sessionId: randomUUID(), offers }
+    const savedToHistory = await this.saveSession(session, 'MANUAL_COMPARE', input, result, { profileId: profile?.id })
+    return { ...result, meta: { savedToHistory } }
+  }
 
-  async history(session: SessionContext) { const rows = await this.prisma.calculationSession.findMany({ where: session.kind === 'guest' ? { guestSessionId: session.guestSessionId } : { userId: session.userId }, orderBy: { createdAt: 'desc' }, take: 20, select: { id: true, sessionMode: true, createdAt: true, dtiRatioPct: true, dtiRiskBand: true, rateShockDelta: true } }); return { sessions: rows.map((row) => ({ ...row, dtiRatioPct: row.dtiRatioPct?.toString() ?? null, rateShockDelta: row.rateShockDelta?.toString() ?? null })) } }
+  async history(session: SessionContext) {
+    const rows = await this.prisma.calculationSession.findMany({
+      where: owner(session), orderBy: { createdAt: 'desc' }, take: 20,
+      select: { id: true, sessionMode: true, createdAt: true, dtiRatioPct: true, dtiRiskBand: true, rateShockDelta: true },
+    })
+    return { sessions: rows.map((row) => ({
+      ...row, dtiRatioPct: row.dtiRatioPct?.toString() ?? null, rateShockDelta: row.rateShockDelta?.toString() ?? null,
+    })) }
+  }
 }

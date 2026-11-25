@@ -3,6 +3,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../common/prisma.service'
 import { RadarService } from '../radar/radar.service'
+import { SurveyCalcService } from '../survey-calc/survey-calc.service'
 import { ProductCategory, CalcMethod, RateType } from '@fincopilot/shared-types'
 import { z } from 'zod'
 import Decimal from 'decimal.js'
@@ -14,12 +15,40 @@ const productSchema = z.strictObject({
   upfrontFeeRate: z.string().regex(/^\d+(\.\d+)?$/).optional(), monthlyFeeVnd: z.string().regex(/^\d+(\.\d+)?$/).optional(),
   earlySettlementFeeRate: z.string().regex(/^\d+(\.\d+)?$/).optional(), minAmountVnd: z.string().regex(/^\d+(\.\d+)?$/),
   maxAmountVnd: z.string().regex(/^\d+(\.\d+)?$/), minTermMonths: z.number().int().positive(), maxTermMonths: z.number().int().positive(),
-  sourceUrl: z.url(), effectiveDate: z.iso.date(), dataProvenance: z.enum(['CATALOG_VERIFIED', 'WEB_REFERENCE']).default('CATALOG_VERIFIED'), isActive: z.boolean().default(true),
+  sourceUrl: z.url({ protocol: /^https?$/ }), effectiveDate: z.iso.date(), dataProvenance: z.enum(['CATALOG_VERIFIED', 'WEB_REFERENCE']), isActive: z.boolean(),
 })
+
+const createProductSchema = productSchema.extend({
+  dataProvenance: productSchema.shape.dataProvenance.default('CATALOG_VERIFIED'),
+  isActive: productSchema.shape.isActive.default(true),
+})
+const updateProductSchema = productSchema.partial()
+
+function validateProductBounds(product: {
+  nominalRateMin: Decimal.Value; nominalRateMax: Decimal.Value;
+  minAmountVnd: Decimal.Value; maxAmountVnd: Decimal.Value;
+  minTermMonths: number; maxTermMonths: number;
+}) {
+  const issues = [
+    [new Decimal(product.nominalRateMin).gt(product.nominalRateMax), 'nominalRateMax', 'Lãi suất tối đa'],
+    [new Decimal(product.minAmountVnd).gt(product.maxAmountVnd), 'maxAmountVnd', 'Số tiền tối đa'],
+    [product.minTermMonths > product.maxTermMonths, 'maxTermMonths', 'Kỳ hạn tối đa'],
+  ] as const
+  const details = issues.filter(([invalid]) => invalid).map(([, field, label]) => ({
+    path: [field], message: label + ' phải lớn hơn hoặc bằng mức tối thiểu.',
+  }))
+  if (details.length) throw new BadRequestException({
+    errorCode: 'ERR_VALIDATION_FAILED', message: 'Thông tin sản phẩm không hợp lệ.', details,
+  })
+}
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService, private readonly radar: RadarService) {}
+  constructor(private readonly prisma: PrismaService, private readonly radar: RadarService, private readonly survey: SurveyCalcService) {}
+
+  syncProducts() {
+    return this.survey.syncTrustedProducts()
+  }
 
   async sources() {
     return this.prisma.marketSource.findMany({ orderBy: { sourceKey: 'asc' }, include: { _count: { select: { articles: true } } } })
@@ -40,21 +69,20 @@ export class AdminService {
   }
 
   async createProduct(input: Record<string, unknown>) {
-    const parsed = productSchema.refine((data) => new Decimal(data.nominalRateMin).lte(data.nominalRateMax), { path: ['nominalRateMax'], message: 'Lãi suất tối đa phải lớn hơn hoặc bằng tối thiểu.' }).safeParse(input)
+    const parsed = createProductSchema.safeParse(input)
     if (!parsed.success) throw new BadRequestException({ errorCode: 'ERR_VALIDATION_FAILED', message: 'Thông tin sản phẩm không hợp lệ.', details: parsed.error.issues })
+    validateProductBounds(parsed.data)
     return this.prisma.financialProduct.create({ data: { id: randomUUID(), ...parsed.data, effectiveDate: new Date(parsed.data.effectiveDate) } as Prisma.FinancialProductUncheckedCreateInput, include: { institution: true } })
   }
 
   async updateProduct(id: string, input: Record<string, unknown>) {
     const exists = await this.prisma.financialProduct.findUnique({ where: { id } })
     if (!exists) throw new NotFoundException('Không tìm thấy sản phẩm tài chính.')
-    const parsed = productSchema.partial().safeParse(input)
+    const parsed = updateProductSchema.safeParse(input)
     if (!parsed.success) throw new BadRequestException({ errorCode: 'ERR_VALIDATION_FAILED', message: 'Thông tin sản phẩm không hợp lệ.', details: parsed.error.issues })
     if (Object.keys(parsed.data).length === 0) throw new BadRequestException('Cần cung cấp trường cập nhật.')
-    const nextMin = parsed.data.nominalRateMin ?? exists.nominalRateMin.toString()
-    const nextMax = parsed.data.nominalRateMax ?? exists.nominalRateMax.toString()
-    if (new Decimal(nextMin).gt(nextMax)) throw new BadRequestException({ errorCode: 'ERR_VALIDATION_FAILED', message: 'Lãi suất tối đa phải lớn hơn hoặc bằng tối thiểu.' })
-    const data = { ...parsed.data, ...(parsed.data.effectiveDate ? { effectiveDate: new Date(parsed.data.effectiveDate) } : {}), updatedAt: new Date() }
+    validateProductBounds({ ...exists, ...parsed.data })
+    const data = { ...parsed.data, ...(parsed.data.effectiveDate ? { effectiveDate: new Date(parsed.data.effectiveDate) } : {}), catalogSyncFingerprint: null, updatedAt: new Date() }
     return this.prisma.financialProduct.update({ where: { id }, data: data as Prisma.FinancialProductUpdateInput, include: { institution: true } })
   }
 }

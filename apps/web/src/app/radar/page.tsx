@@ -3,6 +3,7 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { AlertTriangle, ArrowDown, ArrowUpRight, ExternalLink, RefreshCw, Search } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useEffect, useMemo, useState } from 'react'
 import { Button, Input } from '@/components/ui'
 import { CategoryArtwork } from '@/components/radar/CategoryArtwork'
@@ -70,7 +71,8 @@ function SourceLinks({ article, compact = false }: { article: Article; compact?:
 
 function ArticleImage({ article, className, onError }: { article: Article; className: string; onError: () => void }) {
   if (!article.image) return <CategoryArtwork categories={article.categories} className={className} />
-  return <img className={className} src={article.image.url} alt={article.image.alt} loading="lazy" referrerPolicy="no-referrer" onError={onError} />
+  return <Image unoptimized width={800} height={450} className={className} src={article.image.url} alt={article.image.alt}
+    loading="lazy" referrerPolicy="no-referrer" onError={onError} />
 }
 
 function StoryThumbnail({ article }: { article: Article }) {
@@ -191,10 +193,11 @@ export default function RadarPage() {
   const sources = articlesQuery.data?.pages[0]?.sources ?? []
   const staleSources = sources.filter((source) => source.lastFetchStatus === 'ERROR')
   const featured = articles.slice(0, 2)
-  const latestAlert = alertsQuery.data?.items[0]
-  const alertArticleIds = new Set(alertsQuery.data?.items.flatMap((alert) => alert.evidence.map((item) => item.articleId).filter((id): id is string => Boolean(id))) ?? [])
+  const publishedAlerts = alertsQuery.data?.items.filter((alert) => alert.verificationStatus === 'VERIFIED' && alert.publishedAt)
+  const latestAlert = publishedAlerts?.[0]
+  const alertArticleIds = new Set(publishedAlerts?.flatMap((alert) => alert.evidence.map((item) => item.articleId).filter((id): id is string => Boolean(id))) ?? [])
   const fraudArticles = fraudArticlesQuery.data?.items.filter((article) => !alertArticleIds.has(article.id)) ?? []
-  const emptyAlertState = alertsQuery.data?.items.length === 0 && Boolean(fraudArticlesQuery.data) && fraudArticles.length === 0
+  const emptyAlertState = publishedAlerts?.length === 0 && Boolean(fraudArticlesQuery.data) && fraudArticles.length === 0
   const recommendations = useMemo(() => {
     if (!personalizationEnabled) return []
     const signalCategories = signalsQuery.data?.signals.map((signal) => signal.categoryCode) ?? []
@@ -248,7 +251,7 @@ export default function RadarPage() {
       {alertsQuery.isPending && <p className="radar-context-empty">Đang tải cảnh báo…</p>}
       {alertsQuery.isError && <p className="radar-context-empty" role="status">Chưa thể tải cảnh báo. Tin thị trường vẫn có thể xem bên dưới.</p>}
       <div className="radar-v2-alert-list">
-        {alertsQuery.data?.items.slice(0, 3).map((alert) => <article className="radar-v2-alert-item" key={alert.id}>
+        {publishedAlerts?.slice(0, 3).map((alert) => <article className="radar-v2-alert-item" key={alert.id}>
           <span className={`radar-verification ${alert.verificationStatus === 'VERIFIED' ? 'is-verified' : 'is-unverified'}`}>{alert.verificationStatus === 'VERIFIED' ? 'Đã xác minh' : alert.verificationStatus === 'UNVERIFIED' ? 'Chưa xác minh' : `Trạng thái: ${alert.verificationStatus}`}</span>
           <h3><Link href={`/radar/${alert.id}?kind=alert`}>{alert.tacticSummary}</Link></h3>
           <p>{alert.publishedAt ? <>Công bố <time dateTime={alert.publishedAt}>{formatDateTime(alert.publishedAt)}</time></> : 'Chưa rõ thời điểm công bố'}{alert.evidence.length > 0 && <> · Dẫn chứng: {alert.evidence.map((item) => item.sourceName).join(', ')}</>}</p>
@@ -377,13 +380,13 @@ export default function RadarPage() {
         </div> : <div className="radar-alert-feed" aria-label="Cảnh báo lừa đảo">
           {alertsQuery.isPending && <p role="status" className="radar-state-message">Đang tải cảnh báo…</p>}
           {alertsQuery.isError && <div className="radar-state-message radar-error-state"><p role="alert">Không tải được cảnh báo.</p><Button variant="outline" size="sm" onClick={() => void alertsQuery.refetch()}><RefreshCw size={14} aria-hidden="true"/> Thử lại</Button></div>}
-          {alertsQuery.data?.items.map((alert) => <article className="radar-alert-row" key={alert.id}>
+          {publishedAlerts?.map((alert) => <article className="radar-alert-row" key={alert.id}>
             <div className="radar-alert-status"><span>{alert.threatCategory}</span><strong className={alert.verificationStatus === 'VERIFIED' ? 'is-verified' : 'is-unverified'}>{alert.verificationStatus === 'VERIFIED' ? 'Đã xác minh' : 'Chưa xác minh'}</strong></div>
             <h2><Link href={`/radar/${alert.id}?kind=alert`}>{alert.tacticSummary}</Link></h2>
             <p>{alert.publishedAt ? <>Công bố <time dateTime={alert.publishedAt}>{formatDateTime(alert.publishedAt)}</time></> : 'Chưa rõ thời điểm công bố'}{alert.evidence.length > 0 && <> · Dẫn chứng từ {alert.evidence.map((item) => item.sourceName).join(', ')}</>}</p>
             <Link className="radar-alert-detail" href={`/radar/${alert.id}?kind=alert`}>Xem dấu hiệu và bằng chứng <ArrowUpRight size={15} aria-hidden="true" /></Link>
           </article>)}
-          {alertsQuery.data?.items.length === 0 && <div className="radar-empty-state">
+          {publishedAlerts?.length === 0 && <div className="radar-empty-state">
             <span className="radar-empty-mark" aria-hidden="true">!</span><p className="radar-story-topic">THREAT RADAR</p><h2>Chưa có cảnh báo được công bố</h2><p>Chỉ cảnh báo đã công bố mới xuất hiện tại đây.</p>
           </div>}
         </div>}
@@ -403,7 +406,7 @@ export default function RadarPage() {
             </li>)}</ul> : <p className="radar-context-empty">Chưa có dẫn chứng được cung cấp.</p>}
             <Link className="radar-context-action" href={`/radar/${latestAlert.id}?kind=alert`}>Mở chi tiết cảnh báo <ArrowUpRight size={14} aria-hidden="true" /></Link>
           </>}
-          {alertsQuery.data?.items.length === 0 && <p className="radar-context-empty">Chưa có cảnh báo được công bố.</p>}
+          {publishedAlerts?.length === 0 && <p className="radar-context-empty">Chưa có cảnh báo được công bố.</p>}
         </section>
 
         <section className="radar-context-sources">
