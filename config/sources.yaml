@@ -20,10 +20,25 @@ sources:
     endpointUrl: https://www.sbv.gov.vn/
     isTrustedForAlerts: true
   - sourceKey: ncsc
-    name: NCSC
+    name: Tín nhiệm mạng (NCSC)
     sourceType: WEB
-    endpointUrl: https://ncsc.gov.vn/
+    endpointUrl: https://tinnhiemmang.vn/canh-bao-lua-dao
     isTrustedForAlerts: true
+  - sourceKey: tingia_tcnh
+    name: Tin giả VN (Tài chính - Ngân hàng)
+    sourceType: WEB
+    endpointUrl: https://tingia.gov.vn/tai-chinh-ngan-hang
+    isTrustedForAlerts: true
+  - sourceKey: vnexpress_phapluat
+    name: VnExpress Pháp luật
+    sourceType: RSS
+    endpointUrl: https://vnexpress.net/rss/phap-luat.rss
+    isTrustedForAlerts: false
+  - sourceKey: dantri_phapluat
+    name: Dân Trí Pháp luật
+    sourceType: RSS
+    endpointUrl: https://dantri.com.vn/rss/phap-luat.rss
+    isTrustedForAlerts: false
 forensicReferences:
   - sourceKey: nhnn
     name: Ngân hàng Nhà nước Việt Nam

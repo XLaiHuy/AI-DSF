@@ -2,14 +2,14 @@ import { randomUUID } from 'node:crypto'
 import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common'
 import { Prisma, type FinancialProfile } from '@prisma/client'
 import {
-  AuthProvider, FinancialProfileSchema, type AuthLogin, type AuthRegister, type AuthSessionResponse,
+  AuthProvider, FinancialProfileSchema, UserRole, type AuthLogin, type AuthRegister, type AuthSessionResponse,
   type FinancialProfileDto, type FinancialProfileUpdate, type SessionContext,
 } from '@fincopilot/shared-types'
 import { PrismaService } from '../../common/prisma.service'
 import type { OAuthIdentity } from './oauth.service'
 import { hashPassword, verifyPassword } from './password'
 
-const publicUser = { id: true, email: true, fullName: true, authProvider: true } satisfies Prisma.UserSelect
+const publicUser = { id: true, email: true, fullName: true, authProvider: true, role: true } satisfies Prisma.UserSelect
 type UserDetails = Prisma.UserGetPayload<{ select: typeof publicUser }>
 type SessionUser = Extract<AuthSessionResponse, { kind: 'user' }>['user']
 
@@ -20,7 +20,10 @@ function profileOwner(session: SessionContext) {
 }
 
 function serializeUser(user: UserDetails): SessionUser {
-  return { id: user.id, email: user.email, displayName: user.fullName, authProvider: AuthProvider.parse(user.authProvider) }
+  return {
+    id: user.id, email: user.email, displayName: user.fullName,
+    authProvider: AuthProvider.parse(user.authProvider), role: UserRole.parse(user.role),
+  }
 }
 
 function serializeProfile(profile: FinancialProfile): FinancialProfileDto {
@@ -80,7 +83,7 @@ export class ProfileAuthService {
     return this.authenticate(guestSessionId, (tx) => tx.user.create({
       data: {
         id: randomUUID(), email: input.email, fullName: input.displayName,
-        authProvider: 'EMAIL', passwordHash,
+        authProvider: 'EMAIL', passwordHash, role: 'USER',
       },
       select: publicUser,
     }))
@@ -107,9 +110,10 @@ export class ProfileAuthService {
       if (account) return account
       // OAuthService only returns email addresses verified by the provider.
       const existing = await tx.user.findUnique({ where: { email: identity.email }, select: publicUser })
+      if (existing?.role === 'ADMIN') throw this.accountConflict()
       if (existing) return existing
       return tx.user.create({
-        data: { ...where, id: randomUUID(), email: identity.email, fullName: identity.name },
+        data: { ...where, id: randomUUID(), email: identity.email, fullName: identity.name, role: 'USER' },
         select: publicUser,
       })
     })

@@ -232,7 +232,7 @@ describe('session cookies', () => {
 })
 
 describe('guest account merge', () => {
-  const existingUser = { id: userId, email: 'test@example.com', authProvider: 'EMAIL', fullName: null }
+  const existingUser = { id: userId, email: 'test@example.com', authProvider: 'EMAIL', fullName: null, role: 'USER' }
   const tx = {
     user: { create: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() },
     financialProfile: { findUnique: vi.fn(), updateMany: vi.fn() },
@@ -252,7 +252,10 @@ describe('guest account merge', () => {
     tx.user.create.mockResolvedValue(existingUser)
     tx.financialProfile.findUnique.mockResolvedValue(null)
     await expect(service.register({ email: existingUser.email, password: 'long-test-password' }, guestSessionId))
-      .resolves.toMatchObject({ id: userId })
+      .resolves.toMatchObject({ id: userId, role: 'USER' })
+    expect(tx.user.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ role: 'USER' }),
+    }))
     expect(transaction).toHaveBeenCalledOnce()
     const transfer = { where: { guestSessionId, userId: null }, data: { guestSessionId: null, userId } }
     expect(tx.financialProfile.updateMany).toHaveBeenCalledWith(transfer)
@@ -282,5 +285,15 @@ describe('guest account merge', () => {
     expect(tx.financialProfile.updateMany).toHaveBeenCalledWith(transfer)
     expect(tx.forensicAudit.updateMany).toHaveBeenCalledWith(transfer)
     expect(tx.calculationSession.updateMany).toHaveBeenCalledWith(transfer)
+  })
+
+  it.each(['GOOGLE', 'GITHUB'] as const)('rejects an implicit %s email match to an admin account', async (provider) => {
+    tx.user.findFirst.mockResolvedValue(null)
+    tx.user.findUnique.mockResolvedValue({ ...existingUser, role: 'ADMIN' })
+    await expect(service.oauthLogin({
+      provider, subject: '123', email: existingUser.email, name: null,
+    }, guestSessionId)).rejects.toBeInstanceOf(ConflictException)
+    expect(tx.user.create).not.toHaveBeenCalled()
+    expect(tx.forensicAudit.updateMany).not.toHaveBeenCalled()
   })
 })

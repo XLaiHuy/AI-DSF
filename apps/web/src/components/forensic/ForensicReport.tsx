@@ -238,6 +238,29 @@ function Explanation({ audit }: { audit: ForensicAuditResponse }) {
   )
 }
 
+function LearningTrace({ trace }: { trace: NonNullable<ForensicAuditResponse['meta']['learningTrace']> }) {
+  const signals = [
+    trace.tier1ExactMatches > 0 && `Tier 1 · ${trace.tier1ExactMatches} chỉ dấu`,
+    trace.matchedTacticsCount > 0 && `Tier 2 · ${trace.matchedTacticsCount} thủ đoạn · ${trace.retrievalMode === 'hybrid_rrf' ? 'Hybrid RRF' : 'Từ khóa'}`,
+    trace.fewShotScamCount + trace.fewShotSafeCount > 0 && `Few-shot · ${trace.fewShotScamCount} lừa đảo, ${trace.fewShotSafeCount} an toàn`,
+    trace.expandedTeencodeCount > 0 && `Teencode · ${trace.expandedTeencodeCount} từ viết tắt`,
+    trace.zeroShotEscalated && 'Tier 3 · Phân tích zero-shot',
+  ].filter(Boolean)
+  if (!signals.length) return null
+  return <details className="rounded-lg border border-border bg-card px-3 py-2 text-xs">
+    <summary className="cursor-pointer text-muted-foreground">
+      <span className="font-semibold text-foreground">Trí nhớ chống lừa đảo</span>
+      <span className="ms-2">{signals.join(' / ')}</span>
+    </summary>
+    {trace.matchedTacticSummaries.length > 0 && <ul className="mt-2 list-disc space-y-1 ps-5 text-muted-foreground">
+      {trace.matchedTacticSummaries.map((summary, index) => <li key={index}>{summary}</li>)}
+    </ul>}
+    {!trace.matchedTacticSummaries.length && <p className="mt-2 text-muted-foreground">
+      {trace.zeroShotEscalated ? 'Tình huống có dấu hiệu đáng ngờ và được chuyển sang phân tích sâu.' : 'Các tín hiệu trên đã được đối chiếu trong lượt giám định.'}
+    </p>}
+  </details>
+}
+
 export function ForensicReport({ audit, inline = false, animate = false, opening }: {
   audit: ForensicAuditResponse; inline?: boolean; animate?: boolean; opening?: ReactNode
 }) {
@@ -361,6 +384,7 @@ export function ForensicReport({ audit, inline = false, animate = false, opening
       </header>
       {opening && <RevealBlock animate={animated} className="print-hidden">{opening}</RevealBlock>}
       <RevealBlock animate={animated} className="print-keep"><VerdictHero audit={audit} inline={inline} /></RevealBlock>
+      {audit.meta.learningTrace && <LearningTrace trace={audit.meta.learningTrace} />}
       {!finished && (
         <div className="pointer-events-none sticky top-1 z-10 !-mb-9 flex justify-end pe-2 print-hidden">
           <Button ref={skip} variant="outline" className="pointer-events-auto h-8 rounded-full px-3 text-xs shadow-sm"

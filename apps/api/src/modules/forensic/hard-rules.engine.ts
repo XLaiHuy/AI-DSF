@@ -153,6 +153,7 @@ export interface Indicator {
 }
 interface HardRuleInput {
   evidence: readonly string[]
+  normalizeEvidence?: (text: string) => string
   claimedEntityName: string | null
   qrPayloads: readonly RuleQr[]
   indicators: readonly Indicator[]
@@ -251,7 +252,7 @@ export function evaluateHardRules(input: HardRuleInput) {
     qr.qrScheme === 'URL_LINK' || qr.qrScheme === 'CRYPTO_WALLET')
   const quotes = [...input.evidence, ...qrPayloads.flatMap((qr) => qr.crcValid && qr.purpose ? [qr.purpose] : [])]
     .flatMap((line) => line.split(/\n+|(?<=[.!?])\s+/).map((phrase) => phrase.trim()).filter(Boolean))
-  const normalized = quotes.map((quote) => ({ quote, text: normalizeRuleText(quote) }))
+  const normalized = quotes.map((quote) => ({ quote, text: (input.normalizeEvidence ?? normalizeRuleText)(quote) }))
   const findQuote = (matches: (text: string) => boolean) => normalized.find(({ text }) => matches(text))?.quote
   const context = normalized.filter(({ text }) => !negation.test(text)).map(({ text }) => text).join(' ')
   const findings: Finding[] = []
@@ -321,6 +322,7 @@ export function evaluateHardRules(input: HardRuleInput) {
   }
 
   for (const indicator of input.indicators) {
+    if (!['BANK_ACCOUNT', 'PHONE', 'DOMAIN', 'CRYPTO_WALLET', 'QR_PATTERN'].includes(indicator.indicatorType)) continue
     const match = matchIndicator(indicator, qrPayloads, quotes)
     if (!match) continue
     add(

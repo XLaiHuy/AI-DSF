@@ -3,7 +3,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { APICallError, NoObjectGeneratedError, generateObject, streamText, type ImagePart, type LanguageModel } from 'ai'
-import type { z } from 'zod'
+import { z } from 'zod'
 import type { ModelRoute, Provider } from './ai-routing'
 
 const adapters: Record<Provider, (key: string, id: string) => LanguageModel> = {
@@ -21,6 +21,29 @@ export type AiInput = {
 }
 
 export type ThinkingLevel = 'low' | 'medium'
+
+const embeddingVector = z.array(z.number().finite()).length(256)
+const openAiEmbedding = z.object({ data: z.array(z.object({ embedding: embeddingVector })).min(1) })
+const googleEmbedding = z.object({ embedding: z.object({ values: embeddingVector }) })
+
+export async function requestEmbedding(route: ModelRoute, key: string, text: string, signal: AbortSignal) {
+  const openai = route.provider === 'openai'
+  const model = `models/${route.modelId}`
+  const url = openai ? 'https://api.openai.com/v1/embeddings'
+    : `https://generativelanguage.googleapis.com/v1beta/${model}:embedContent`
+  const response = await fetch(url, {
+    method: 'POST', signal,
+    headers: openai ? { 'content-type': 'application/json', authorization: `Bearer ${key}` }
+      : { 'content-type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify(openai ? { model: route.modelId, input: text, dimensions: 256 }
+      : { model, content: { parts: [{ text }] }, outputDimensionality: 256 }),
+  })
+  if (!response.ok) {
+    throw new APICallError({ message: 'Embedding request failed', url, requestBodyValues: {}, statusCode: response.status })
+  }
+  const data: unknown = await response.json()
+  return openai ? openAiEmbedding.parse(data).data[0].embedding : googleEmbedding.parse(data).embedding.values
+}
 
 function thinkingOptions(route: ModelRoute, thinkingLevel?: ThinkingLevel) {
   return route.provider === 'google' && thinkingLevel ? { google: { thinkingConfig: { thinkingLevel } } } : undefined

@@ -1,12 +1,16 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
+import { ROUTES } from '@fincopilot/shared-types'
+import { ArrowRight } from 'lucide-react'
+import Link from 'next/link'
 import { useState } from 'react'
 import { AuditHistory } from '@/components/forensic/AuditHistory'
 import { Alert, Button, Card } from '@/components/ui'
 import { profileQuery, sessionQuery } from '@/lib/workspace-data'
 import { AccountPanel, AccountStatus } from './AccountPanel'
 import { FinancialProfileForm } from './FinancialProfileForm'
+import { SurveyHistory } from './SurveyHistory'
 
 export function ProfileCenter({ notice, noticeVariant, returnTo }: { notice: string; noticeVariant: 'safe' | 'danger'; returnTo: string }) {
   const session = useQuery(sessionQuery)
@@ -41,6 +45,11 @@ export function ProfileCenter({ notice, noticeVariant, returnTo }: { notice: str
         <aside className="min-w-0 space-y-5">
           {session.data?.kind === 'guest' && <AccountPanel session={session.data} returnTo={returnTo} />}
           <AuditHistory />
+          <SurveyHistory />
+          {session.data?.kind === 'user' && session.data.user.role === 'ADMIN' && <Link href={ROUTES.admin}
+            className="flex min-h-11 w-fit items-center gap-2 rounded-md px-2 text-sm font-medium text-primary hover:underline focus-visible:outline-2 focus-visible:outline-ring">
+            Cổng vận hành quản trị <ArrowRight size={16} aria-hidden="true" />
+          </Link>}
         </aside>
       </div>
     </div>

@@ -37,6 +37,7 @@ Table market_article {
   content_hash varchar(64) [not null]
   duplicate_of_id uuid [ref: > market_article.id]
   feed_status varchar(10) [not null, default: 'ACTIVE']
+  threat_scanned_at timestamptz
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
 }
@@ -69,12 +70,42 @@ Table threat_alert {
   tactic_summary text [not null]
   prevention_guidance text [not null]
   verification_status varchar(20) [not null, default: 'UNVERIFIED']
+  origin_source varchar(30) [not null, default: 'RADAR_AUTO']
+  hit_count int [not null, default: 1]
+  source_excerpt text
+  distinct_session_hashes jsonb
+  embedding_json jsonb
+  embedding_model varchar(64)
   issued_at timestamptz
   published_at timestamptz
   verified_at timestamptz
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
 }
+
+Table threat_feedback_examples {
+  id uuid [pk]
+  threat_alert_id uuid
+  audit_id uuid
+  feedback_type varchar(30) [not null]
+  highlighted_span text
+  sample_text_masked text [not null]
+  expected_verdict varchar(20) [not null]
+  admin_note text [not null]
+  rnd_category varchar(40)
+  is_active boolean [not null, default: true]
+  embedding_json jsonb
+  embedding_model varchar(64)
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (feedback_type, is_active)
+    threat_alert_id
+  }
+}
+
+Ref: threat_feedback_examples.threat_alert_id > threat_alert.id [delete: set null]
+Ref: threat_feedback_examples.audit_id > forensic_audits.id [delete: set null]
 
 Table threat_evidence {
   threat_alert_id uuid [not null, ref: > threat_alert.id]
@@ -106,6 +137,7 @@ Table users {
   email varchar(255) [unique, not null]
   full_name varchar(150)
   auth_provider varchar(30) [not null, default: 'EMAIL', note: 'EMAIL | GOOGLE | GITHUB']
+  role varchar(20) [not null, default: 'USER', note: 'USER | ADMIN']
   provider_user_id varchar(255)
   password_hash text
   created_at timestamptz [not null, default: `now()`]

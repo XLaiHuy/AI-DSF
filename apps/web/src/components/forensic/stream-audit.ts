@@ -1,5 +1,5 @@
 import {
-  ApiErrorCode, ApiErrorSchema, ForensicAuditResponseSchema, ForensicAuditStreamEventSchema,
+  ApiErrorCode, ApiErrorSchema, ForensicAuditResultSchema, ForensicAuditStreamEventSchema,
   type ForensicAuditResponse, type ForensicAuditStage,
 } from '@fincopilot/shared-types'
 import { ApiError, apiClient } from '@/lib/api-client'
@@ -38,6 +38,7 @@ export async function streamAudit(
           const event = ForensicAuditStreamEventSchema.parse(JSON.parse(data))
           if (event.type === 'stage') onStage(event.stage)
           if (event.type === 'result') audit = event.audit
+          if (event.type === 'refusal') return event
           if (event.type === 'error') {
             const code = ApiErrorCode.safeParse(event.errorCode)
             throw new ApiError(200, code.success ? code.data : 'ERR_INTERNAL_SERVER', event.message)
@@ -54,6 +55,6 @@ export async function streamAudit(
     if (signal.aborted || error instanceof ApiError) throw error
     if (audit) return audit
     onFallback()
-    return apiClient.post('/forensic/audit', payload, { signal, schema: ForensicAuditResponseSchema })
+    return apiClient.post('/forensic/audit', payload, { signal, schema: ForensicAuditResultSchema })
   }
 }

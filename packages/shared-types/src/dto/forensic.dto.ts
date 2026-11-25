@@ -2,10 +2,22 @@ import { z } from 'zod'
 import { FindingSeverity, QrScheme, QrServiceCode, RuleCode, VerdictLevel } from '../enums'
 import { decimalString, nonnegativeDecimal } from './decimal'
 
+export const LearningTraceSchema = z.strictObject({
+  retrievalMode: z.enum(['hybrid_rrf', 'lexical', 'exact_only']),
+  tier1ExactMatches: z.number().int().nonnegative(),
+  matchedTacticsCount: z.number().int().nonnegative(),
+  matchedTacticSummaries: z.array(z.string().max(140)).max(3),
+  fewShotScamCount: z.number().int().nonnegative(),
+  fewShotSafeCount: z.number().int().nonnegative(),
+  expandedTeencodeCount: z.number().int().nonnegative(),
+  zeroShotEscalated: z.boolean(),
+})
+
 export const ForensicAuditFieldsSchema = z.strictObject({
   rawText: z.string().trim().min(1).max(50_000).optional(),
   rawQrString: z.string().trim().min(1).max(4096).optional(),
   claimedEntityName: z.string().trim().min(1).max(200).optional(),
+  sourceAlertId: z.uuid().optional(),
 })
 export type ForensicAuditFields = z.infer<typeof ForensicAuditFieldsSchema>
 
@@ -164,6 +176,7 @@ export const ForensicAuditResponseSchema = z.strictObject({
     suggestedTermMonths: z.number().int().positive(),
   }).nullable(),
   meta: z.strictObject({
+    learningTrace: LearningTraceSchema.optional(),
     llmProvider: z.string().nullable(),
     degradedMode: z.boolean(),
     errorCode: z.literal('ERR_AI_DEGRADED_FALLBACK').optional(),
@@ -179,9 +192,17 @@ export const ForensicAuditStageSchema = z.strictObject({
 })
 export type ForensicAuditStage = z.infer<typeof ForensicAuditStageSchema>
 
+export const ForensicRefusalSchema = z.strictObject({
+  type: z.literal('refusal'),
+  code: z.literal('FORENSIC_OFF_TOPIC'),
+  message: z.string(),
+})
+export const ForensicAuditResultSchema = z.union([ForensicAuditResponseSchema, ForensicRefusalSchema])
+
 export const ForensicAuditStreamEventSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('stage'), stage: ForensicAuditStageSchema }),
   z.strictObject({ type: z.literal('result'), audit: ForensicAuditResponseSchema }),
+  ForensicRefusalSchema,
   z.strictObject({ type: z.literal('error'), errorCode: z.string().optional(), message: z.string() }),
   z.strictObject({ type: z.literal('done') }),
 ])

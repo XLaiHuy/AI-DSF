@@ -42,6 +42,7 @@ model MarketArticle {
   imageUrl            String?                 @map("image_url") @db.Text
   publishedAt         DateTime?               @map("published_at") @db.Timestamptz(6)
   contentHash         String                  @map("content_hash") @db.VarChar(64)
+  threatScannedAt     DateTime?               @map("threat_scanned_at") @db.Timestamptz(6)
   duplicateOfId       String?                 @map("duplicate_of_id") @db.Uuid
   feedStatus          String                  @default("ACTIVE") @map("feed_status") @db.VarChar(10)
   createdAt           DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -94,8 +95,37 @@ model ThreatAlert {
   evidence           ThreatEvidence[]
   indicators         ThreatIndicator[]
   forensicAudits     ForensicAudit[]
+  originSource       String                  @default("RADAR_AUTO") @map("origin_source") @db.VarChar(30)
+  hitCount           Int                     @default(1) @map("hit_count")
+  sourceExcerpt      String?                 @map("source_excerpt") @db.Text
+  embeddingJson      Json?                   @map("embedding_json") @db.JsonB
+  embeddingModel     String?                 @map("embedding_model") @db.VarChar(64)
+  distinctSessionHashes Json?                @map("distinct_session_hashes") @db.JsonB
+  feedbackExamples   ThreatFeedbackExample[]
 
   @@map("threat_alert")
+}
+
+model ThreatFeedbackExample {
+  id               String         @id @db.Uuid
+  threatAlertId    String?        @map("threat_alert_id") @db.Uuid
+  auditId          String?        @map("audit_id") @db.Uuid
+  feedbackType     String         @map("feedback_type") @db.VarChar(30)
+  highlightedSpan  String?        @map("highlighted_span") @db.Text
+  sampleTextMasked String         @map("sample_text_masked") @db.Text
+  expectedVerdict  String         @map("expected_verdict") @db.VarChar(20)
+  adminNote        String         @map("admin_note") @db.Text
+  embeddingJson    Json?          @map("embedding_json") @db.JsonB
+  embeddingModel   String?        @map("embedding_model") @db.VarChar(64)
+  rndCategory      String?        @map("rnd_category") @db.VarChar(40)
+  isActive         Boolean        @default(true) @map("is_active")
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  threatAlert      ThreatAlert?   @relation(fields: [threatAlertId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  audit            ForensicAudit? @relation(fields: [auditId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([feedbackType, isActive])
+  @@index([threatAlertId])
+  @@map("threat_feedback_examples")
 }
 
 model ThreatEvidence {
@@ -127,6 +157,7 @@ model User {
   email               String               @unique @db.VarChar(255)
   fullName            String?              @map("full_name") @db.VarChar(150)
   authProvider        String               @default("EMAIL") @map("auth_provider") @db.VarChar(30)
+  role                String               @default("USER") @db.VarChar(20)
   providerUserId      String?              @map("provider_user_id") @db.VarChar(255)
   passwordHash        String?              @map("password_hash") @db.Text
   createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -274,6 +305,7 @@ model ForensicAudit {
   qrPayloads            ForensicQrPayload[]
   findings              ForensicFinding[]
   calculationSessions   CalculationSession[]
+  feedbackExamples      ThreatFeedbackExample[]
 
   @@index([profileId])
   @@index([sourceAlertId])

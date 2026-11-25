@@ -2,14 +2,17 @@
 
 import { handoffRoutes, ROUTES } from '@fincopilot/shared-types'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, CircleUserRound } from 'lucide-react'
+import { ArrowRight, CircleUserRound, ScanLine, ShieldAlert } from 'lucide-react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Button, buttonVariants, Card, Input, Label } from '@/components/ui'
-import { formatVnd, profileQuery, sessionQuery } from '@/lib/workspace-data'
+import { auditHref, auditListQuery, dailyBriefQuery, formatVietnamTime, formatVnd, marketOverviewQuery,
+  profileQuery, sessionQuery, surveyHistoryQuery, surveySessionHref, surveySessionLabel } from '@/lib/workspace-data'
 import { cn } from '@/lib/utils'
 import { MoneyInput, stripSpacedAmount } from '@/components/ui/money-input'
+import { verdictLabels } from '@/components/forensic/verdict'
 
 function ProfileStatus() {
   const session = useQuery(sessionQuery)
@@ -99,11 +102,92 @@ function QuickSurvey() {
 export function OverviewWidgets({ children }: { children: ReactNode }) {
   return (
     <div className="space-y-5">
+      <MorningBrief />
       <ProfileStatus />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         {children}
         <QuickSurvey />
       </div>
+      <RecentActivity />
     </div>
   )
+}
+
+function articleImage(value: string | null | undefined) {
+  const url = value ? URL.parse(value) : null
+  return url?.protocol === 'https:' && !url.username && !url.password ? url.href : null
+}
+
+function MorningBrief() {
+  const market = useQuery(marketOverviewQuery)
+  const daily = useQuery(dailyBriefQuery)
+  const alert = market.data?.alert
+  const summary = daily.data?.summary || daily.data?.headline
+  const highlights = daily.data?.highlights ?? []
+  if (!alert && !market.data?.articles.length && !summary && !highlights.length) return null
+  return <div className="grid gap-4">
+    {(summary || highlights.length > 0) && <Card className="gap-2 p-4 sm:px-6">
+      <h2 className="text-base font-semibold">Tóm tắt ngày</h2>
+      {summary && <p className="max-w-[65ch] whitespace-pre-line text-sm text-muted-foreground">{summary}</p>}
+      {highlights.length > 0 && <ul className="list-disc space-y-1 pl-5 text-sm">{highlights.slice(0, 4).map((line, index) => <li key={index}>{line}</li>)}</ul>}
+    </Card>}
+    {alert && <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-verdict-danger/25 bg-verdict-danger-bg/40 p-4 sm:px-6" aria-labelledby="market-alert-title">
+      <div className="flex min-w-0 items-start gap-2">
+        <ShieldAlert size={21} className="shrink-0 text-verdict-danger" aria-hidden="true" />
+        <div className="space-y-1">
+          <h2 id="market-alert-title" className="text-sm font-semibold">Cảnh báo mới nhất</h2>
+          <Link href={ROUTES.radarArticle(alert.id) + '?kind=alert'} className="break-words text-sm hover:underline">{alert.tacticSummary}</Link>
+        </div>
+      </div>
+      <Link className={cn(buttonVariants({ variant: 'outline' }), 'min-h-11')}
+        href={handoffRoutes.radarAlertToForensic({ alertId: alert.id, summary: alert.tacticSummary.trim().slice(0, 500) || undefined })}>
+        <ScanLine size={16} aria-hidden="true" /> Kiểm tra nhanh
+      </Link>
+    </section>}
+    {market.data && market.data.articles.length > 0 && <section aria-labelledby="recent-radar-title" className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="recent-radar-title" className="text-base font-semibold">Tin Radar gần đây</h2>
+        <Link className="py-2 text-sm font-medium text-primary hover:underline" href={ROUTES.radar}>Xem Radar</Link>
+      </div>
+      <ul className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {market.data.articles.map((article) => {
+          const src = articleImage(article.imageUrl)
+          return <li key={article.id} className="min-w-0">
+            <Link href={ROUTES.radarArticle(article.id)} className="flex h-full flex-col gap-2 overflow-hidden rounded-lg border bg-card p-3 text-sm hover:border-primary/40">
+              {src && <Image src={src} unoptimized alt="" width={400} height={224} referrerPolicy="no-referrer" className="aspect-video w-full rounded-md object-cover" />}
+              <span className="line-clamp-3 font-medium">{article.title}</span>
+            </Link>
+          </li>
+        })}
+      </ul>
+    </section>}
+  </div>
+}
+
+function RecentActivity() {
+  const audits = useQuery(auditListQuery)
+  const survey = useQuery(surveyHistoryQuery)
+  const entries = [
+    ...(audits.data?.audits ?? []).map((audit) => ({ id: audit.auditId, date: audit.createdAt, href: auditHref(audit.auditId),
+      title: audit.claimedEntityName || 'Giám định tài chính', summary: verdictLabels[audit.verdictLevel] })),
+    ...(survey.data?.sessions ?? []).map((item) => ({ id: item.id, date: item.createdAt, href: surveySessionHref(item.sessionMode),
+      title: surveySessionLabel(item.sessionMode), summary: item.dtiRatioPct ? `DTI ${item.dtiRatioPct}%` : 'Khảo sát' })),
+  ].sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, 6)
+  return <Card className="gap-2 p-4 sm:px-6">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h2 className="text-base font-semibold">Hoạt động gần đây</h2>
+      <Link href={ROUTES.profile + '?returnTo=%2F'} className="py-1 text-sm font-medium text-primary hover:underline">Xem lịch sử</Link>
+    </div>
+    {entries.length > 0 ? <ul className="divide-y">
+      {entries.map((entry) => <li key={entry.id}>
+        <Link className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 text-sm hover:text-primary" href={entry.href}>
+          <span className="break-words font-medium">{entry.title}</span>
+          <span className="text-xs text-muted-foreground">{entry.summary} · <time dateTime={entry.date}>{formatVietnamTime(entry.date)}</time></span>
+        </Link>
+      </li>)}
+    </ul> : <p className="text-sm text-muted-foreground" role="status">
+      {audits.isPending || survey.isPending ? 'Đang tải hoạt động…'
+        : audits.isError || survey.isError ? 'Chưa tải được lịch sử hoạt động.' : 'Các lần giám định và khảo sát đã lưu sẽ xuất hiện ở đây.'}
+    </p>}
+  </Card>
 }

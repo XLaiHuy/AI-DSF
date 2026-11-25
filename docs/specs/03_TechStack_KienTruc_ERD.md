@@ -177,6 +177,7 @@ flowchart LR
 | **Phân hệ 3** | 15 | `forensic_audits` | **Bảng mới** | Hồ sơ giám định đa phương thức (kết quả JSON đã che PII, APR thực, điểm rủi ro 0–100, phán quyết 3 mức, `deterministic_override`, mốc xóa file gốc) kèm liên kết `profile_id` và `source_alert_id`. |
 | **Phân hệ 3** | 16 | `forensic_qr_payloads` | **Bảng mới** | Dữ liệu giải mã VietQR chuẩn EMVCo/NAPAS 247 (`acq_bin`, ngân hàng, STK đã che, `service_code`, số tiền, tên chủ TK đọc từ Vision, cờ lệch thực thể). |
 | **Phân hệ 3** | 17 | `forensic_findings` | **Bảng mới** | Chi tiết từng Luật Cứng (`RULE_01..RULE_07`) bị kích hoạt trong phiên giám định kèm trích dẫn nguyên văn (`evidence_quote`). |
+| **Phân hệ 1–3** | 18 | `threat_feedback_examples` | **Bảng mới** | Mẫu phản hồi đã che PII, vector nhúng ngữ nghĩa, kết quả mong đợi và đề xuất R&D. |
 
 ---
 
@@ -214,6 +215,7 @@ erDiagram
         varchar content_hash
         uuid duplicate_of_id FK
         varchar feed_status
+        timestamptz threat_scanned_at
         timestamptz created_at
         timestamptz updated_at
     }
@@ -238,11 +240,33 @@ erDiagram
         text tactic_summary
         text prevention_guidance
         varchar verification_status
+        varchar origin_source
+        int hit_count
+        text source_excerpt
+        jsonb distinct_session_hashes
+        jsonb embedding_json
+        varchar embedding_model
         timestamptz issued_at
         timestamptz published_at
         timestamptz verified_at
         timestamptz created_at
         timestamptz updated_at
+    }
+
+    threat_feedback_examples {
+        uuid id PK
+        uuid threat_alert_id FK
+        uuid audit_id FK
+        varchar feedback_type
+        text highlighted_span
+        text sample_text_masked
+        varchar expected_verdict
+        text admin_note
+        varchar rnd_category
+        boolean is_active
+        jsonb embedding_json
+        varchar embedding_model
+        timestamptz created_at
     }
 
     threat_evidence {
@@ -264,6 +288,7 @@ erDiagram
         varchar email UK
         varchar full_name
         varchar auth_provider
+        varchar role
         varchar provider_user_id
         text password_hash
         timestamptz created_at
@@ -413,6 +438,8 @@ erDiagram
     market_article ||--o{ article_category : "tagged_with"
     article_source ||--o{ threat_evidence : "supports"
     threat_alert ||--o{ threat_evidence : "proven_by"
+    threat_alert o|--o{ threat_feedback_examples : "cảnh báo"
+    forensic_audits o|--o{ threat_feedback_examples : "giám định"
     threat_alert ||--o{ threat_indicator : "extracts"
 
     users ||--o| financial_profiles : "owns_profile"
@@ -477,6 +504,7 @@ Table market_article {
   content_hash varchar(64) [not null]
   duplicate_of_id uuid [ref: > market_article.id]
   feed_status varchar(10) [not null, default: 'ACTIVE']
+  threat_scanned_at timestamptz
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
 }
@@ -509,12 +537,42 @@ Table threat_alert {
   tactic_summary text [not null]
   prevention_guidance text [not null]
   verification_status varchar(20) [not null, default: 'UNVERIFIED']
+  origin_source varchar(30) [not null, default: 'RADAR_AUTO']
+  hit_count int [not null, default: 1]
+  source_excerpt text
+  distinct_session_hashes jsonb
+  embedding_json jsonb
+  embedding_model varchar(64)
   issued_at timestamptz
   published_at timestamptz
   verified_at timestamptz
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
 }
+
+Table threat_feedback_examples {
+  id uuid [pk]
+  threat_alert_id uuid
+  audit_id uuid
+  feedback_type varchar(30) [not null]
+  highlighted_span text
+  sample_text_masked text [not null]
+  expected_verdict varchar(20) [not null]
+  admin_note text [not null]
+  rnd_category varchar(40)
+  is_active boolean [not null, default: true]
+  embedding_json jsonb
+  embedding_model varchar(64)
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (feedback_type, is_active)
+    threat_alert_id
+  }
+}
+
+Ref: threat_feedback_examples.threat_alert_id > threat_alert.id [delete: set null]
+Ref: threat_feedback_examples.audit_id > forensic_audits.id [delete: set null]
 
 Table threat_evidence {
   threat_alert_id uuid [not null, ref: > threat_alert.id]
@@ -546,6 +604,7 @@ Table users {
   email varchar(255) [unique, not null]
   full_name varchar(150)
   auth_provider varchar(30) [not null, default: 'EMAIL', note: 'EMAIL | GOOGLE | GITHUB']
+  role varchar(20) [not null, default: 'USER', note: 'USER | ADMIN']
   provider_user_id varchar(255)
   password_hash text
   created_at timestamptz [not null, default: `now()`]

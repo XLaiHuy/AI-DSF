@@ -6,6 +6,7 @@ import { evaluateHardRules, parseVnd } from './hard-rules.engine'
 import { formatCaseAmount } from './payment-qr-description'
 import { evaluatePersonalImpact } from './personal-impact.engine'
 import { maskForensicText } from './qr-evidence'
+import { shouldRefuseForensicPrompt, type TeencodeAlias } from './forensic-prompt-guard'
 
 type Intent = NonNullable<ForensicFollowUpResponse['meta']['intent']>
 const vnd = /(?<![\p{L}\d.,])(\d+(?:[., ]\d+){0,5})\s*(triệu|tr|tỷ|tỉ|nghìn|ngàn|k|đồng|vnd|vnđ|đ|₫)(?![\p{L}\d])/giu
@@ -15,8 +16,6 @@ const newDemand = /\b(?:doi|bat|yeu cau|bao minh|bao toi|bieu minh|bieu toi)\b.{
 const explicitSignal = /\b(?:ben kia|ben cho vay|nguoi nhan|ho|san)\b.{0,28}\b(?:gui|dua|hoi|doi|can|bao)\b.{0,40}\b(?:otp|link|duong dan|phi|mat khau|bao hiem|tai app)\b/
 const newCue = /\b(?:bo sung|quen noi|thong tin moi|vua bao|moi bao|thuc ra)\b/
 const purpose = /(?:^|[,;\s])(?:nội dung|ghi chú)\s*(?:là\s+|[:=]\s*)?([^,;.!?\n]{1,160})/iu
-const offTopic = /\b(?:phuong trinh|pt bac [0-9]|toan lop|bai tap toan|giai toan|lam tho|viet tho|viet truyen|ke chuyen cuoi|ke chuyen co tich|viet code|viet (?:ma|doan ma|chuong trinh|ham|thuat toan)|lap trinh|thuat toan|cong thuc nau|nau an|thoi tiet|du bao mua|phim hay|giai tri|bong da|lich thi dau|thu do|dich (?:sang|van ban|doan van|cau nay)|choi game)\b/
-const caseTopic = /\b(?:bao cao|giam dinh|qr|lua dao|hop dong|chuyen khoan|ngan hang|lai suat|giao dich|khoan vay|tai chinh|phap ly|hoa don|bien lai)\b/
 const ack = /^(?:ok|oke|okay|u|uh|vang|da|cam on|thank you|thanks|hieu roi|ro roi|minh hieu roi|tot roi)(?: (?:nhe|nha|a|ban|roi|nhieu|lam|cam on)){0,2}$/
 
 const facts = (question: string) => {
@@ -37,10 +36,10 @@ export function statedTransferAmount(text: string) {
   return amounts.reduce<string | null>((max, amount) => max === null || new Decimal(amount).gt(max) ? amount : max, null)
 }
 
-export function classifyFollowUpIntent(question: string, audit: ForensicAuditResponse): Intent {
+export function classifyFollowUpIntent(question: string, audit: ForensicAuditResponse, aliases?: readonly TeencodeAlias[]): Intent {
   const plain = normalizeVietnamese(question)
   if (!/[?？]/u.test(question) && plain.split(' ').length <= 4 && ack.test(plain)) return 'ACK'
-  if (offTopic.test(plain) && !caseTopic.test(plain)) return 'OFF_TOPIC'
+  if (shouldRefuseForensicPrompt(question, aliases)) return 'OFF_TOPIC'
   const { amountVnd, purposeText, foreign } = facts(question)
   const sameAmount = amountVnd && audit.qrPayloads.some((qr) => qr.qrAmountVnd && new Decimal(qr.qrAmountVnd).eq(amountVnd))
   const samePurpose = purposeText && audit.qrPayloads.some((qr) => normalizeVietnamese(qr.purposeText ?? '') === normalizeVietnamese(purposeText))
@@ -73,8 +72,8 @@ const directAnswers = {
   OFF_TOPIC: 'Mình là trợ lý giám định rủi ro và tài chính cá nhân FinCopilot, nên mình chỉ hỗ trợ phân tích giao dịch, mã QR, hợp đồng và các bước bảo vệ tiền của bạn. Bạn muốn hỏi thêm chi tiết nào trong báo cáo vừa rồi không?',
 }
 
-export function prepareFollowUp(audit: ForensicAuditResponse, input: ForensicFollowUpRequest, profile: FinancialHealthRequest | null) {
-  const intent = classifyFollowUpIntent(input.question, audit)
+export function prepareFollowUp(audit: ForensicAuditResponse, input: ForensicFollowUpRequest, profile: FinancialHealthRequest | null, aliases?: readonly TeencodeAlias[]) {
+  const intent = classifyFollowUpIntent(input.question, audit, aliases)
   const directAnswer = intent === 'ACK' || intent === 'OFF_TOPIC' ? directAnswers[intent] : null
   const question = maskForensicText(input.question)
   const newContext = intent === 'NEW_CONTEXT' ? recheckFollowUpContext(input.question, audit, profile) : null
