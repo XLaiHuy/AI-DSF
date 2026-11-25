@@ -7,7 +7,7 @@ sources:
   - sourceKey: vneconomy
     name: VnEconomy
     sourceType: RSS
-    endpointUrl: https://vneconomy.vn/rss/home.rss
+    endpointUrl: https://vneconomy.vn/tin-moi.rss
     isTrustedForAlerts: false
   - sourceKey: vietstock
     name: Vietstock
@@ -19,6 +19,7 @@ sources:
     sourceType: WEB
     endpointUrl: https://www.sbv.gov.vn/
     isTrustedForAlerts: true
+    isActive: false
   - sourceKey: ncsc
     name: Tín nhiệm mạng (NCSC)
     sourceType: WEB

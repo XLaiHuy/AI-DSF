@@ -10,7 +10,7 @@ import { seedRadarAlerts } from './seed-radar-alerts'
 
 const prisma = new PrismaClient()
 const sourceConfig = parse(readFileSync(resolve(__dirname, '../../../config/sources.yaml'), 'utf8')) as {
-  sources: Array<{ sourceKey: string; name: string; sourceType: string; endpointUrl: string; isTrustedForAlerts: boolean }>
+  sources: Array<{ sourceKey: string; name: string; sourceType: string; endpointUrl: string; isTrustedForAlerts: boolean; isActive?: boolean }>
 }
 
 async function seedAdmin() {
@@ -41,10 +41,19 @@ async function seed() {
     await seedAdmin()
 
     for (const source of sourceConfig.sources) {
+      const isActive = source.isActive ?? true
+      const fields = {
+        sourceKey: source.sourceKey,
+        name: source.name,
+        sourceType: source.sourceType,
+        endpointUrl: source.endpointUrl,
+        isTrustedForAlerts: source.isTrustedForAlerts,
+        isActive,
+      }
       await prisma.marketSource.upsert({
         where: { sourceKey: source.sourceKey },
-        create: { id: stableUuid(`source:${source.sourceKey}`), ...source, isActive: true },
-        update: { name: source.name, sourceType: source.sourceType, endpointUrl: source.endpointUrl, isTrustedForAlerts: source.isTrustedForAlerts, isActive: true },
+        create: { id: stableUuid(`source:${source.sourceKey}`), ...fields },
+        update: { ...fields, ...(isActive ? {} : { lastFetchStatus: null }) },
       })
     }
 
