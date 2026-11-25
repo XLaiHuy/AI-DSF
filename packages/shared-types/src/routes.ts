@@ -40,17 +40,31 @@ const radarHandoff = z.strictObject({ shockDelta: decimalString, articleId: z.st
 const auditHandoff = z.strictObject({ ...loanFields, auditId: z.string().min(1) })
 const trustFilterHandoff = z.strictObject({ claimedEntity: z.string().trim().min(1).max(200) })
 const quickSurveyHandoff = z.strictObject(loanFields)
+const radarAlertHandoff = z.strictObject({
+  alertId: z.uuid(),
+  indicator: z.string().trim().min(1).max(256).optional(),
+  summary: z.string().trim().min(1).max(500).optional(),
+})
+const highAprHandoff = z.strictObject({
+  ...loanFields,
+  annualRatePct: positiveDecimal,
+  label: z.string().trim().min(1).max(200).optional(),
+})
 
 export type RouteHandoffParams = {
   radarToSurvey: z.infer<typeof radarHandoff>
   forensicToSurvey: z.infer<typeof auditHandoff>
   trustFilterToForensic: z.infer<typeof trustFilterHandoff>
+  radarAlertToForensic: z.infer<typeof radarAlertHandoff>
+  surveyHighAprToForensic: z.infer<typeof highAprHandoff>
   quickSurvey: z.infer<typeof quickSurveyHandoff>
 }
 
-function withQuery(route: string, fields: Record<string, string | number>): string {
+function withQuery(route: string, fields: Record<string, string | number | undefined>): string {
   const query = new URLSearchParams()
-  for (const [key, value] of Object.entries(fields)) query.set(key, String(value))
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined) query.set(key, String(value))
+  }
   return `${route}?${query}`
 }
 
@@ -61,6 +75,10 @@ export const handoffRoutes = {
     withQuery(ROUTES.survey, { mode: 'loan', ...auditHandoff.parse(params), from: 'forensic' }),
   trustFilterToForensic: (params: RouteHandoffParams['trustFilterToForensic']) =>
     withQuery(ROUTES.forensic, { ...trustFilterHandoff.parse(params), from: 'trust-filter' }),
+  radarAlertToForensic: (params: RouteHandoffParams['radarAlertToForensic']) =>
+    withQuery(ROUTES.forensic, { ...radarAlertHandoff.parse(params), from: 'radar' }),
+  surveyHighAprToForensic: (params: RouteHandoffParams['surveyHighAprToForensic']) =>
+    withQuery(ROUTES.forensic, { ...highAprHandoff.parse(params), from: 'survey-apr' }),
   quickSurvey: (params: RouteHandoffParams['quickSurvey']) =>
     withQuery(ROUTES.survey, { mode: 'loan', ...quickSurveyHandoff.parse(params) }),
 }
@@ -77,10 +95,18 @@ const surveyQuerySchema = z.object({
   auditId: z.string().min(1).optional().catch(undefined),
 })
 
-const forensicQuerySchema = z.object({
+export const forensicQuerySchema = z.object({
   claimedEntity: trustFilterHandoff.shape.claimedEntity.optional().catch(undefined),
-  from: z.literal('trust-filter').optional().catch(undefined),
+  from: z.enum(['trust-filter', 'radar', 'survey-apr']).optional().catch(undefined),
+  alertId: radarAlertHandoff.shape.alertId.optional().catch(undefined),
+  indicator: radarAlertHandoff.shape.indicator.catch(undefined),
+  summary: radarAlertHandoff.shape.summary.catch(undefined),
+  amount: highAprHandoff.shape.amount.optional().catch(undefined),
+  term: termQuery.optional().catch(undefined),
+  annualRatePct: highAprHandoff.shape.annualRatePct.optional().catch(undefined),
+  label: highAprHandoff.shape.label.catch(undefined),
 })
 
+export type ForensicHandoff = z.infer<typeof forensicQuerySchema>
 export const parseSurveyHandoff = (params: RouteSearchParams) => surveyQuerySchema.parse(params)
 export const parseForensicHandoff = (params: RouteSearchParams) => forensicQuerySchema.parse(params)

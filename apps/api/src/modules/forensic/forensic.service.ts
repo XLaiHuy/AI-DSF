@@ -17,13 +17,16 @@ import { evaluateHardRules } from './hard-rules.engine'
 import type { CatalogInstitution } from './data/trusted-institutions'
 import { maskedQrLink, maskForensicText } from './qr-evidence'
 import { threatIndicatorFilters } from './threat-indicator-lookup'
-import { classifyAuditComplexity } from './complexity-router'
+import { classifyAuditComplexity, hasSuspiciousContext } from './complexity-router'
 import { elevateVerdict, groundReasoningFindings } from './deep-reasoning'
 import { followUpEvents, screened } from './forensic-chat-stream'
 import { classifyFollowUpIntent, prepareFollowUp, statedTransferAmount } from './forensic-follow-up'
 import { evaluatePersonalImpact } from './personal-impact.engine'
 import { selectLegalCitations } from './data/vn-legal-registry'
 import { ChannelIntelligenceService } from './channel-intelligence.service'
+import { expandTeencode, forensicRefusal, shouldRefuseForensicPrompt } from './forensic-prompt-guard'
+import { extractThreatIocs } from './threat-iocs'
+import { ThreatMemoryService } from './threat-memory.service'
 
 const institutionCacheTtlMs = 5 * 60_000
 
@@ -86,7 +89,15 @@ export class ForensicService {
     private readonly prisma: PrismaService,
     private readonly ai: AiGatewayService,
     private readonly config: ConfigService,
+    private readonly threatMemory?: ThreatMemoryService,
   ) {}
+
+  async screenAudit(fields: ForensicAuditFields, files: readonly Upload[]) {
+    if (files.length || fields.rawQrString || fields.claimedEntityName || !fields.rawText) return null
+    if (!shouldRefuseForensicPrompt(fields.rawText)) return null
+    const memory = await this.threatMemory?.get()
+    return shouldRefuseForensicPrompt(fields.rawText, memory?.aliases) ? forensicRefusal : null
+  }
 
   private async loadInstitutions() {
     const cached = this.institutionCache
@@ -137,15 +148,30 @@ export class ForensicService {
     const sourceFilesPurgedAt = new Date()
     stage('EXTRACT', 'done', `${files.length} tệp · ${evidence.qrPayloads.length} mã QR`)
     stage('RULES', 'running')
-    const [indicators, institutions, profile] = await Promise.all([
-      this.loadThreatIndicators(evidence),
+    const evidenceText = [...evidence.evidence, ...evidence.visionQuotes].join('\n')
+    const iocs = this.threatMemory ? extractThreatIocs(evidenceText, evidence.qrPayloads) : []
+    const [learning, institutions, profile, sourceAlert] = await Promise.all([
+      this.threatMemory?.get().then(async ({ aliases }) => {
+        const suspicious = hasSuspiciousContext(expandTeencode(evidenceText, aliases).normalized)
+        const shouldEmbed = Boolean(files.length || evidence.qrPayloads.length || evidenceText.length > 160 || iocs.length || suspicious)
+        return { memory: await this.threatMemory?.retrieve(evidenceText, iocs, { shouldEmbed }), suspicious }
+      }),
       this.loadInstitutions(),
       this.loadFinancialProfile(session),
+      fields.sourceAlertId ? this.prisma.threatAlert.findFirst({
+        where: { id: fields.sourceAlertId, verificationStatus: 'VERIFIED', publishedAt: { not: null } }, select: { id: true },
+      }) : null,
     ])
+    const memory = learning?.memory
+    const suspicious = learning?.suspicious ?? hasSuspiciousContext(expandTeencode(evidenceText).normalized)
+    const hasTier2ThreatMatch = Boolean(memory?.tactics.length || memory?.examples.length)
+    const indicators = (memory?.indicators ?? await this.loadThreatIndicators(evidence))
+      .filter(({ indicatorType }) => indicatorType !== 'KEYWORD')
     const inspectedQrs = await this.channelIntelligence.inspect(evidence.qrPayloads, indicators)
     const statedTransferAmountVnd = statedTransferAmount(evidence.rawText)
     const rules = evaluateHardRules({
       evidence: evidence.evidence,
+      normalizeEvidence: memory ? (text) => expandTeencode(text, memory.aliases).normalized : undefined,
       claimedEntityName: evidence.claimedEntityName,
       qrPayloads: inspectedQrs,
       statedTransferAmountVnd,
@@ -161,6 +187,7 @@ export class ForensicService {
     const baseline = needsReview ? { verdictLevel: 'CAUTION' as const, riskScore: Math.max(30, rules.riskScore) } : rules
     const complexityTier = classifyAuditComplexity({
       ...baseline, findings: rules.findings, intentSignals: evidence.intentSignals, fileCount: files.length,
+      hasTier2ThreatMatch, hasSuspiciousContext: suspicious,
       hasPdf: evidence.channels.includes('PDF'), hasQr: evidence.qrPayloads.length > 0, textLength: evidence.rawText.length,
       hasConditionalLoanTerms: Boolean(evidence.conditionalLoan.conditionalQuote || evidence.conditionalLoan.floatingQuote ||
         evidence.conditionalLoan.insuranceQuote),
@@ -170,6 +197,13 @@ export class ForensicService {
           qr.qrScheme === 'VIETQR_NAPAS' && !qr.crcValid)
       ),
     })
+    const tier1ExactMatches = new Set(rules.findings.flatMap(({ ruleCode, matchedIndicatorId }) =>
+      ruleCode === 'RULE_05_NCSC_THREAT_MATCH' && matchedIndicatorId ? [matchedIndicatorId] : [])).size
+    const learningTrace = memory && {
+      ...memory.learningTrace,
+      tier1ExactMatches: Math.max(tier1ExactMatches, memory.learningTrace.tier1ExactMatches),
+      zeroShotEscalated: suspicious && !tier1ExactMatches && !memory.learningTrace.tier1ExactMatches && !hasTier2ThreatMatch,
+    }
     const bankNames = new Map(institutions.flatMap(({ vietqrBin, name }) => vietqrBin ? [[vietqrBin, name]] : []))
     const replacements = new Map<string, string>()
     if (evidence.beneficiaryName) {
@@ -222,12 +256,16 @@ export class ForensicService {
       : profile ? 'chưa đủ dữ liệu để đối chiếu cá nhân' : 'chưa có hồ sơ cá nhân'
     stage('RULES', 'done', `${findings.length} dấu hiệu · ${profileDetail}`)
     const reasoningTask = 'FORENSIC_DEEP_REASONING'
+    const compactMath = mathBreakdown && Object.fromEntries(Object.entries(mathBreakdown).filter(([field]) => field !== 'schedule' && field !== 'first12Payments'))
     const shouldReason = complexityTier !== 'EASY' || Boolean(benchmark)
     const maskedEvidence = shouldReason ? [...evidence.evidence, ...evidence.visionQuotes].map(redact).filter(Boolean) : []
     if (shouldReason) stage('REASONING', 'running')
     const reasoning = !shouldReason ? null : await this.ai.generateWithProvider(reasoningTask, AI_TASK_SCHEMAS[reasoningTask], {
       text: JSON.stringify({
-        evidence: maskedEvidence, qrPayloads, mathBreakdown, entityLicense: rules.entityLicense,
+        evidence: maskedEvidence, qrPayloads, mathBreakdown: compactMath, entityLicense: rules.entityLicense,
+        threatTactics: memory?.tactics, threatExamples: memory?.examples.map(({ feedbackType, sample, expectedVerdict }) =>
+          ({ feedbackType, sample, expectedVerdict })),
+        teencodeGlossary: memory?.glossary ? 'Chú giải cách viết tắt. Khi trích dẫn, dùng nguyên văn bằng chứng. ' + redact(memory.glossary) : undefined,
         intentSignals: evidence.intentSignals, existingFindings: findings, baseline: { verdictLevel: baseline.verdictLevel, riskScore: baseline.riskScore },
       }),
     }).catch(() => null)
@@ -289,13 +327,14 @@ export class ForensicService {
       handoffPayload: mathBreakdown?.termMonths ? {
         suggestedAmountVnd: mathBreakdown.principalNominalVnd, suggestedTermMonths: mathBreakdown.termMonths,
       } : null,
-      meta: { llmProvider: narrative?.generated.provider ?? evidence.visionProvider, degradedMode,
+      meta: { llmProvider: narrative?.generated.provider ?? evidence.visionProvider, degradedMode, learningTrace,
         ...(degradedMode ? { errorCode: 'ERR_AI_DEGRADED_FALLBACK' } : {}) },
     })
     const apr = response.mathBreakdown?.effectiveAprPct
     await this.prisma.forensicAudit.create({
       data: {
         id: response.auditId, ...ownerFilter(session), sourceFilesPurgedAt, createdAt,
+        profileId: profile?.id, sourceAlertId: sourceAlert?.id,
         claimedEntityName: response.claimedEntityName,
         inputChannels: evidence.channels,
         rawTextMasked: response.privacyProof.rawTextMasked,
@@ -317,15 +356,21 @@ export class ForensicService {
         findings: { createMany: { data: findings.map((finding) => ({ id: randomUUID(), ...finding })) } },
       },
     })
+    if (verdictLevel === 'HIGH_RISK' && iocs.length && this.threatMemory) {
+      setImmediate(() => {
+        void this.threatMemory?.propose(session, iocs, redact(evidenceText)).catch(() => undefined)
+      })
+    }
     stage('NARRATIVE', 'done')
     return response
   }
 
   private async loadFinancialProfile(session: SessionContext) {
     const profile = await this.prisma.financialProfile.findFirst({ where: ownerFilter(session), select: {
-      monthlyIncomeVnd: true, monthlyExpenseVnd: true, existingDebtPaymentVnd: true, liquidSavingsVnd: true,
+      id: true, monthlyIncomeVnd: true, monthlyExpenseVnd: true, existingDebtPaymentVnd: true, liquidSavingsVnd: true,
     } })
     return profile ? {
+      id: profile.id,
       monthlyIncomeVnd: profile.monthlyIncomeVnd?.toFixed() ?? null,
       monthlyExpenseVnd: profile.monthlyExpenseVnd?.toFixed() ?? null,
       existingDebtPaymentVnd: profile.existingDebtPaymentVnd?.toFixed() ?? null,
@@ -335,8 +380,9 @@ export class ForensicService {
 
   private async prepareReply(session: SessionContext, id: string, input: ForensicFollowUpRequest) {
     const audit = await this.read(session, id)
-    const profile = classifyFollowUpIntent(input.question, audit) === 'NEW_CONTEXT' ? await this.loadFinancialProfile(session) : null
-    return prepareFollowUp(audit, input, profile)
+    const aliases = shouldRefuseForensicPrompt(input.question) ? (await this.threatMemory?.get())?.aliases : undefined
+    const profile = classifyFollowUpIntent(input.question, audit, aliases) === 'NEW_CONTEXT' ? await this.loadFinancialProfile(session) : null
+    return prepareFollowUp(audit, input, profile, aliases)
   }
 
   async followUp(session: SessionContext, id: string, input: ForensicFollowUpRequest) {

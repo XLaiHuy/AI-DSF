@@ -3,6 +3,7 @@ import {
   ForensicAuditResponseSchema, ROUTES,
 } from '@fincopilot/shared-types'
 import { queryOptions } from '@tanstack/react-query'
+import { z } from 'zod'
 import { ApiError, apiClient } from './api-client'
 
 export const profileResponseSchema = FinancialProfileResponseSchema
@@ -23,6 +24,64 @@ export const auditListQuery = queryOptions({
   queryKey: ['forensic', 'audits'],
   queryFn: ({ signal }) => apiClient.get('/forensic/audits', { schema: ForensicAuditListResponseSchema, signal, cache: 'no-store' }),
   retry: false,
+})
+
+const surveyHistorySchema = z.object({ sessions: z.array(z.object({
+  id: z.uuid(),
+  sessionMode: z.string(),
+  createdAt: z.iso.datetime(),
+  dtiRatioPct: z.string().nullable(),
+  dtiRiskBand: z.string().nullable(),
+  rateShockDelta: z.string().nullable(),
+})) })
+
+export const surveyHistoryQuery = queryOptions({
+  queryKey: ['survey', 'history'],
+  queryFn: ({ signal }) => apiClient.get('/survey/history', { schema: surveyHistorySchema, signal, cache: 'no-store' }),
+  retry: false,
+})
+
+export function surveySessionLabel(mode: string) {
+  switch (mode) {
+    case 'LOAN_SURVEY': return 'Khảo sát khoản vay'
+    case 'INVESTMENT_SURVEY': return 'Khảo sát đầu tư'
+    case 'MANUAL_COMPARE': return 'So sánh phương án'
+    default: return 'Khảo sát tài chính'
+  }
+}
+
+export function surveySessionHref(mode: string) {
+  return mode === 'LOAN_SURVEY' ? ROUTES.survey + '?mode=loan' : ROUTES.survey
+}
+
+const marketOverviewSchema = z.object({
+  alert: z.object({ id: z.uuid(), tacticSummary: z.string(), preventionGuidance: z.string(), publishedAt: z.iso.datetime() }).nullable(),
+  articles: z.array(z.object({ id: z.uuid(), title: z.string(), imageUrl: z.string().nullish(), publishedAt: z.iso.datetime().nullable() })),
+})
+
+export const marketOverviewQuery = queryOptions({
+  queryKey: ['home', 'market'],
+  queryFn: ({ signal }) => apiClient.get('/home/market', { schema: marketOverviewSchema, signal }),
+  retry: false,
+})
+
+const dailyBriefSchema = z.object({
+  summary: z.string().nullish(),
+  headline: z.string().nullish(),
+  highlights: z.array(z.string()).optional(),
+})
+export const dailyBriefQuery = queryOptions({
+  queryKey: ['home', 'daily-brief'],
+  queryFn: async ({ signal }) => {
+    try {
+      return await apiClient.post('/radar/daily-brief', {}, { schema: dailyBriefSchema, signal })
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return null
+      throw error
+    }
+  },
+  retry: false,
+  staleTime: 10 * 60_000,
 })
 
 export function auditQuery(id: string) {

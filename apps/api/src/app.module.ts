@@ -9,6 +9,7 @@ import { HealthController } from './health.controller'
 import { AdminModule } from './modules/admin/admin.module'
 import { AiGatewayModule } from './modules/ai-gateway/ai-gateway.module'
 import { ForensicModule } from './modules/forensic/forensic.module'
+import { HomeController } from './modules/home/home.controller'
 import { ProfileAuthModule } from './modules/profile-auth/profile-auth.module'
 import { RadarModule } from './modules/radar/radar.module'
 import { SurveyCalcModule } from './modules/survey-calc/survey-calc.module'
@@ -53,6 +54,6 @@ function loadYaml(name: string): unknown {
     ForensicModule,
     AdminModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, HomeController],
 })
 export class AppModule {}

@@ -1,15 +1,16 @@
 'use client'
 
 import {
-  ForensicAuditFieldsSchema, ForensicFollowUpRequestSchema, ForensicFollowUpResponseSchema,
-  type ForensicAuditFields, type ForensicAuditResponse, type ForensicAuditStage, type ForensicFollowUpResponse,
+  ForensicAuditFieldsSchema, ForensicFollowUpRequestSchema, ForensicFollowUpResponseSchema, ROUTES,
+  type ForensicAuditFields, type ForensicAuditResponse, type ForensicAuditStage, type ForensicFollowUpResponse, type ForensicHandoff,
 } from '@fincopilot/shared-types'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, Bot, ChartNoAxesCombined, Check, FileText, LoaderCircle, Plus, QrCode, RotateCcw, ShieldAlert, ShieldCheck, Wallet, X } from 'lucide-react'
+import Link from 'next/link'
 import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from 'react'
 import { Alert, Button, Label } from '@/components/ui'
 import { ApiError, apiClient } from '@/lib/api-client'
-import { auditListQuery, auditQuery, requestError, sessionQuery } from '@/lib/workspace-data'
+import { auditListQuery, auditQuery, formatVnd, requestError, sessionQuery } from '@/lib/workspace-data'
 import { cn } from '@/lib/utils'
 import { addAttachments, AttachmentStrip } from './AttachmentStrip'
 import { AuditHistory } from './AuditHistory'
@@ -142,13 +143,21 @@ function AgentBubble({ answer, streamed, complete = true, degraded, status, stag
   )
 }
 
-export function ForensicWorkbench({ claimedEntity, uploadMaxMb, pdfMaxPages }: {
-  claimedEntity?: string
+export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
+  handoff: ForensicHandoff
   uploadMaxMb: number
   pdfMaxPages: number
 }) {
-  const [entity, setEntity] = useState(claimedEntity ?? '')
-  const [draft, setDraft] = useState('')
+  const [entity, setEntity] = useState(handoff.claimedEntity ?? '')
+  const [sourceAlertId, setSourceAlertId] = useState(handoff.from === 'radar' ? handoff.alertId : undefined)
+  const [draft, setDraft] = useState(() => {
+    if (handoff.from === 'radar') return [handoff.summary, handoff.indicator].filter(Boolean).join('\n')
+    if (handoff.from === 'survey-apr' && handoff.amount && handoff.term && handoff.annualRatePct) {
+      return `${handoff.label ? handoff.label + '\n' : ''}Kiểm tra khoản vay ${formatVnd(handoff.amount)}, kỳ hạn ${handoff.term} tháng, APR ${handoff.annualRatePct}%/năm.`
+    }
+    return ''
+  })
+  const [refusals, setRefusals] = useState<{ question: string; answer: string }[]>([])
   const [demo, setDemo] = useState<typeof examples[number]>()
   const [loadingDemo, setLoadingDemo] = useState(false)
   const [files, setFiles] = useState<File[]>([])
@@ -250,6 +259,8 @@ export function ForensicWorkbench({ claimedEntity, uploadMaxMb, pdfMaxPages }: {
     setConversation(undefined)
     setDraft('')
     setEntity('')
+    setSourceAlertId(undefined)
+    setRefusals([])
     setDemo(undefined)
     setFiles([])
     setError('')
@@ -275,6 +286,7 @@ export function ForensicWorkbench({ claimedEntity, uploadMaxMb, pdfMaxPages }: {
     const text = [base.slice(0, 50_000 - addition.length - 2).trim(), addition].filter(Boolean).join('\n\n')
     void send({ ...submission, text, fields: {
       rawText: text, rawQrString, claimedEntityName: submission.fields?.claimedEntityName ?? audit.claimedEntityName ?? undefined,
+      sourceAlertId: submission.fields?.sourceAlertId,
     } })
   }
 
@@ -316,9 +328,10 @@ export function ForensicWorkbench({ claimedEntity, uploadMaxMb, pdfMaxPages }: {
         const parsed = ForensicAuditFieldsSchema.safeParse(resubmission?.fields ?? {
           rawText: text || undefined,
           claimedEntityName: entity || demo?.entity || undefined,
+          sourceAlertId: demo ? undefined : sourceAlertId,
         })
         const attachments = resubmission?.files ?? files
-        if (!parsed.success || (!attachments.length && !Object.values(parsed.data).some(Boolean))) {
+        if (!parsed.success || (!attachments.length && !parsed.data.rawText && !parsed.data.claimedEntityName && !parsed.data.rawQrString)) {
           setError('Nhập nội dung hoặc đính kèm tệp để bắt đầu.')
           return
         }
@@ -337,11 +350,17 @@ export function ForensicWorkbench({ claimedEntity, uploadMaxMb, pdfMaxPages }: {
             return { ...current, stages: [...otherStages, stage] }
           })
         }, () => setPending({ kind: 'audit', submission, stages: [] }))
+        if ('type' in audit) {
+          setRefusals((previous) => [...previous, { question: submission.text, answer: audit.message }])
+          if (!resubmission) setDraft('')
+          return
+        }
         followScroll.current = false
         if (scrollRoot) scrollRoot.scrollTop = 0
         setConversation({ audit, submission, replies: [] })
         setFiles([])
         setEntity('')
+        setSourceAlertId(undefined)
         setDemo(undefined)
         queryClient.setQueryData(auditQuery(audit.auditId).queryKey, audit)
         void queryClient.invalidateQueries({ queryKey: auditListQuery.queryKey })
@@ -383,6 +402,14 @@ export function ForensicWorkbench({ claimedEntity, uploadMaxMb, pdfMaxPages }: {
           )}
         </div>
       </header>
+      {handoff.from && <aside className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+        <span>{handoff.from === 'radar' ? 'Cảnh báo từ Radar' : handoff.from === 'trust-filter' ? 'Đơn vị từ Bộ lọc Tin cậy' : 'Khoản vay APR cao từ Khảo sát'}
+          {handoff.from === 'trust-filter' && handoff.claimedEntity ? ` · ${handoff.claimedEntity}` : ''}</span>
+        <Link className="font-medium text-primary underline underline-offset-4" href={handoff.from === 'radar'
+          ? handoff.alertId ? ROUTES.radarArticle(handoff.alertId) + '?kind=alert' : ROUTES.radar : ROUTES.survey}>
+          {handoff.from === 'radar' ? 'Về cảnh báo' : 'Về Khảo sát'}
+        </Link>
+      </aside>}
       <div ref={setScrollRoot} tabIndex={0} role="region" aria-label="Nội dung hội thoại"
         className="forensic-transcript min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable] px-0.5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         onWheel={(event) => { if (event.deltaY < 0) followScroll.current = false }}
@@ -393,7 +420,11 @@ export function ForensicWorkbench({ claimedEntity, uploadMaxMb, pdfMaxPages }: {
           lastScrollTop.current = scrollTop
         }}>
         <div ref={transcript} className="grid min-w-0 gap-4 py-3 sm:py-4">
-      {!conversation && !pending && (
+      {refusals.map(({ question, answer }, index) => <div key={index} className="grid gap-3">
+        <p className="ml-auto max-w-[85%] whitespace-pre-wrap break-words rounded-xl bg-accent p-3 text-sm">{question}</p>
+        <div aria-live="polite"><AgentBubble answer={answer} complete /></div>
+      </div>)}
+      {!conversation && !pending && !refusals.length && (
         <div className="grid gap-4 rounded-xl border border-primary/15 bg-card p-4 shadow-sm sm:p-6">
           <div className="flex items-start gap-3">
             <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-accent text-primary">

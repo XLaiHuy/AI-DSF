@@ -40,7 +40,7 @@ async function parseAuditUpload(request: FastifyRequest, body: unknown) {
   try {
     const fields: Record<string, string> = {}
     let invalidField = false
-    for await (const part of request.parts({ limits: { fields: 3, parts: 10, fieldSize: 200_000 } })) {
+    for await (const part of request.parts({ limits: { fields: fieldNames.size, parts: 10, fieldSize: 200_000 } })) {
       if (part.type === 'file') {
         if (part.fieldname !== 'files') invalidField = true
         files.push({ buffer: await readFile(part.file) })
@@ -69,11 +69,11 @@ async function parseAuditUpload(request: FastifyRequest, body: unknown) {
 export class ForensicController {
   constructor(private readonly service: ForensicService) {}
 
-  @Post('audit')
+  @Post(['audit', 'audits'])
   async audit(@Req() request: FastifyRequest, @Body() body: unknown) {
     const { fields, files } = await parseAuditUpload(request, body)
     try {
-      return await this.service.audit(request.session, fields, files)
+      return await this.service.screenAudit(fields, files) ?? await this.service.audit(request.session, fields, files)
     } finally {
       for (const { buffer } of files) buffer.fill(0)
     }
@@ -100,8 +100,12 @@ export class ForensicController {
         .header('X-Accel-Buffering', 'no')
         .send(stream)
       try {
-        const audit = await this.service.audit(request.session, fields, files, (stage) => emit({ type: 'stage', stage }))
-        emit({ type: 'result', audit })
+        const refusal = await this.service.screenAudit(fields, files)
+        if (refusal) emit(refusal)
+        else {
+          const audit = await this.service.audit(request.session, fields, files, (stage) => emit({ type: 'stage', stage }))
+          emit({ type: 'result', audit })
+        }
         emit({ type: 'done' })
       } catch (error) {
         const response = error instanceof HttpException ? error.getResponse() : null

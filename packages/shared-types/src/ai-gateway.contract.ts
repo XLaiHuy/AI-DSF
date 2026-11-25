@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { CalcMethod } from './enums'
 import { ThreatIndicatorSchema } from './dto/radar.dto'
+import { ThreatIndicatorInputSchema } from './dto/threat-ops.dto'
 import { ReasoningFindingSchema } from './dto/forensic.dto'
 import { FinancialHealthRequestSchema, ProfileCoachAdviceSchema } from './dto/profile.dto'
 import { decimalString, nonnegativeDecimal } from './dto/decimal'
@@ -16,6 +17,13 @@ export const AI_TASK_SCHEMAS = {
     suggestedRateDelta: decimalString.nullable(),
     isFraudAlert: z.boolean(),
     indicators: z.array(ThreatIndicatorSchema),
+  }),
+  THREAT_ARTICLE_EXTRACT: z.strictObject({
+    isScamAlert: z.boolean(),
+    threatCategory: z.enum(['IMPERSONATION', 'PHISHING', 'LOAN_SHARK', 'CRYPTO_SCAM', 'QR_FRAUD', 'INVESTMENT_SCAM', 'OTHER']),
+    tacticSummary: z.string().trim().min(1).max(800),
+    preventionGuidance: z.string().trim().min(1).max(2000),
+    indicators: z.array(ThreatIndicatorInputSchema).max(40),
   }),
   SURVEY_WEB_LOOKUP: z.discriminatedUnion('found', [
     z.strictObject({

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { AuthProvider, PrimaryGoal, RiskAppetite } from '../enums'
+import { AuthProvider, PrimaryGoal, RiskAppetite, UserRole } from '../enums'
 import { decimalString, nonnegativeDecimal } from './decimal'
 
 const financialProfileFields = z.strictObject({
@@ -87,6 +87,7 @@ export const AuthSessionResponseSchema = z.discriminatedUnion('kind', [
       email: z.email(),
       displayName: z.string().nullable(),
       authProvider: AuthProvider,
+      role: UserRole,
     }),
     oauthProviders,
   }),

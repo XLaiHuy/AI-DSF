@@ -23,6 +23,15 @@ export const sessionCookieOptions = {
 } as const
 const uuid = z.uuid()
 
+export async function verifySessionUserId(jwt: JwtService, token: string): Promise<string | null> {
+  try {
+    const claims = await jwt.verifyAsync<{ sub?: unknown }>(token, { algorithms: ['HS256'] })
+    return uuid.parse(claims.sub)
+  } catch {
+    return null
+  }
+}
+
 @Injectable()
 export class GuestSessionGuard implements CanActivate {
   constructor(private readonly jwt: JwtService) {}
@@ -40,7 +49,7 @@ export class GuestSessionGuard implements CanActivate {
     const signedAuth = request.cookies[authCookie]
     if (signedAuth) {
       const auth = request.unsignCookie(signedAuth)
-      const userId = auth.valid ? await this.readUserId(auth.value) : null
+      const userId = auth.valid ? await verifySessionUserId(this.jwt, auth.value) : null
       if (userId) {
         request.session = { kind: 'user', userId }
         return true
@@ -50,7 +59,7 @@ export class GuestSessionGuard implements CanActivate {
 
     if (request.headers.authorization !== undefined) {
       const token = /^Bearer ([^\s]+)$/i.exec(request.headers.authorization)?.[1]
-      const userId = token ? await this.readUserId(token) : null
+      const userId = token ? await verifySessionUserId(this.jwt, token) : null
       if (!userId) throw new UnauthorizedException()
       request.session = { kind: 'user', userId }
       return true
@@ -71,12 +80,4 @@ export class GuestSessionGuard implements CanActivate {
     return true
   }
 
-  private async readUserId(token: string): Promise<string | null> {
-    try {
-      const claims = await this.jwt.verifyAsync<{ sub?: unknown }>(token, { algorithms: ['HS256'] })
-      return uuid.parse(claims.sub)
-    } catch {
-      return null
-    }
-  }
 }

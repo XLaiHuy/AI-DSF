@@ -21,6 +21,7 @@ export const DataProvenance = z.enum(['CATALOG_VERIFIED', 'WEB_REFERENCE'])
 export type DataProvenance = z.infer<typeof DataProvenance>
 
 export const AuthProvider = z.enum(['EMAIL', 'GOOGLE', 'GITHUB'])
+export const UserRole = z.enum(['USER', 'ADMIN'])
 export const RiskAppetite = z.enum(['CONSERVATIVE', 'BALANCED', 'GROWTH'])
 export const PrimaryGoal = z.enum(['BORROW_SAFE', 'OPTIMIZE_DEBT', 'SAVE_INVEST'])
 export const AnalysisMode = z.enum(['GENERAL', 'PERSONALIZED'])
@@ -42,6 +43,7 @@ export type QrScheme = z.infer<typeof QrScheme>
 export const VerificationStatus = z.enum(['UNVERIFIED', 'VERIFIED'])
 
 export type AuthProvider = z.infer<typeof AuthProvider>
+export type UserRole = z.infer<typeof UserRole>
 export type RiskAppetite = z.infer<typeof RiskAppetite>
 export type PrimaryGoal = z.infer<typeof PrimaryGoal>
 export type AnalysisMode = z.infer<typeof AnalysisMode>

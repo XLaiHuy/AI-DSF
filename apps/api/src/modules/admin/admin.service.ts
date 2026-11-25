@@ -5,6 +5,7 @@ import { PrismaService } from '../../common/prisma.service'
 import { RadarService } from '../radar/radar.service'
 import { ProductCategory, CalcMethod, RateType } from '@fincopilot/shared-types'
 import { z } from 'zod'
+import Decimal from 'decimal.js'
 
 const productSchema = z.strictObject({
   institutionId: z.uuid(), productCategory: ProductCategory, productName: z.string().trim().min(1).max(200),
@@ -34,8 +35,12 @@ export class AdminService {
     return this.prisma.financialProduct.findMany({ orderBy: [{ institution: { name: 'asc' } }, { productName: 'asc' }], include: { institution: true } })
   }
 
+  async institutions() {
+    return this.prisma.financialInstitution.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } })
+  }
+
   async createProduct(input: Record<string, unknown>) {
-    const parsed = productSchema.refine((data) => Number(data.nominalRateMin) <= Number(data.nominalRateMax), { path: ['nominalRateMax'], message: 'Lãi suất tối đa phải lớn hơn hoặc bằng tối thiểu.' }).safeParse(input)
+    const parsed = productSchema.refine((data) => new Decimal(data.nominalRateMin).lte(data.nominalRateMax), { path: ['nominalRateMax'], message: 'Lãi suất tối đa phải lớn hơn hoặc bằng tối thiểu.' }).safeParse(input)
     if (!parsed.success) throw new BadRequestException({ errorCode: 'ERR_VALIDATION_FAILED', message: 'Thông tin sản phẩm không hợp lệ.', details: parsed.error.issues })
     return this.prisma.financialProduct.create({ data: { id: randomUUID(), ...parsed.data, effectiveDate: new Date(parsed.data.effectiveDate) } as Prisma.FinancialProductUncheckedCreateInput, include: { institution: true } })
   }
@@ -48,7 +53,7 @@ export class AdminService {
     if (Object.keys(parsed.data).length === 0) throw new BadRequestException('Cần cung cấp trường cập nhật.')
     const nextMin = parsed.data.nominalRateMin ?? exists.nominalRateMin.toString()
     const nextMax = parsed.data.nominalRateMax ?? exists.nominalRateMax.toString()
-    if (Number(nextMin) > Number(nextMax)) throw new BadRequestException({ errorCode: 'ERR_VALIDATION_FAILED', message: 'Lãi suất tối đa phải lớn hơn hoặc bằng tối thiểu.' })
+    if (new Decimal(nextMin).gt(nextMax)) throw new BadRequestException({ errorCode: 'ERR_VALIDATION_FAILED', message: 'Lãi suất tối đa phải lớn hơn hoặc bằng tối thiểu.' })
     const data = { ...parsed.data, ...(parsed.data.effectiveDate ? { effectiveDate: new Date(parsed.data.effectiveDate) } : {}), updatedAt: new Date() }
     return this.prisma.financialProduct.update({ where: { id }, data: data as Prisma.FinancialProductUpdateInput, include: { institution: true } })
   }
