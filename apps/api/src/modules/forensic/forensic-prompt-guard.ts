@@ -30,7 +30,10 @@ export function expandTeencode(raw: string, aliases: readonly TeencodeAlias[] = 
 
 const financialText = /\b(?:ngan hang|tai khoan|chuyen khoan|giao dich|ngan luong|tien|vay|lai suat|giai ngan|tin dung|vi dien tu|momo|vietqr|qr|otp|usdt|crypto|loi 102|lua dao|hop dong|sao ke|trieu|nghin|tai chinh|bao cao|giam dinh|hoa don|bien lai|apr|loan|bank|payment|transfer|finance|scam|wallet)\b/
 const financialEvidence = /https?:\/\/|\b[a-z\d-]+(?:\.[a-z\d-]+)*\.[a-z]{2,}\b|(?<!\d)\d(?:[ .-]?\d){6,}|(?:[$€£₫]\s*\d|\d\s*(?:[đ₫]|(?:vnd|usd|eur|jpy|gbp|cny|dollars?|dong)\b))|\b(?:0x[\da-f]{40}|[13T][a-km-zA-HJ-NP-Z1-9]{25,39}|bc1[a-z0-9]{25,})\b/i
-const offTopic = /\b(?:viet (?:bai )?tho|lam tho|doc tho|viet truyen|ke chuyen|phuong trinh|pt bac [0-9]|toan lop|giai (?:bai )?toan|bai tap toan|thoi tiet|du bao mua|thu do|cau do|dich (?:cau|tieng|sang|van ban|doan van)|lap trinh|viet (?:ma|doan ma|chuong trinh|code|ham|thuat toan)|thuat toan|cong thuc nau|nau an|phim hay|giai tri|bong da|lich thi dau|choi game|write (?:a |me a )?(?:poem|story|python|javascript|function|code)|solve (?:this |the )?(?:equation|math)|weather|forecast|trivia|capital of|translate)\b/
+const filler = '(?:(?:cho|giup|ho|dum|toi|minh|em|anh|chi|mot|1|nghe|vai|bai|doan|cau) ){0,4}'
+const offTopic = new RegExp(
+  `\\b(?:viet ${filler}(?:tho|truyen|ma|chuong trinh|code|ham|thuat toan)|lam ${filler}tho|doc ${filler}tho|ke ${filler}chuyen|giai ${filler}(?:toan|phuong trinh|pt)|dich ${filler}(?:cau|tieng|sang|van ban|doan)|phuong trinh|pt bac [0-9]|toan lop|bai tap toan|thoi tiet|du bao mua|thu do|cau do|lap trinh|thuat toan|cong thuc nau|nau an|phim hay|giai tri|bong da|lich thi dau|choi game|write (?:a |me a )?(?:poem|story|python|javascript|function|code)|solve (?:this |the )?(?:equation|math)|weather|forecast|trivia|capital of|translate)\\b`,
+)
 const injection = /\b(?:ignore (?:all |the )?(?:previous|prior|above|system) instructions|disregard (?:the |all )?(?:system|previous) (?:prompt|instructions)|you are now|pretend you are|act as (?:a |an )?(?:system|developer|unrestricted)|reveal (?:the |your )?system prompt|bo qua (?:moi |cac )?huong dan|dong vai (?:he thong|nha phat trien))\b/
 
 export const forensicRefusal = {

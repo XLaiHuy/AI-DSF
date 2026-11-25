@@ -56,7 +56,13 @@ export function surveySessionHref(mode: string) {
 
 const marketOverviewSchema = z.object({
   alert: z.object({ id: z.uuid(), tacticSummary: z.string(), preventionGuidance: z.string(), publishedAt: z.iso.datetime() }).nullable(),
-  articles: z.array(z.object({ id: z.uuid(), title: z.string(), imageUrl: z.string().nullish(), publishedAt: z.iso.datetime().nullable() })),
+  articles: z.array(z.object({
+    id: z.uuid(),
+    title: z.string(),
+    imageUrl: z.string().nullish(),
+    publishedAt: z.iso.datetime().nullable(),
+    categories: z.array(z.string()).optional(),
+  })),
 })
 
 export const marketOverviewQuery = queryOptions({

@@ -13,6 +13,7 @@ import { auditHref, auditListQuery, dailyBriefQuery, formatVietnamTime, formatVn
 import { cn } from '@/lib/utils'
 import { MoneyInput, stripSpacedAmount } from '@/components/ui/money-input'
 import { verdictLabels } from '@/components/forensic/verdict'
+import { CategoryArtwork } from '@/components/radar/CategoryArtwork'
 
 function ProfileStatus() {
   const session = useQuery(sessionQuery)
@@ -118,6 +119,16 @@ function articleImage(value: string | null | undefined) {
   return url?.protocol === 'https:' && !url.username && !url.password ? url.href : null
 }
 
+function HomeArticleThumb({ imageUrl, categories }: { imageUrl: string | null | undefined; categories?: string[] }) {
+  const [failed, setFailed] = useState(false)
+  const src = failed ? null : articleImage(imageUrl)
+  if (!src) {
+    return <div className="aspect-video w-full overflow-hidden rounded-md"><CategoryArtwork categories={categories ?? []} className="h-full w-full" /></div>
+  }
+  return <Image src={src} unoptimized alt="" width={400} height={224} referrerPolicy="no-referrer"
+    onError={() => setFailed(true)} className="aspect-video w-full rounded-md object-cover" />
+}
+
 function MorningBrief() {
   const market = useQuery(marketOverviewQuery)
   const daily = useQuery(dailyBriefQuery)
@@ -163,15 +174,14 @@ function MorningBrief() {
         <Link className="py-2 text-sm font-medium text-primary hover:underline" href={ROUTES.radar}>Xem Radar</Link>
       </div>
       <ul className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        {market.data.articles.map((article) => {
-          const src = articleImage(article.imageUrl)
-          return <li key={article.id} className="min-w-0">
+        {market.data.articles.map((article) => (
+          <li key={article.id} className="min-w-0">
             <Link href={ROUTES.radarArticle(article.id)} className="flex h-full flex-col gap-2 overflow-hidden rounded-lg border bg-card p-3 text-sm hover:border-primary/40">
-              {src && <Image src={src} unoptimized alt="" width={400} height={224} referrerPolicy="no-referrer" className="aspect-video w-full rounded-md object-cover" />}
+              <HomeArticleThumb imageUrl={article.imageUrl} categories={article.categories} />
               <span className="line-clamp-3 font-medium">{article.title}</span>
             </Link>
           </li>
-        })}
+        ))}
       </ul>
     </section>}
   </div>

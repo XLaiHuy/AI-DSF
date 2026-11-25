@@ -16,6 +16,7 @@ type Analysis = { mode: string; facts: string[]; assessment: string | null; sugg
 const dateTimeFormat = new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })
 const categoryLabels: Record<string, string> = { INTEREST_RATE: 'Lãi suất', BANKING: 'Ngân hàng', MARKET: 'Thị trường', POLICY: 'Chính sách', INFLATION: 'Lạm phát', FINANCIAL_FRAUD: 'Lừa đảo tài chính' }
 const categoryLabel = (value: string) => categoryLabels[value] ?? value.replaceAll('_', ' ')
+const isHashedIndicator = (value: string) => /^sha256:[a-f0-9]{64}$/i.test(value)
 function formatDateTime(value: string | null | undefined) {
   if (!value) return null
   const date = new Date(value)
@@ -43,6 +44,7 @@ export default function RadarArticlePage() {
 
   if (isAlert && alert.data) {
     const verified = alert.data.verificationStatus === 'VERIFIED'
+    const visibleIndicator = alert.data.indicators.find((item) => !isHashedIndicator(item.indicatorText))
     return <div className="radar-detail radar-alert-detail">
       <Link href="/radar" className="detail-back"><ArrowLeft size={15} aria-hidden="true"/> Tất cả tin và cảnh báo</Link>
       <header className="detail-header">
@@ -58,8 +60,8 @@ export default function RadarArticlePage() {
       <section className="detail-section" aria-labelledby="indicators-heading">
         <div className="detail-section-heading"><h2 id="indicators-heading">Dấu hiệu cần đối chiếu</h2></div>
         <p className="detail-intro">Các chỉ dấu được trích xuất để đối chiếu; chúng không tự xác nhận nội dung cảnh báo.</p>
-        {alert.data.indicators.length > 0 ? <ul className="indicator-list">{alert.data.indicators.map((item, i) => <li key={`${item.indicatorType}-${i}`}><span>{item.indicatorType}</span><code>{item.indicatorText}</code></li>)}</ul> : <p className="detail-muted">Chưa trích xuất chỉ dấu.</p>}
-        <Link className="detail-inline-link" href={`/forensic?from=radar&alertId=${encodeURIComponent(alert.data.id)}${alert.data.indicators[0] ? `&indicator=${encodeURIComponent(alert.data.indicators[0].indicatorText)}` : ''}`}>Đối chiếu trong Giám định <ArrowUpRight size={14} aria-hidden="true"/></Link>
+        {alert.data.indicators.length > 0 ? <ul className="indicator-list">{alert.data.indicators.map((item, i) => <li key={`${item.indicatorType}-${i}`}><span>{item.indicatorType}</span><code>{isHashedIndicator(item.indicatorText) ? 'Chỉ dấu đã che (đối chiếu tự động trong Giám định)' : item.indicatorText}</code></li>)}</ul> : <p className="detail-muted">Chưa trích xuất chỉ dấu.</p>}
+        <Link className="detail-inline-link" href={`/forensic?from=radar&alertId=${encodeURIComponent(alert.data.id)}${visibleIndicator ? `&indicator=${encodeURIComponent(visibleIndicator.indicatorText)}` : ''}`}>Đối chiếu trong Giám định <ArrowUpRight size={14} aria-hidden="true"/></Link>
       </section>
       <section className="detail-section" aria-labelledby="evidence-heading">
         <div className="detail-section-heading"><h2 id="evidence-heading">Nguồn dẫn chứng</h2></div>
