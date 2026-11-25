@@ -85,6 +85,80 @@ const server = createServer(async (request, response) => {
     response.end(JSON.stringify({ sessions: [] }))
     return
   }
+  if (request.method === 'GET' && request.url === '/api/v1/home/market') {
+    const first = articles[0] ?? article
+    const second = articles[1] ?? { ...first, id: '11111111-1111-4111-8111-000000000002', title: 'Cập nhật mặt bằng lãi suất huy động ngân hàng' }
+    response.end(JSON.stringify({
+      alert: {
+        id: alert.id,
+        tacticSummary: alert.tacticSummary,
+        preventionGuidance: alert.preventionGuidance,
+        publishedAt: alert.publishedAt,
+      },
+      articles: articles.slice(0, 6).map((item) => ({
+        id: item.id,
+        title: item.title,
+        imageUrl: item.image?.url ?? null,
+        proxyUrl: item.image?.url ? `/api/v1/radar/image-proxy?url=${encodeURIComponent(item.image.url)}` : null,
+        sourceName: item.sources[0]?.sourceName ?? 'NHNN',
+        publishedAt: item.publishedAt,
+        categories: item.categories,
+      })),
+      trending: [first, second].map((item, idx) => ({
+        rank: idx === 0 ? 1 : 2,
+        id: item.id,
+        title: item.title,
+        summary: 'Diễn biến thị trường tài chính đáng chú ý từ nguồn công bố chính thức.',
+        imageUrl: item.image?.url ?? null,
+        proxyUrl: item.image?.url ? `/api/v1/radar/image-proxy?url=${encodeURIComponent(item.image.url)}` : null,
+        sourceName: item.sources[0]?.sourceName ?? 'NHNN',
+        publishedAt: item.publishedAt,
+        readMinutes: 3,
+        categories: item.categories,
+        suggestedRateDelta: idx === 0 ? '-1.0' : null,
+        trendReason: 'Tin tài chính nổi bật mới ghi nhận',
+      })),
+      scamFinanceRail: [
+        {
+          id: alert.id,
+          kind: 'ALERT',
+          title: alert.tacticSummary,
+          badge: 'Cảnh báo Scam · Đã xác minh',
+          imageUrl: null,
+          proxyUrl: null,
+          sourceName: 'NCSC',
+          publishedAt: alert.publishedAt,
+          handoffHref: `/forensic?from=radar&alertId=${alert.id}`,
+        },
+        {
+          id: first.id,
+          kind: 'FINANCE_NEWS',
+          title: first.title,
+          badge: 'Tài chính · Lãi suất',
+          imageUrl: first.image?.url ?? null,
+          proxyUrl: null,
+          sourceName: first.sources[0]?.sourceName ?? 'NHNN',
+          publishedAt: first.publishedAt,
+          handoffHref: `/radar/${first.id}`,
+        },
+      ],
+      marketRates: [
+        { category: 'SECURED_LOAN', label: 'Vay thế chấp', minRatePct: 6.5, medianRatePct: 7.2, maxRatePct: 8.5, sampleCount: 2 },
+        { category: 'UNSECURED_LOAN', label: 'Vay tín chấp', minRatePct: 12.9, medianRatePct: 14.5, maxRatePct: 15.2, sampleCount: 3 },
+        { category: 'SAVING', label: 'Tiết kiệm', minRatePct: 4.7, medianRatePct: 5.3, maxRatePct: 5.8, sampleCount: 5 },
+      ],
+    }))
+    return
+  }
+  if (request.method === 'GET' && request.url?.startsWith('/api/v1/radar/image-proxy')) {
+    const png16x16 = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAH0lEQVR42mNk+M9Qz0AEYBxVSF+FAP1UqB81YNQAAFwBAf/L0J9GAAAAAElFTkSuQmCC',
+      'base64',
+    )
+    response.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'public, max-age=3600' })
+    response.end(png16x16)
+    return
+  }
   if (process.env.MOCK_RADAR_ERROR === '1' && request.method === 'GET' && request.url?.startsWith('/api/v1/radar/articles')) {
     response.statusCode = 503
     response.end(JSON.stringify({ errorCode: 'ERR_INTERNAL_SERVER', message: 'Nguồn Radar tạm gián đoạn (fixture kiểm thử).' }))

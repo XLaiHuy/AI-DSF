@@ -57,7 +57,7 @@ export function MarketRateBenchmarkChart({ className }: { className?: string }) 
         .join('; ')}
     >
       <div className="h-56 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={224} minWidth={0} initialDimension={{ width: 520, height: 224 }}>
           <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 48, left: 8, bottom: 4 }}>
             <CartesianGrid stroke="#e5e7eb" strokeDasharray="2 2" horizontal={false} />
             <XAxis

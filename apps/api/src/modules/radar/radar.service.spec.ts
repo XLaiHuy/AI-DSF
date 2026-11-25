@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { PrismaService } from '../../common/prisma.service'
+import { fetchPublicImage } from '../admin/threat-safety'
 import { articleImageUrl, categoriesFor, dateOnly, extractOgImageUrl, parseFeed, RadarService } from './radar.service'
 
 describe('Radar V2 parsing and date rules', () => {
@@ -259,5 +260,10 @@ describe('Radar V2 parsing and date rules', () => {
       expect((await service.dailyBrief(session, {})).date).toBe('2026-11-25')
       expect(ai.generateStructured).toHaveBeenCalledTimes(2)
     } finally { vi.useRealTimers() }
+  })
+
+  it('blocks non-HTTPS and private/loopback targets in fetchPublicImage', async () => {
+    await expect(fetchPublicImage('http://example.com/a.png')).rejects.toThrow('Chỉ hỗ trợ ảnh qua HTTPS.')
+    await expect(fetchPublicImage('https://127.0.0.1/a.png')).rejects.toThrow('Địa chỉ mạng không được phép.')
   })
 })

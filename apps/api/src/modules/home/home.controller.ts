@@ -94,8 +94,10 @@ export class HomeController {
     }) : []
 
     const combined = [...withImages, ...fallback]
-    const articles = combined.slice(0, 6).map(({ categories, sources, imageUrl, ...article }) => ({
-      ...article,
+    const articles = combined.slice(0, 6).map(({ id, title, publishedAt, categories, sources, imageUrl }) => ({
+      id,
+      title,
+      publishedAt,
       imageUrl,
       proxyUrl: proxyImageUrl(imageUrl),
       sourceName: sources[0]?.source.name ?? null,
@@ -148,8 +150,10 @@ export class HomeController {
       }
     })
 
-    const financeFocusArticles = combined
-      .filter((item) => item.categories.some(({ categoryCode }) => ['FINANCIAL_FRAUD', 'INTEREST_RATE', 'INFLATION'].includes(categoryCode)))
+    const focusArticles = combined.filter((item) => item.categories.some(({ categoryCode }) => ['FINANCIAL_FRAUD', 'INTEREST_RATE', 'INFLATION'].includes(categoryCode)))
+    const focusIds = new Set(focusArticles.map(({ id }) => id))
+    const railPool = [...focusArticles, ...combined.filter(({ id }) => !focusIds.has(id))]
+    const financeFocusArticles = railPool
       .slice(0, Math.max(0, 6 - alertItems.length))
       .map((item) => {
         const cats = item.categories.map(({ categoryCode }) => categoryCode)
