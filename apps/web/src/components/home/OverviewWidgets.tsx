@@ -122,14 +122,27 @@ function MorningBrief() {
   const market = useQuery(marketOverviewQuery)
   const daily = useQuery(dailyBriefQuery)
   const alert = market.data?.alert
-  const summary = daily.data?.summary || daily.data?.headline
-  const highlights = daily.data?.highlights ?? []
-  if (!alert && !market.data?.articles.length && !summary && !highlights.length) return null
+  const items = daily.data?.items ?? []
+  if (!alert && !market.data?.articles.length && !items.length) return null
   return <div className="grid gap-4">
-    {(summary || highlights.length > 0) && <Card className="gap-2 p-4 sm:px-6">
-      <h2 className="text-base font-semibold">Tóm tắt ngày</h2>
-      {summary && <p className="max-w-[65ch] whitespace-pre-line text-sm text-muted-foreground">{summary}</p>}
-      {highlights.length > 0 && <ul className="list-disc space-y-1 pl-5 text-sm">{highlights.slice(0, 4).map((line, index) => <li key={index}>{line}</li>)}</ul>}
+    {items.length > 0 && <Card className="gap-3 p-4 sm:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base font-semibold">Tóm tắt ngày {daily.data?.dateLabel ? `· ${daily.data.dateLabel}` : ''}</h2>
+        <Link className="py-1 text-sm font-medium text-primary hover:underline" href={ROUTES.radar}>Xem đầy đủ trên Radar</Link>
+      </div>
+      <ul className="space-y-2 text-sm">
+        {items.slice(0, 4).map((item) => {
+          const citation = item.citations[0]
+          const href = ROUTES.radarArticle(item.id) + (item.kind === 'ALERT' ? '?kind=alert' : '')
+          return <li key={item.id} className="space-y-0.5 border-b border-border/60 pb-2 last:border-b-0 last:pb-0">
+            <Link href={href} className="font-medium text-foreground hover:text-primary hover:underline">{item.summary}</Link>
+            {item.interpretation && <p className="text-xs text-muted-foreground">{item.interpretation}</p>}
+            {citation && <p className="text-xs text-muted-foreground">
+              Nguồn: <a href={citation.url} target="_blank" rel="noreferrer" className="underline hover:text-primary">{citation.sourceName}</a>
+            </p>}
+          </li>
+        })}
+      </ul>
     </Card>}
     {alert && <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-verdict-danger/25 bg-verdict-danger-bg/40 p-4 sm:px-6" aria-labelledby="market-alert-title">
       <div className="flex min-w-0 items-start gap-2">

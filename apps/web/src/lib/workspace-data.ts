@@ -1,6 +1,6 @@
 import {
   AuthSessionResponseSchema, FinancialProfileResponseSchema, ForensicAuditListResponseSchema,
-  ForensicAuditResponseSchema, ROUTES,
+  ForensicAuditResponseSchema, RadarDailyBriefResponseSchema, ROUTES,
 } from '@fincopilot/shared-types'
 import { queryOptions } from '@tanstack/react-query'
 import { z } from 'zod'
@@ -65,16 +65,11 @@ export const marketOverviewQuery = queryOptions({
   retry: false,
 })
 
-const dailyBriefSchema = z.object({
-  summary: z.string().nullish(),
-  headline: z.string().nullish(),
-  highlights: z.array(z.string()).optional(),
-})
 export const dailyBriefQuery = queryOptions({
   queryKey: ['home', 'daily-brief'],
   queryFn: async ({ signal }) => {
     try {
-      return await apiClient.post('/radar/daily-brief', {}, { schema: dailyBriefSchema, signal })
+      return await apiClient.post('/radar/daily-brief', {}, { schema: RadarDailyBriefResponseSchema, signal })
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) return null
       throw error
