@@ -40,7 +40,7 @@ for (const count of [0, 1, 5, 20, 100]) {
 
 test('Radar xuất ma trận ảnh desktop và mobile cho các trạng thái sản phẩm', async ({ page }, info) => {
   test.setTimeout(240_000)
-  const directory = 'docs/design/screenshots'
+  const directory = info.outputPath('screenshots')
   await mkdir(directory, { recursive: true })
   const cases = [
     { key: 'no-alerts', count: 5, alerts: false, image: false, personalized: false },
@@ -76,7 +76,7 @@ test('Radar xuất ma trận ảnh desktop và mobile cho các trạng thái s�
       if (scenario.alerts) await expect(view.getByText('Đã xác minh').first()).toBeVisible()
       else await expect(view.locator('.radar-v2-alerts--empty')).toBeVisible()
       if (scenario.key === 'personalization-enabled') await expect(view.getByText(/Dựa trên loại Khảo sát vay gần đây/).first()).toBeVisible()
-      if (scenario.key === 'guest-no-profile') await expect(view.locator('.radar-v2-recommendations')).toContainText('Chưa có tín hiệu nào được phép dùng')
+      if (scenario.key === 'guest-no-profile') await expect(view.locator('.radar-v2-recommendations')).toContainText('Chưa có tín hiệu cá nhân được phép dùng')
       if (scenario.key === 'personalization-enabled' || scenario.key === 'personalization-disabled' || scenario.key === 'guest-no-profile') await view.locator('.radar-v2-personal').scrollIntoViewIfNeeded()
       expect(await view.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       const filename = `radar-v2-final-${scenario.key}-${viewport.name}.png`
@@ -96,7 +96,7 @@ test('Radar báo lỗi nguồn thay vì thay dữ liệu cũ thành tin mới', 
   await expect(page.locator('.radar-error-state')).toContainText(/Nguồn Radar tạm gián đoạn|Yêu cầu thất bại/, { timeout: 15_000 })
 })
 
-test('Radar phân biệt cảnh báo đã xác minh với cảnh báo chưa xác minh', async ({ page }) => {
+test('Radar hiển thị cảnh báo đã công bố và bỏ qua bản nháp', async ({ page }) => {
   await fixturePage(page, 1)
   await page.route('**/api/v1/radar/alerts**', (route) => route.fulfill({ json: { items: [
     { id: '22222222-2222-4222-8222-222222222222', threatCategory: 'PHISHING', tacticSummary: 'Cảnh báo đã xác minh từ nguồn', verificationStatus: 'VERIFIED', publishedAt: '2026-11-20T08:00:00.000Z', evidence: [{ articleId, sourceName: 'NCSC', title: 'Cảnh báo', url: 'https://example.test/ncsc' }] },
@@ -104,9 +104,7 @@ test('Radar phân biệt cảnh báo đã xác minh với cảnh báo chưa xác
   ] } }))
   await page.goto('/radar')
   await expect(page.getByText('Đã xác minh').first()).toBeVisible()
-  await expect(page.getByText('Chưa xác minh').first()).toBeVisible()
-  await expect(page.getByText('Cảnh báo đang chờ đối chiếu')).toBeVisible()
-  await expect(page.getByText('Chưa rõ thời điểm công bố').first()).toBeVisible()
+  await expect(page.getByText('Cảnh báo đang chờ đối chiếu')).toHaveCount(0)
 })
 
 test('Khách có thể tắt gợi ý; không cần hồ sơ để đọc tin công khai', async ({ page }) => {
@@ -114,7 +112,7 @@ test('Khách có thể tắt gợi ý; không cần hồ sơ để đọc tin c�
   await page.goto('/radar')
   await expect(page.getByRole('heading', { name: 'Radar thị trường' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Bật gợi ý cá nhân' })).toBeVisible()
-  await expect(page.getByText(/không đọc thu nhập, số tiền vay/i)).toBeVisible()
+  await expect(page.getByText(/Chỉ dùng từng tín hiệu khi bạn bật quyền tương ứng/)).toBeVisible()
 })
 
 test('Chỉ ưu tiên tin lừa đảo theo lịch sử Giám định sau khi người dùng bật quyền', async ({ page }) => {

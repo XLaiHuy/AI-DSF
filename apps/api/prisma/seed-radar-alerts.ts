@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { stableUuid } from './seed-id'
+import { stableUuid } from '../src/common/stable-uuid'
 
 export async function seedRadarAlerts(prisma: PrismaClient) {
   const demoUrl = { startsWith: 'https://example.invalid/' }

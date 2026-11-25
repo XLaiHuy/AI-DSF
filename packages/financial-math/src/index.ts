@@ -1,36 +1,80 @@
 import Decimal from 'decimal.js'
 
 Decimal.set({ precision: 40, rounding: Decimal.ROUND_HALF_UP })
-export type ScheduleRow = { month: number; paymentVnd: string; principalVnd: string; interestVnd: string; remainingBalanceVnd: string }
+export type ScheduleRow = { month: number; paymentVnd: string; principalVnd: string; interestVnd: string; remainingBalanceVnd: string; feeVnd?: string }
 const money = (value: Decimal.Value) => new Decimal(value).toDecimalPlaces(0, Decimal.ROUND_HALF_UP).toFixed(0)
 const pct = (value: Decimal.Value, places = 4) => new Decimal(value).toDecimalPlaces(places, Decimal.ROUND_HALF_UP).toFixed(places)
 
 export type LoanCalculation = { monthlyPaymentVnd: string; totalInterestVnd: string; totalPayableVnd: string; schedule: ScheduleRow[] }
 export function reducingBalanceLoan(principal: Decimal.Value, annualRatePct: Decimal.Value, termMonths: number): LoanCalculation {
-  const p = new Decimal(principal); const monthlyRate = new Decimal(annualRatePct).div(100).div(12)
-  const rawPayment = monthlyRate.isZero() ? p.div(termMonths) : p.mul(monthlyRate).mul(monthlyRate.add(1).pow(termMonths)).div(monthlyRate.add(1).pow(termMonths).sub(1))
-  const regularPayment = new Decimal(money(rawPayment)); let balance = p; let totalInterest = new Decimal(0); const schedule: ScheduleRow[] = []
-  for (let month = 1; month <= termMonths; month += 1) {
-    const interest = balance.mul(monthlyRate).toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
-    const principalPaid = month === termMonths ? balance : Decimal.min(regularPayment.sub(interest), balance)
-    const payment = month === termMonths ? principalPaid.add(interest) : regularPayment
-    balance = balance.sub(principalPaid); totalInterest = totalInterest.add(interest)
-    schedule.push({ month, paymentVnd: money(payment), principalVnd: money(principalPaid), interestVnd: money(interest), remainingBalanceVnd: money(balance) })
-  }
-  return { monthlyPaymentVnd: money(regularPayment), totalInterestVnd: money(totalInterest), totalPayableVnd: money(p.add(totalInterest)), schedule }
+  return amortizeLoan(principal, annualRatePct, termMonths, 'REDUCING_BALANCE')
 }
 
 /** Equal-principal amortisation: principal is constant and interest declines monthly. */
 export function decliningPrincipalLoan(principal: Decimal.Value, annualRatePct: Decimal.Value, termMonths: number): LoanCalculation {
-  const p = new Decimal(principal); const monthlyRate = new Decimal(annualRatePct).div(100).div(12)
-  const principalPart = p.div(termMonths); let balance = p; let totalInterest = new Decimal(0); const schedule: ScheduleRow[] = []
+  return amortizeLoan(principal, annualRatePct, termMonths, 'DECLINING_PRINCIPAL')
+}
+
+export function amortizeLoan(
+  principal: Decimal.Value, annualRatePct: Decimal.Value, termMonths: number,
+  method: 'REDUCING_BALANCE' | 'DECLINING_PRINCIPAL' | 'FLAT_RATE',
+  options: { monthlyFeeVnd?: Decimal.Value; laterRate?: { afterMonths: number; annualRatePct: Decimal.Value } } = {},
+): LoanCalculation {
+  const original = new Decimal(money(principal))
+  const monthlyFee = new Decimal(money(options.monthlyFeeVnd ?? 0))
+  const principalPart = new Decimal(money(original.div(termMonths)))
+  let balance = original
+  let monthlyRate = new Decimal(annualRatePct).div(1200)
+  let regularPayment = scheduledPayment(balance, monthlyRate, termMonths)
+  let totalInterest = new Decimal(0)
+  let totalPayable = new Decimal(0)
+  const schedule: ScheduleRow[] = []
   for (let month = 1; month <= termMonths; month += 1) {
-    const interest = balance.mul(monthlyRate).toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
-    const principalPaid = month === termMonths ? balance : principalPart.toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
-    const payment = principalPaid.add(interest); balance = balance.sub(principalPaid); totalInterest = totalInterest.add(interest)
-    schedule.push({ month, paymentVnd: money(payment), principalVnd: money(principalPaid), interestVnd: money(interest), remainingBalanceVnd: money(balance) })
+    if (options.laterRate && month === options.laterRate.afterMonths + 1) {
+      monthlyRate = new Decimal(options.laterRate.annualRatePct).div(1200)
+      regularPayment = scheduledPayment(balance, monthlyRate, termMonths - month + 1)
+    }
+    const interestBase = method === 'FLAT_RATE' && balance.gt(0) ? original : balance
+    const interest = new Decimal(money(interestBase.mul(monthlyRate)))
+    const scheduledPrincipal = method === 'REDUCING_BALANCE' ? regularPayment.sub(interest) : principalPart
+    const principalPaid = month === termMonths ? balance : Decimal.min(Decimal.max(scheduledPrincipal, 0), balance)
+    const fee = balance.gt(0) ? monthlyFee : new Decimal(0)
+    const payment = principalPaid.add(interest).add(fee)
+    balance = balance.sub(principalPaid)
+    totalInterest = totalInterest.add(interest)
+    totalPayable = totalPayable.add(payment)
+    schedule.push({ month, paymentVnd: money(payment), principalVnd: money(principalPaid), interestVnd: money(interest),
+      remainingBalanceVnd: money(balance), ...(fee.gt(0) ? { feeVnd: money(fee) } : {}) })
   }
-  return { monthlyPaymentVnd: schedule[0]?.paymentVnd ?? '0', totalInterestVnd: money(totalInterest), totalPayableVnd: money(p.add(totalInterest)), schedule }
+  return { monthlyPaymentVnd: schedule[0]?.paymentVnd ?? '0', totalInterestVnd: money(totalInterest), totalPayableVnd: money(totalPayable), schedule }
+}
+
+function scheduledPayment(balance: Decimal, monthlyRate: Decimal, months: number) {
+  if (monthlyRate.isZero()) return new Decimal(money(balance.div(months)))
+  const factor = monthlyRate.add(1).pow(months)
+  return new Decimal(money(balance.mul(monthlyRate).mul(factor).div(factor.sub(1))))
+}
+
+/** Nominal annualized IRR for one net disbursement followed by repayments. */
+export function effectiveLoanApr(principalNet: Decimal.Value, schedule: readonly ScheduleRow[]): string {
+  const net = new Decimal(principalNet)
+  if (!net.gt(0)) throw new RangeError('Net disbursement must be positive')
+  const payments = schedule.map(({ paymentVnd }) => new Decimal(paymentVnd))
+  if (payments.reduce((total, payment) => total.add(payment), new Decimal(0)).lte(net)) return '0.0000'
+  const presentValue = (monthlyRate: Decimal) => {
+    const discount = monthlyRate.plus(1)
+    let value = new Decimal(0)
+    for (let index = payments.length - 1; index >= 0; index -= 1) value = value.add(payments[index]).div(discount)
+    return value
+  }
+  let low = new Decimal(0)
+  let high = Decimal.sum(...payments).div(net)
+  for (let iteration = 0; iteration < 128 && high.sub(low).gt('0.00000000001'); iteration += 1) {
+    const middle = low.add(high).div(2)
+    if (presentValue(middle).gt(net)) low = middle
+    else high = middle
+  }
+  return pct(low.add(high).mul(600))
 }
 
 function irr(cashflows: Decimal[], guess = new Decimal('0.02')) {
@@ -48,15 +92,41 @@ export function flatRateLoan(principalNominal: Decimal.Value, upfrontFee: Decima
   return { principalNetVnd: money(net), monthlyPaymentVnd: money(roundedPayment), totalPayableVnd: money(roundedPayment.mul(termMonths)), monthlyIrr: monthlyIrr.toDecimalPlaces(8, Decimal.ROUND_HALF_UP).toFixed(8), effectiveAprPct: pct(monthlyIrr.mul(12).mul(100)), effectiveEarPct: pct(monthlyIrr.add(1).pow(12).sub(1).mul(100)) }
 }
 
-export type DtiAssessment = { dtiPct: string; disposableVnd: string; riskBand: 'SAFE' | 'MODERATE' | 'HIGH_PRESSURE' | 'CRITICAL_OVERLOAD' }
+export type DtiAssessment = { dtiPct: string | null; disposableVnd: string; riskBand: 'SAFE' | 'MODERATE' | 'HIGH_PRESSURE' | 'CRITICAL_OVERLOAD' | 'UNAVAILABLE' }
 export function assessDti(monthlyIncome: Decimal.Value, monthlyExpense: Decimal.Value, existingDebt: Decimal.Value, newPayment: Decimal.Value): DtiAssessment {
-  const income = new Decimal(monthlyIncome); const debt = new Decimal(existingDebt).add(newPayment); const ratio = income.isZero() ? new Decimal(100) : debt.div(income).mul(100); const riskBand = ratio.lte(35) ? 'SAFE' : ratio.lte(45) ? 'MODERATE' : ratio.lte(50) ? 'HIGH_PRESSURE' : 'CRITICAL_OVERLOAD'
-  return { dtiPct: pct(ratio, 2), disposableVnd: money(income.sub(monthlyExpense).sub(debt)), riskBand }
+  const income = new Decimal(monthlyIncome)
+  const debt = new Decimal(existingDebt).add(newPayment)
+  const disposableVnd = money(income.sub(monthlyExpense).sub(debt))
+  if (income.lte(0)) return { dtiPct: null, disposableVnd, riskBand: 'UNAVAILABLE' }
+  const ratio = debt.div(income).mul(100)
+  const riskBand = ratio.lte(35) ? 'SAFE' : ratio.lte(45) ? 'MODERATE' : ratio.lte(50) ? 'HIGH_PRESSURE' : 'CRITICAL_OVERLOAD'
+  return { dtiPct: pct(ratio, 2), disposableVnd, riskBand }
 }
 export type FundCalculation = { totalContributedVnd: string; grossValueVnd: string; sellFeeVnd: string; taxVnd: string; netValueVnd: string; netProfitVnd: string }
-export function compoundDca(initialVnd: Decimal.Value, monthlyContributionVnd: Decimal.Value, termMonths: number, annualReturnPct: Decimal.Value, sellFeePct: Decimal.Value, taxPct: Decimal.Value): FundCalculation {
-  const monthlyRate = new Decimal(annualReturnPct).div(100).div(12); let value = new Decimal(initialVnd)
-  for (let month = 0; month < termMonths; month += 1) value = value.mul(monthlyRate.add(1)).add(monthlyContributionVnd)
-  const contributed = new Decimal(initialVnd).add(new Decimal(monthlyContributionVnd).mul(termMonths)); const gross = new Decimal(money(value)); const sellFee = gross.mul(sellFeePct).div(100).toDecimalPlaces(0, Decimal.ROUND_HALF_UP); const tax = gross.mul(taxPct).div(100).toDecimalPlaces(0, Decimal.ROUND_HALF_UP); const net = gross.sub(sellFee).sub(tax)
+export type RedemptionFeeTier = { throughMonths: number; ratePct: string }
+export function compoundDca(initialVnd: Decimal.Value, monthlyContributionVnd: Decimal.Value, termMonths: number, annualReturnPct: Decimal.Value, sellFeePct: Decimal.Value, taxPct: Decimal.Value, options?: { redemptionFeeTiers?: RedemptionFeeTier[]; effectiveAnnualYield?: boolean; taxFreeAfterMonths?: number }): FundCalculation {
+  const annualRate = new Decimal(annualReturnPct).div(100)
+  const growth = options?.effectiveAnnualYield ? annualRate.add(1).pow(new Decimal(1).div(12)) : annualRate.div(12).add(1)
+  let value = new Decimal(initialVnd)
+  for (let month = 0; month < termMonths; month += 1) value = value.mul(growth).add(monthlyContributionVnd)
+  const contributed = new Decimal(initialVnd).add(new Decimal(monthlyContributionVnd).mul(termMonths))
+  const gross = new Decimal(money(value))
+  let rawSellFee = gross.mul(sellFeePct).div(100)
+  let taxableValue = gross
+  if (options?.redemptionFeeTiers || options?.taxFreeAfterMonths !== undefined) {
+    if (options.redemptionFeeTiers) rawSellFee = new Decimal(0)
+    if (options.taxFreeAfterMonths !== undefined) taxableValue = new Decimal(0)
+    let contribution = new Decimal(monthlyContributionVnd)
+    for (let age = 0; age <= termMonths; age += 1) {
+      const tier = options.redemptionFeeTiers?.find(({ throughMonths }) => age <= throughMonths)
+      const lot = age === termMonths ? new Decimal(initialVnd).mul(growth.pow(age)) : contribution
+      if (tier) rawSellFee = rawSellFee.add(lot.mul(tier.ratePct).div(100))
+      if (options.taxFreeAfterMonths !== undefined && age < options.taxFreeAfterMonths) taxableValue = taxableValue.add(lot)
+      contribution = contribution.mul(growth)
+    }
+  }
+  const sellFee = new Decimal(money(rawSellFee))
+  const tax = new Decimal(money(taxableValue.mul(taxPct).div(100)))
+  const net = gross.sub(sellFee).sub(tax)
   return { totalContributedVnd: money(contributed), grossValueVnd: money(gross), sellFeeVnd: money(sellFee), taxVnd: money(tax), netValueVnd: money(net), netProfitVnd: money(net.sub(contributed)) }
 }

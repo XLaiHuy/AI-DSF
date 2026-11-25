@@ -3,8 +3,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, ArrowUpRight, ExternalLink, ShieldAlert, Sparkles } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useParams, useSearchParams } from 'next/navigation'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button } from '@/components/ui'
 import { CategoryArtwork } from '@/components/radar/CategoryArtwork'
 import { ApiError, apiClient } from '@/lib/api-client'
@@ -29,14 +30,23 @@ export default function RadarArticlePage() {
   const isAlert = search.get('kind') === 'alert'
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [analysisError, setAnalysisError] = useState('')
+  const [analyzing, setAnalyzing] = useState(false)
+  const activeAnalysis = useRef(false)
   const [imageFailed, setImageFailed] = useState(false)
   const article = useQuery({ queryKey: ['radar-article', id], queryFn: () => apiClient.get<ArticleDetail>(`/radar/articles/${encodeURIComponent(id)}`), enabled: !isAlert })
   const alert = useQuery({ queryKey: ['radar-alert', id], queryFn: () => apiClient.get<AlertDetail>(`/radar/alerts/${encodeURIComponent(id)}`), enabled: isAlert })
 
   async function analyze(mode: 'GENERAL' | 'PERSONALIZED') {
+    if (activeAnalysis.current) return
+    activeAnalysis.current = true
+    setAnalyzing(true)
     setAnalysisError('')
     try { setAnalysis(await apiClient.post<Analysis>(`/radar/articles/${encodeURIComponent(id)}/analyze`, { mode })) }
     catch (error) { setAnalysisError(error instanceof ApiError ? error.message : 'Phân tích chưa khả dụng.') }
+    finally {
+      activeAnalysis.current = false
+      setAnalyzing(false)
+    }
   }
 
   if ((isAlert && alert.isPending) || (!isAlert && article.isPending)) return <div className="radar-detail-state" role="status">Đang tải nội dung…</div>
@@ -82,7 +92,7 @@ export default function RadarArticlePage() {
       <h1>{data.title}</h1>
       <p className="detail-time">{data.publishedAt ? <>Công bố <time dateTime={data.publishedAt}>{formatDateTime(data.publishedAt) ?? 'chưa rõ thời gian'}</time></> : 'Chưa rõ thời gian công bố'}</p>
     </header>
-      {data.image && <figure className="detail-source-image">{imageFailed ? <CategoryArtwork categories={data.categories} /> : <img src={data.image.url} alt={data.image.alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setImageFailed(true)} />}<figcaption>{imageFailed ? 'Minh họa theo chủ đề' : <>{data.image.credit ? `Ảnh từ ${data.image.credit}` : 'Ảnh từ nguồn bài viết'}{data.image.sourceUrl && <> · <a href={data.image.sourceUrl} target="_blank" rel="noreferrer">Bài nguồn</a></>}</>}</figcaption></figure>}
+      {data.image && <figure className="detail-source-image">{imageFailed ? <CategoryArtwork categories={data.categories} /> : <Image unoptimized width={960} height={540} src={data.image.url} alt={data.image.alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setImageFailed(true)} />}<figcaption>{imageFailed ? 'Minh họa theo chủ đề' : <>{data.image.credit ? `Ảnh từ ${data.image.credit}` : 'Ảnh từ nguồn bài viết'}{data.image.sourceUrl && <> · <a href={data.image.sourceUrl} target="_blank" rel="noreferrer">Bài nguồn</a></>}</>}</figcaption></figure>}
       {!data.image && <figure className="detail-source-image detail-image-fallback"><CategoryArtwork categories={data.categories} /><figcaption>Chưa có ảnh bài viết; đây là minh họa chủ đề, không mô tả sự kiện cụ thể.</figcaption></figure>}
 
     <section className="detail-section provenance-section" aria-labelledby="provenance-heading">
@@ -96,7 +106,7 @@ export default function RadarArticlePage() {
         <div><p className="page-kicker">DIỄN GIẢI — KHÔNG PHẢI XÁC MINH</p><h2 id="analysis-heading">Phân tích tác động</h2></div>
       </div>
       <p className="detail-intro">Tin này có thể ảnh hưởng đến lãi suất, chi phí vay hoặc sức mua như thế nào? Phân tích tổng quát là mặc định. Nguồn Radar hiện cung cấp tiêu đề và metadata, không phải toàn văn đã đối chiếu. Cá nhân hóa là tùy chọn và chỉ dùng mục tiêu đã chọn trong hồ sơ.</p>
-      <div className="analysis-actions"><Button onClick={() => void analyze('GENERAL')} disabled={article.isFetching}><Sparkles size={15} aria-hidden="true"/> {article.isFetching ? 'Đang phân tích…' : 'Tin này có thể ảnh hưởng gì đến tôi?'}</Button><Button variant="outline" onClick={() => void analyze('PERSONALIZED')} disabled={article.isFetching}>Thêm mục tiêu hồ sơ vào phân tích</Button></div>
+      <div className="analysis-actions"><Button onClick={() => void analyze('GENERAL')} disabled={analyzing}><Sparkles size={15} aria-hidden="true"/> {analyzing ? 'Đang phân tích…' : 'Tin này có thể ảnh hưởng gì đến tôi?'}</Button><Button variant="outline" onClick={() => void analyze('PERSONALIZED')} disabled={analyzing}>Thêm mục tiêu hồ sơ vào phân tích</Button></div>
       {analysis && <p className="assumption-note"><span>{analysis.mode === 'PERSONALIZED' ? 'Cá nhân hóa có chọn lọc' : 'Chế độ tổng quát'}</span>{analysis.mode === 'PERSONALIZED' ? 'Diễn giải dựa trên mục tiêu tài chính đã lưu; không phải khuyến nghị hay phép tính.' : 'Không dùng dữ liệu hồ sơ cá nhân.'}</p>}
       {analysisError && <p role="alert" className="detail-error">{analysisError}</p>}
       {analysis?.unavailable && <p role="status" className="detail-muted">AI hiện chưa khả dụng; không tạo nhận định thay thế.</p>}

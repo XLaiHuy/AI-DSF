@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
-import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { expect, test, type Page, type Response, type TestInfo } from '@playwright/test'
 
 const qr1 = '00020101021238540010A00000072701240006970422011009876543210208QRIBFTTA5303704540725000005802VN62250821PHI GIAI NGAN LOI 1026304CA92'
 const entity = 'Công ty Tài chính ABC'
@@ -30,9 +30,24 @@ async function verifyLayout(page: Page, info: TestInfo, name: string) {
   await page.screenshot({ path: info.outputPath(`${name}.png`), fullPage: true })
 }
 
+async function persistedStreamedAudit(page: Page, response: Response) {
+  expect(response.status()).toBe(200)
+  expect(response.headers()['content-type']).toContain('text/event-stream')
+  const exportLink = page.getByRole('link', { name: 'Xuất báo cáo JSON' })
+  await expect(exportLink).toHaveAttribute('href', /^\/api\/v1\/forensic\/audits\/[\da-f-]+\/export$/i)
+  const path = await exportLink.getAttribute('href')
+  if (!path) throw new Error('The rendered audit has no export link')
+  const audit = await page.request.get(path.replace(/\/export$/, ''))
+  expect(audit.status(), audit.ok() ? '' : await audit.text()).toBe(200)
+  return audit.json()
+}
+
 for (const [name, viewport] of Object.entries(viewports)) {
-  test(`Phase 2 finance profile and VietQR flow on ${name}`, async ({ page, browser }, info) => {
+  test(`Phase 2 finance profile and VietQR flow on ${name}`, async ({ page, browser, baseURL }, info) => {
     test.setTimeout(160_000)
+    const liveApiCookie = { name: 'fincopilot_e2e_mode', value: 'phase-two', url: baseURL }
+    await page.context().addCookies([liveApiCookie])
+    await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.setViewportSize(viewport)
     const clientErrors: string[] = []
     page.on('pageerror', (error) => clientErrors.push(error.message))
@@ -40,7 +55,7 @@ for (const [name, viewport] of Object.entries(viewports)) {
       if (/hydration|did not match server/i.test(message.text())) clientErrors.push(message.text())
     })
 
-    await page.goto('/')
+    await page.goto('/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: 'Tổng quan tài chính' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Khảo sát nhanh khoản vay' })).toBeVisible()
     await verifyLayout(page, info, 'home')
@@ -78,12 +93,10 @@ for (const [name, viewport] of Object.entries(viewports)) {
     await expect(page.getByText('wallet.png', { exact: true })).toBeVisible()
     await verifyLayout(page, info, 'forensic-workbench')
     const auditRequest = page.waitForResponse((response) =>
-      response.url().endsWith('/api/v1/forensic/audit') && response.request().method() === 'POST',
+      response.url().endsWith('/api/v1/forensic/audit/stream') && response.request().method() === 'POST',
     { timeout: 85_000 })
     await page.getByRole('button', { name: 'Gửi giám định' }).click()
-    const created = await auditRequest
-    expect(created.status()).toBe(201)
-    const report = await created.json()
+    const report = await persistedStreamedAudit(page, await auditRequest)
     expect(report).toMatchObject({
       verdictLevel: 'HIGH_RISK', riskScore: 95, deterministicOverride: true,
       qrPayloads: expect.arrayContaining([
@@ -105,7 +118,7 @@ for (const [name, viewport] of Object.entries(viewports)) {
     await expect(page.getByText('Nguy hiểm cao', { exact: true }).first()).toBeVisible()
     const question = 'Mình đã chuyển rồi, giờ nên làm gì?'
     await page.getByRole('textbox', { name: 'Câu hỏi tiếp theo' }).fill(question)
-    const followUp = page.waitForResponse((response) => response.url().endsWith('/' + report.auditId + '/chat'))
+    const followUp = page.waitForResponse((response) => response.url().endsWith('/' + report.auditId + '/chat/stream'))
     await page.getByRole('button', { name: 'Gửi câu hỏi' }).click()
     const chat = await followUp
     expect(chat.status()).toBe(200)
@@ -118,14 +131,17 @@ for (const [name, viewport] of Object.entries(viewports)) {
       page.waitForEvent('download'),
       page.getByRole('link', { name: 'Xuất báo cáo JSON' }).click(),
     ])
-    expect(download.suggestedFilename()).toBe('fincopilot-' + report.auditId + '.json')
     const reportApi = '/api/v1/forensic/audits/' + report.auditId
     const exported = await page.request.get(reportApi + '/export')
     expect(exported.status()).toBe(200)
+    expect(exported.headers()['content-disposition']).toBe('attachment; filename="fincopilot-' + report.auditId + '.json"')
+    expect(download.suggestedFilename()).toBe('fincopilot-' + report.auditId + '.json')
+    expect(JSON.parse(readFileSync(await download.path(), 'utf8'))).toMatchObject({ auditId: report.auditId, verdictLevel: 'HIGH_RISK' })
     expect(await exported.json()).toMatchObject({ auditId: report.auditId, verdictLevel: 'HIGH_RISK',
       qrPayloads: expect.arrayContaining([expect.objectContaining({ qrScheme: 'EWALLET_VN', providerLabel: 'MoMo' })]) })
     const outsider = await browser.newContext()
     try {
+      await outsider.addCookies([liveApiCookie])
       const absolute = new URL(reportApi, page.url()).href
       expect((await outsider.request.get(absolute)).status()).toBe(404)
       expect((await outsider.request.get(absolute + '/export')).status()).toBe(404)
@@ -145,7 +161,7 @@ for (const [name, viewport] of Object.entries(viewports)) {
     const authCookie = (await page.context().cookies()).find(({ name }) => name === 'auth_token')
     expect({ httpOnly: authCookie?.httpOnly, sameSite: authCookie?.sameSite })
       .toEqual({ httpOnly: true, sameSite: 'Lax' })
-    await expect(page.locator('#monthlyIncomeVnd')).toHaveValue('18000000')
+    await expect(page.locator('#monthlyIncomeVnd')).toHaveValue('18 000 000')
     const savedReport = page.getByRole('link', { name: new RegExp(entity) })
     await expect(savedReport).toBeVisible()
     await verifyLayout(page, info, 'profile-user')
@@ -170,20 +186,24 @@ for (const [name, viewport] of Object.entries(viewports)) {
       await page.goto('/forensic')
       await page.getByRole('button', { name: 'Lãi phẳng và phí giữ lại' }).click()
       const quoteRequest = page.waitForResponse((response) =>
-        response.url().endsWith('/api/v1/forensic/audit') && response.request().method() === 'POST',
+        response.url().endsWith('/api/v1/forensic/audit/stream') && response.request().method() === 'POST',
       { timeout: 85_000 })
       await page.getByRole('button', { name: 'Gửi giám định' }).click()
-      const quote = await quoteRequest
-      expect(quote.status()).toBe(201)
-      const loan = await quote.json()
+      const loan = await persistedStreamedAudit(page, await quoteRequest)
       expect(loan.mathBreakdown).toMatchObject({
-        principalNetVnd: '45000000', effectiveAprPct: '30.7436', effectiveEarPct: '35.4678',
+        termMonths: 12, principalNetVnd: '45000000', effectiveAprPct: '40.2398', effectiveEarPct: '48.5569',
       })
       await expect(page).toHaveURL(/\/forensic$/)
-      await expect(page.getByText('APR · Lãi suất quy năm')).toBeVisible()
-      await expect(page.getByText('EAR · Lãi suất sau ghép lãi')).toBeVisible()
+      await page.getByText('Xem chi tiết kỹ thuật (APR / EAR)').click()
+      await expect(page.getByText('Lãi suất quy năm (APR)')).toBeVisible()
+      await expect(page.getByText('Lãi suất năm sau ghép lãi (EAR)')).toBeVisible()
       await page.getByRole('link', { name: 'Khảo sát phương án vay' }).click()
-      await expect(page).toHaveURL(/\/survey\?.*amount=50000000.*term=24.*from=forensic/)
+      await expect(page).toHaveURL(/\/survey\?/)
+      const query = new URL(page.url()).searchParams
+      expect(query.get('amount')).toBe('50000000')
+      expect(query.get('term')).toBe('12')
+      expect(query.get('from')).toBe('forensic')
+      expect(query.get('auditId')).toBe(loan.auditId)
     }
     expect(clientErrors).toEqual([])
   })

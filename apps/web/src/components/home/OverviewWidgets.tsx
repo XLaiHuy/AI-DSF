@@ -63,8 +63,8 @@ function QuickSurvey() {
     const amount = stripSpacedAmount(String(fields.get('amount')))
     const term = Number(fields.get('term'))
 
-    if (!/^\d{1,16}$/.test(amount) || !/[1-9]/.test(amount) || !Number.isSafeInteger(term) || term < 1) {
-      setError('Nhập số tiền nguyên lớn hơn 0 và kỳ hạn tính theo tháng.')
+    if (!/^\d{1,16}$/.test(amount) || !/[1-9]/.test(amount) || !Number.isInteger(term) || term < 1 || term > 600) {
+      setError('Nhập số tiền nguyên lớn hơn 0 và kỳ hạn từ 1 đến 600 tháng.')
       return
     }
 
@@ -88,7 +88,7 @@ function QuickSurvey() {
           </div>
           <div className="grid gap-2">
             <Label htmlFor="quick-term">Kỳ hạn (tháng)</Label>
-            <Input id="quick-term" name="term" className="font-numeric h-11" required type="number" min={1} defaultValue={24} />
+            <Input id="quick-term" name="term" className="font-numeric h-11" required type="number" min={1} max={600} defaultValue={24} />
           </div>
         </div>
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}

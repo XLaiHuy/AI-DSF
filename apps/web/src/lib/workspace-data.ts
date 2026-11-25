@@ -51,7 +51,8 @@ export function surveySessionLabel(mode: string) {
 }
 
 export function surveySessionHref(mode: string) {
-  return mode === 'LOAN_SURVEY' ? ROUTES.survey + '?mode=loan' : ROUTES.survey
+  const tab = mode === 'INVESTMENT_SURVEY' ? 'invest' : mode === 'MANUAL_COMPARE' ? 'manual' : 'loan'
+  return ROUTES.survey + '?mode=' + tab
 }
 
 const marketOverviewSchema = z.object({

@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { chromium } from '@playwright/test'
@@ -6,6 +6,10 @@ import { chromium } from '@playwright/test'
 const require = createRequire(import.meta.url)
 const { parse } = require(resolve('apps/api/node_modules/yaml'))
 const root = process.cwd()
+const args = process.argv.slice(2)
+if (args.length && (args.length !== 2 || args[0] !== '--out' || !args[1])) {
+  throw new Error('Usage: pnpm crawl:loan-rates [--out <path>]')
+}
 const config = parse(await readFile(resolve(root, 'config/loan-rate-sources.yaml'), 'utf8'))
 const crawledAt = new Date().toISOString()
 const ratePattern = /(?:lãi\s*(?:suất|vay)|lãi\s*suất\s*(?:ưu đãi|từ)|interest rate)[^\n%]{0,180}?([0-9]{1,2}(?:[.,][0-9]{1,4})?)\s*%/giu
@@ -77,4 +81,6 @@ try {
 
 console.error(`Loan-rate detail crawl complete: ${results.length} sources`)
 for (const result of results) console.error(`${result.institutionName}: ${result.status}${result.candidates?.length ? `, ${result.candidates.length} candidates` : ''}`)
-process.stdout.write(JSON.stringify({ crawledAt, status: 'PENDING_REVIEW', results }, null, 2) + '\n')
+const output = JSON.stringify({ crawledAt, status: 'PENDING_REVIEW', results }, null, 2) + '\n'
+if (args[1]) await writeFile(resolve(root, args[1]), output, 'utf8')
+else process.stdout.write(output)

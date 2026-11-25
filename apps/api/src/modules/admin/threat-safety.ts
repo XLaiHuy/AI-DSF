@@ -85,15 +85,19 @@ export async function resolvePublicTarget(url: URL, resolve: ResolveAddresses = 
   return addresses.find(({ family }) => family === 4) ?? addresses[0]
 }
 
-export async function fetchPublicDocument(raw: string) {
+export async function fetchPublicDocument(raw: string, options: { timeoutMs?: number; method?: 'HEAD' | 'GET' } = {}) {
   let url = new URL(raw)
-  const signal = AbortSignal.timeout(10_000)
+  const signal = AbortSignal.timeout(options.timeoutMs ?? 10_000)
   for (let hop = 0; hop < 4; hop += 1) {
-    const { address, family } = await resolvePublicTarget(url)
-    signal.throwIfAborted()
+    const { address, family } = await new Promise<Awaited<ReturnType<typeof resolvePublicTarget>>>((resolve, reject) => {
+      const onAbort = () => reject(signal.reason)
+      signal.throwIfAborted()
+      signal.addEventListener('abort', onAbort, { once: true })
+      void resolvePublicTarget(url).then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+    })
     const next = await new Promise<{ redirect: string } | { text: string }>((resolve, reject) => {
       const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
-        agent: false, signal, family,
+        agent: false, signal, family, method: options.method,
         // Use the validated address for the connection while preserving the original TLS hostname.
         lookup: (_host, _options, callback) => callback(null, address, family),
         headers: {
@@ -107,6 +111,11 @@ export async function fetchPublicDocument(raw: string) {
         if (status >= 300 && status < 400 && response.headers.location) {
           response.destroy()
           resolve({ redirect: response.headers.location })
+          return
+        }
+        if (options.method === 'HEAD' && status >= 200 && status < 300) {
+          response.resume()
+          resolve({ text: '' })
           return
         }
         const contentType = response.headers['content-type'] ?? ''

@@ -54,7 +54,7 @@ Chọn một trong ba tab:
 Nhập dữ liệu và bấm tính toán
         |
         v
-Frontend gọi API survey-calc
+Frontend gọi API Survey hoặc Calculator
         |
         +--> Kiểm tra Trust Filter
         |      Tổ chức không hợp pháp -> chuyển /forensic
@@ -87,23 +87,33 @@ Base URL khi chạy local: `http://localhost:4000`.
 
 | Mục đích | Method | Endpoint |
 |---|---:|---|
-| Tính khảo sát vay | POST | `/survey-calc/loan` |
-| Tính đầu tư / tích lũy | POST | `/survey-calc/investment` |
-| So sánh số liệu tự nhập | POST | `/survey-calc/manual` |
-| Lấy lịch sử khảo sát | GET | `/survey-calc/history` |
+| Tính khảo sát vay | POST | `/api/v1/survey/loan` |
+| Tính đầu tư / tích lũy | POST | `/api/v1/survey/investment` |
+| So sánh số liệu tự nhập | POST | `/api/v1/calculator/manual-compare` |
+| Lấy lịch sử khảo sát | GET | `/api/v1/survey/history` |
 
 Ví dụ body khảo sát vay:
 
 ```json
 {
-  "principal": 1000000000,
+  "principalVnd": "1000000000",
   "termMonths": 120,
-  "annualRatePct": 10.8,
-  "income": 30000000,
-  "existingDebtPayment": 3000000,
-  "organizationName": "Ngân hàng hợp pháp"
+  "productCategory": "SECURED_LOAN",
+  "priority": "LOWEST_APR",
+  "checkEntityName": "BIDV",
+  "dtiOverride": {
+    "monthlyIncomeVnd": "30000000",
+    "monthlyExpenseVnd": "12000000",
+    "existingDebtPaymentVnd": "3000000"
+  }
 }
 ```
+
+Kỳ hạn từ 1 đến 600 tháng. Tiền và lãi suất truyền dưới dạng chuỗi thập phân. Phí trả trước làm giảm tiền thực nhận và được phản ánh trong APR qua dòng tiền. Gói thả nổi hiển thị giả định về lãi tương lai khi nguồn chưa có đủ dữ liệu.
+
+`POST /api/v1/admin/products/sync` nhập danh mục UTF-8 từ `config/loan-rate-snapshot.json`. Trang nguồn được kiểm tra khả năng truy cập độc lập với việc đối chiếu mức lãi. Dùng `pnpm crawl:loan-rates --out test-results/loan-rate-candidates.json` để xuất ứng viên cần rà soát.
+
+Danh mục ghi ngày hiệu lực khi nguồn công bố ngày đó. Các mức quan sát và lịch sử có ghi chú riêng. Ví dụ, mức gửi VietinBank tháng 5 được lưu dưới dạng tham khảo lịch sử. [Bản chụp biểu công bố ngày 08/05/2026](https://storage.googleapis.com/vinhomes-data-02/2026.05.13_VHMB2126003_TB%20LS%20CHO%20KY%20TINH%20LAI%2019_0.pdf)
 
 ## 4. Công thức khoản vay
 
@@ -201,10 +211,11 @@ Tổng nghĩa vụ = Khoản vay mới hàng tháng + Các khoản nợ hiện t
 Mức diễn giải mặc định:
 
 - `<= 35%`: tương đối an toàn.
-- `> 35%` đến `50%`: cần thận trọng.
+- `> 35%` đến `45%`: cần thận trọng.
+- `> 45%` đến `50%`: áp lực cao.
 - `> 50%`: rủi ro cao, nên giảm khoản vay hoặc tăng thu nhập.
 
-Nếu thu nhập bằng `0`, hệ thống không chia số và trả trạng thái DTI không hợp lệ.
+Nếu thu nhập bằng `0`, hệ thống trả DTI `null` với trạng thái `UNAVAILABLE` và vẫn tính dòng tiền còn lại.
 
 ## 7. Lãi kép và tích lũy định kỳ
 

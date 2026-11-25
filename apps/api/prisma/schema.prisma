@@ -237,6 +237,11 @@ model FinancialProduct {
   upfrontFeeRate         Decimal?             @default(0) @map("upfront_fee_rate") @db.Decimal(7, 4)
   monthlyFeeVnd          Decimal?             @default(0) @map("monthly_fee_vnd") @db.Decimal(18, 2)
   earlySettlementFeeRate Decimal?             @default(0) @map("early_settlement_fee_rate") @db.Decimal(7, 4)
+  redemptionFeeTiers     Json?                @map("redemption_fee_tiers")
+  investmentTaxPct       Decimal?             @map("investment_tax_pct") @db.Decimal(7, 4)
+  investmentTaxFreeAfterMonths Int?           @map("investment_tax_free_after_months")
+  rateNote               String?              @map("rate_note") @db.Text
+  catalogSyncFingerprint String?             @map("catalog_sync_fingerprint") @db.Char(64)
   minAmountVnd           Decimal              @map("min_amount_vnd") @db.Decimal(18, 2)
   maxAmountVnd           Decimal              @map("max_amount_vnd") @db.Decimal(18, 2)
   minTermMonths          Int                  @map("min_term_months")

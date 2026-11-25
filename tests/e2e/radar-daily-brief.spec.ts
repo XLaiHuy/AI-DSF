@@ -58,8 +58,8 @@ test('Bản tin ngày hiển thị 0, 1, 3, 5, 10 và hơn 10 mục đúng trạ
   }
 })
 
-test('Daily brief chụp ảnh desktop/mobile và mở rộng không che điều hướng', async ({ browser }) => {
-  const path = 'docs/design/screenshots'
+test('Daily brief chụp ảnh desktop/mobile và mở rộng không che điều hướng', async ({ browser }, info) => {
+  const path = info.outputPath('screenshots')
   await mkdir(path, { recursive: true })
   for (const viewport of [
     { width: 1440, height: 900, key: 'desktop' },
@@ -79,7 +79,7 @@ test('Daily brief chụp ảnh desktop/mobile và mở rộng không che điều
     if (viewport.key === 'mobile') {
       const nav = page.getByRole('navigation', { name: 'Điều hướng chính' })
       await expect(nav).toBeVisible()
-      await nav.getByRole('link', { name: 'Radar' }).click()
+      await nav.getByRole('link', { name: 'Tin & Cảnh báo' }).click()
       await expect(page).toHaveURL(/\/radar$/)
       await page.setViewportSize({ width: 320, height: 844 })
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

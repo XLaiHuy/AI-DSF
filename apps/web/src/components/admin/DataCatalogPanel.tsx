@@ -1,6 +1,6 @@
 'use client'
 
-import { CalcMethod, ProductCategory, RateType, ThreatCrawlStatsSchema } from '@fincopilot/shared-types'
+import { AdminProductSyncResultSchema, CalcMethod, ProductCategory, RateType, ThreatCrawlStatsSchema } from '@fincopilot/shared-types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, RefreshCw } from 'lucide-react'
 import { useRef, useState, type ReactNode } from 'react'
@@ -48,6 +48,8 @@ export function DataCatalogPanel({ credentials }: { credentials: AdminCredential
   onSuccess: () => { setEditing(null); void queryClient.invalidateQueries({ queryKey: [...stem, 'products'] }) } })
   const toggle = useMutation({ mutationFn: (product: Product) => client.patch(`/products/${product.id}`, { isActive: !product.isActive }),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: [...stem, 'products'] }) } })
+  const sync = useMutation({ mutationFn: () => client.post('/products/sync', {}, AdminProductSyncResultSchema),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: [...stem, 'products'] }) } })
   const openEditor = (product: Product | 'new') => {
     setEditing(product)
     save.reset()
@@ -78,10 +80,16 @@ export function DataCatalogPanel({ credentials }: { credentials: AdminCredential
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="catalog-products" className="text-lg font-semibold">Kho sản phẩm</h2>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" disabled>Đồng bộ lãi suất uy tín</Button>
+          <Button type="button" variant="outline" disabled={sync.isPending} onClick={() => sync.mutate()}>
+            {sync.isPending ? 'Đang đồng bộ…' : 'Đồng bộ lãi suất uy tín'}
+          </Button>
           <Button type="button" onClick={() => openEditor('new')}><Plus size={15} aria-hidden="true" /> Thêm sản phẩm</Button>
         </div>
       </div>
+      {sync.data && <p role="status" className="text-sm text-muted-foreground">
+        Truy cập được {sync.data.sourcesReachable}/{sync.data.sourcesChecked} nguồn · {sync.data.productsUpserted} gói đã đồng bộ · {sync.data.productsActivated} gói được kích hoạt
+      </p>}
+      {sync.isError && <p role="alert" className="text-sm text-destructive">{requestError(sync.error, 'Không đồng bộ được danh mục lãi suất.')}</p>}
       {products.isError && <p role="alert" className="text-sm text-destructive">{requestError(products.error, 'Không đọc được kho sản phẩm.')}</p>}
       {products.isPending && <p role="status" className="text-sm text-muted-foreground">Đang tải sản phẩm…</p>}
       {products.data?.length === 0 && <p className="text-sm text-muted-foreground">Kho sản phẩm đang trống.</p>}

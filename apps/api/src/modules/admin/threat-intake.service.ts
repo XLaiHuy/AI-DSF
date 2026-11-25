@@ -7,8 +7,8 @@ import { PrismaService } from '../../common/prisma.service'
 import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { normalizeVietnamese } from '../forensic/data/trusted-institutions'
 import { maskForensicText } from '../forensic/qr-evidence'
-import { matchesTrustedIdentity } from '../forensic/threat-iocs'
-import { embeddingCosine, readThreatEmbedding, ThreatMemoryService } from '../forensic/threat-memory.service'
+import { attachThreatDraft } from '../forensic/threat-draft'
+import { ThreatMemoryService } from '../forensic/threat-memory.service'
 import { articleBody, fetchPublicDocument, normalizeThreatIndicator, stripDocument } from './threat-safety'
 
 export const threatIntakeQueue = 'admin-threat-intake'
@@ -206,43 +206,11 @@ export class ThreatIntakeService extends WorkerHost implements OnModuleInit {
               update: { lastSeenAt: attemptedAt },
             })
             if (!candidate) return { newArticle, proposal: 0, attached: 0 }
-            await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtextextended('threat-intake-alert-dedup', 0))`
-            const { indicators, ...draft } = candidate.data
-            const publisherHost = new URL(entry.url).hostname
-            const usable = indicators.filter(({ indicatorType, indicatorText }) =>
-              !matchesTrustedIdentity(indicatorText, candidate.trusted) &&
-              !(indicatorType === 'DOMAIN' && (publisherHost === indicatorText || publisherHost.endsWith('.' + indicatorText))))
-            const hardIocs = usable.filter(({ indicatorType }) => indicatorType !== 'KEYWORD')
-            const exact = hardIocs.length ? await tx.threatAlert.findFirst({ where: { indicators: { some: { OR: hardIocs.map(({ indicatorType, indicatorText }) => ({
-              indicatorType, indicatorText: { in: [indicatorText, this.memory.fingerprint(indicatorType, indicatorText)], mode: 'insensitive' },
-            })) } } }, orderBy: [{ verificationStatus: 'desc' }, { createdAt: 'asc' }], select: { id: true } }) : null
-            const title = normalizeVietnamese(maskForensicText(entry.title))
-            const existing = exact ?? (await tx.threatAlert.findMany({
-              orderBy: [{ verificationStatus: 'desc' }, { createdAt: 'asc' }],
-              select: { id: true, embeddingJson: true, embeddingModel: true,
-                evidence: { select: { articleSource: { select: { article: { select: { title: true } } } } } } },
-            })).find((row) => {
-              const prior = readThreatEmbedding(row.embeddingJson)
-              return row.evidence.some(({ articleSource }) => normalizeVietnamese(articleSource.article.title) === title) ||
-                Boolean(embedding && prior && embedding.model === row.embeddingModel && embeddingCosine(embedding.vector, prior) >= 0.90)
+            const result = await attachThreatDraft(tx, this.memory, {
+              source: { articleId, sourceId: source.id, url: entry.url, title: entry.title, publishedAt: entry.publishedAt },
+              draft: candidate.data, trusted: candidate.trusted, origin: 'ADMIN_INGEST', embedding,
             })
-            if (existing) {
-              const attached = await tx.threatEvidence.createMany({
-                data: { threatAlertId: existing.id, articleId, sourceId: source.id }, skipDuplicates: true,
-              })
-              if (attached.count) await tx.threatAlert.update({ where: { id: existing.id }, data: { hitCount: { increment: 1 } } })
-              return { newArticle, proposal: 0, attached: 0 }
-            }
-            await tx.threatAlert.create({ data: {
-              ...draft, id: randomUUID(), originSource: 'ADMIN_INGEST', issuedAt: entry.publishedAt,
-              embeddingJson: embedding?.vector, embeddingModel: embedding?.model,
-              evidence: { create: { articleId, sourceId: source.id } },
-              indicators: { create: usable.map((item) => ({ id: randomUUID(), ...item,
-                indicatorText: item.indicatorType === 'PHONE' || item.indicatorType === 'BANK_ACCOUNT'
-                  ? this.memory.fingerprint(item.indicatorType, item.indicatorText) : item.indicatorText,
-              })) },
-            } })
-            return { newArticle, proposal: 1, attached: usable.length }
+            return { newArticle, ...result }
           })
           if (!result) { stats.skippedDuplicates += 1; continue }
           if (result.newArticle) stats.newArticles += 1

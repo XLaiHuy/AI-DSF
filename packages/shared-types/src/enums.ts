@@ -14,7 +14,7 @@ export const RuleCode = z.enum([
 ])
 export type RuleCode = z.infer<typeof RuleCode>
 
-export const DtiRiskBand = z.enum(['SAFE', 'MODERATE', 'HIGH_PRESSURE', 'CRITICAL_OVERLOAD'])
+export const DtiRiskBand = z.enum(['SAFE', 'MODERATE', 'HIGH_PRESSURE', 'CRITICAL_OVERLOAD', 'UNAVAILABLE'])
 export type DtiRiskBand = z.infer<typeof DtiRiskBand>
 
 export const DataProvenance = z.enum(['CATALOG_VERIFIED', 'WEB_REFERENCE'])

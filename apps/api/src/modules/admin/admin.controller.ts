@@ -109,6 +109,11 @@ export class AdminController {
     return this.service.createProduct(body)
   }
 
+  @Post('products/sync')
+  syncProducts() {
+    return this.service.syncProducts()
+  }
+
   @Patch('products/:id')
   updateProduct(@Param('id') id: string, @Body() body: Record<string, unknown>) {
     return this.service.updateProduct(id, body)
