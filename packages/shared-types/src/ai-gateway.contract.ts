@@ -14,6 +14,7 @@ export const AI_TASK_SCHEMAS = {
     topics: z.array(z.string()),
     extractedFacts: z.array(z.string()),
     aiAssessment: z.string(),
+    // Only return a delta when a source explicitly states the before/after rate values.
     suggestedRateDelta: decimalString.nullable(),
     isFraudAlert: z.boolean(),
     indicators: z.array(ThreatIndicatorSchema),
@@ -24,6 +25,13 @@ export const AI_TASK_SCHEMAS = {
     tacticSummary: z.string().trim().min(1).max(800),
     preventionGuidance: z.string().trim().min(1).max(2000),
     indicators: z.array(ThreatIndicatorInputSchema).max(40),
+  }),
+  RADAR_DAILY_BRIEF: z.strictObject({
+    items: z.array(z.strictObject({
+      referenceId: z.uuid(),
+      summary: z.string().trim().min(1).max(240),
+      interpretation: z.string().trim().max(280).nullable(),
+    })).max(10),
   }),
   SURVEY_WEB_LOOKUP: z.discriminatedUnion('found', [
     z.strictObject({

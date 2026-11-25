@@ -1,5 +1,7 @@
 # FINCOPILOT — Hướng thiết kế Radar
 
+> **Tài liệu lịch sử.** Hướng thiết kế ban đầu chỉ áp dụng cho prototype Radar. Hướng hiện hành, gồm Radar và các màn hiện hữu trong phạm vi, nằm tại [docs/design/DESIGN_DIRECTION.md](design/DESIGN_DIRECTION.md); tokens dùng chung được đặc tả trong [Design System](design/DESIGN_SYSTEM.md).
+
 ## Mục tiêu
 
 Thiết kế giao diện Radar như một công cụ đọc thông tin tài chính có xuất xứ rõ ràng: người đọc lướt tiêu đề, nhận biết thời điểm và nguồn, rồi quyết định mở bài phân tích hoặc nguồn gốc. Không trình bày AI như nhân vật chính, không khiến suy luận AI bị hiểu thành sự kiện đã được xác minh.

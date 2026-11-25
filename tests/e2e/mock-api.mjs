@@ -7,9 +7,17 @@ const article = {
   title: 'NHNN điều chỉnh định hướng lãi suất cho vay',
   canonicalUrl: 'https://example.test/rate-news',
   publishedAt: '2026-11-20T08:00:00.000Z',
-  categories: ['INTEREST_RATE'],
+  categories: ['INTEREST_RATE'], image: null,
   sources: [{ sourceId: '33333333-3333-4333-8333-333333333333', sourceKey: 'nhnn', sourceName: 'NHNN', url: 'https://example.test/rate-news', firstSeenAt: '2026-11-20T08:30:00.000Z', lastSeenAt: '2026-11-20T08:30:00.000Z' }],
 }
+const articleCount = Number(process.env.MOCK_ARTICLE_COUNT ?? 1)
+const articles = Array.from({ length: Number.isInteger(articleCount) && articleCount > 0 ? Math.min(articleCount, 100) : 0 }, (_, index) => ({
+  ...article,
+  id: index === 0 ? articleId : `11111111-1111-4111-8111-${String(index + 1).padStart(12, '0')}`,
+  title: index === 0 ? article.title : `${article.title} — cập nhật ${index + 1}`,
+  canonicalUrl: index === 0 ? article.canonicalUrl : `https://example.test/rate-news-${index + 1}`,
+  sources: article.sources.map((source) => ({ ...source, url: index === 0 ? source.url : `https://example.test/rate-news-${index + 1}` })),
+}))
 const alert = {
   id: alertId,
   threatCategory: 'PHISHING',
@@ -41,16 +49,37 @@ const server = createServer(async (request, response) => {
     response.end(JSON.stringify({ status: 'ok' }))
     return
   }
+  if (process.env.MOCK_RADAR_ERROR === '1' && request.method === 'GET' && request.url?.startsWith('/api/v1/radar/articles')) {
+    response.statusCode = 503
+    response.end(JSON.stringify({ errorCode: 'ERR_INTERNAL_SERVER', message: 'Nguồn Radar tạm gián đoạn (fixture kiểm thử).' }))
+    return
+  }
   if (request.method === 'GET' && request.url === `/api/v1/radar/articles/${articleId}`) {
     response.end(JSON.stringify({ ...article, analysis: null }))
     return
   }
+  if (request.method === 'GET' && request.url === '/api/v1/radar/articles/highlights') {
+    response.end(JSON.stringify({ items: articles.map((item) => ({ ...item, editorialPriority: 'HIGH', priorityReasons: ['Tin mới công bố', 'Có cảnh báo đã xác minh liên quan'] })), ranking: 'Recency and editorial relevance' }))
+    return
+  }
+  if (request.method === 'POST' && request.url === '/api/v1/radar/daily-brief') {
+    response.end(JSON.stringify({
+      date: '2026-11-24', dateLabel: '24/11/2026', status: 'EMPTY', updatedAt: new Date().toISOString(), isStale: false,
+      personalization: { enabled: false, usedSignals: [] }, items: [],
+    }))
+    return
+  }
   if (request.method === 'GET' && request.url?.startsWith('/api/v1/radar/articles')) {
-    response.end(JSON.stringify({ items: [article], page: { limit: 20, hasMore: false, nextCursor: null }, sources: [] }))
+    const requestUrl = new URL(request.url, 'http://localhost')
+    const items = requestUrl.searchParams.get('category') === 'FINANCIAL_FRAUD' ? [] : articles
+    response.end(JSON.stringify({ items, page: { limit: 100, hasMore: false, nextCursor: null }, sources }))
     return
   }
   if (request.method === 'POST' && request.url === `/api/v1/radar/articles/${articleId}/analyze`) {
-    response.end(JSON.stringify({ mode: 'GENERAL', facts: ['Nguồn nêu diễn biến lãi suất.'], assessment: 'Có thể ảnh hưởng chi phí vay; đây là nhận định tổng quát.', suggestedRateDelta: '-1.0', assumptions: ['Không có hồ sơ R07.'], citations: [{ sourceName: 'NHNN', url: 'https://example.test/rate-news' }] }))
+    let body = ''
+    for await (const chunk of request) body += chunk
+    const mode = JSON.parse(body || '{}').mode === 'PERSONALIZED' ? 'PERSONALIZED' : 'GENERAL'
+    response.end(JSON.stringify({ mode, facts: ['Nguồn nêu diễn biến lãi suất.'], assessment: 'Có thể ảnh hưởng chi phí vay; đây là nhận định tổng quát.', suggestedRateDelta: null, assumptions: ['Không có hồ sơ R07.'], citations: [{ sourceName: 'NHNN', url: 'https://example.test/rate-news' }] }))
     return
   }
   if (request.method === 'GET' && request.url === '/api/v1/radar/alerts') {

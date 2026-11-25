@@ -46,3 +46,39 @@ export const RadarAlertSchema = z.strictObject({
   indicators: z.array(ThreatIndicatorSchema),
 })
 export type RadarAlertResponse = z.infer<typeof RadarAlertSchema>
+
+export const RadarDailyBriefRequestSchema = z.strictObject({
+  personalizationEnabled: z.boolean().default(false),
+  topics: z.array(z.enum(['INTEREST_RATE', 'BANKING', 'MARKET', 'POLICY', 'INFLATION', 'FINANCIAL_FRAUD'])).max(6).default([]),
+  includeProfileGoal: z.boolean().default(false),
+  includeSurveyTopics: z.boolean().default(false),
+  includeForensicHistory: z.boolean().default(false),
+}).refine((value) => value.personalizationEnabled || (!value.includeProfileGoal && !value.includeSurveyTopics && !value.includeForensicHistory), 'Tắt cá nhân hóa thì không gửi tín hiệu hồ sơ, Khảo sát hoặc Giám định.')
+
+export type RadarDailyBriefRequest = z.infer<typeof RadarDailyBriefRequestSchema>
+
+export const RadarDailyBriefResponseSchema = z.strictObject({
+  date: z.iso.date(),
+  dateLabel: z.string(),
+  status: z.enum(['AI_SUMMARY', 'SOURCE_FALLBACK', 'EMPTY']),
+  updatedAt: z.iso.datetime(),
+  isStale: z.boolean(),
+  personalization: z.strictObject({
+    enabled: z.boolean(),
+    usedSignals: z.array(z.strictObject({ categoryCode: z.string(), source: z.enum(['PROFILE_GOAL', 'SURVEY_TOPIC', 'FORENSIC_HISTORY']) })),
+  }),
+  items: z.strictObject({
+    id: z.uuid(),
+    kind: z.enum(['ARTICLE', 'ALERT']),
+    summary: z.string(),
+    interpretation: z.string().nullable(),
+    generatedByAi: z.boolean(),
+    category: z.string(),
+    publishedAt: z.iso.datetime().nullable(),
+    verificationStatus: z.string().nullable(),
+    inclusionReason: z.string(),
+    relevance: z.string().nullable(),
+    citations: z.array(z.strictObject({ sourceName: z.string(), sourceTitle: z.string(), url: z.url(), publishedAt: z.iso.datetime().nullable() })),
+  }).array().max(10),
+})
+export type RadarDailyBriefResponse = z.infer<typeof RadarDailyBriefResponseSchema>
