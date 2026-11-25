@@ -24,7 +24,7 @@ import { classifyFollowUpIntent, prepareFollowUp, statedTransferAmount } from '.
 import { evaluatePersonalImpact } from './personal-impact.engine'
 import { selectLegalCitations } from './data/vn-legal-registry'
 import { ChannelIntelligenceService } from './channel-intelligence.service'
-import { expandTeencode, forensicRefusal, shouldRefuseForensicPrompt } from './forensic-prompt-guard'
+import { expandTeencode, forensicRefusal, inspectForensicInput, stripZeroWidthAndBidi } from './forensic-prompt-guard'
 import { extractThreatIocs } from './threat-iocs'
 import { ThreatMemoryService } from './threat-memory.service'
 
@@ -67,6 +67,7 @@ const stageLabels: Record<ForensicAuditStage['step'], string> = {
 }
 
 function redactKnown(text: string, replacements: Map<string, string>) {
+  text = stripZeroWidthAndBidi(text)
   for (const [value, masked] of replacements) {
     const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     text = text.replace(new RegExp(escaped, 'giu'), () => masked)
@@ -93,10 +94,10 @@ export class ForensicService {
   ) {}
 
   async screenAudit(fields: ForensicAuditFields, files: readonly Upload[]) {
-    if (files.length || fields.rawQrString || fields.claimedEntityName || !fields.rawText) return null
-    if (!shouldRefuseForensicPrompt(fields.rawText)) return null
-    const memory = await this.threatMemory?.get()
-    return shouldRefuseForensicPrompt(fields.rawText, memory?.aliases) ? forensicRefusal : null
+    if (files.length || fields.rawQrString || !fields.rawText) return null
+    const inspection = inspectForensicInput(fields.rawText, this.threatMemory?.cachedAliases())
+    if (!inspection.refuseDirect || (fields.claimedEntityName && !inspection.strippedControlSpans)) return null
+    return forensicRefusal
   }
 
   private async loadInstitutions() {
@@ -180,6 +181,7 @@ export class ForensicService {
       loan: evidence.loan,
       conditionalLoan: evidence.conditionalLoan,
       intentSignals: evidence.intentSignals,
+      hasPromptTampering: evidence.hasPromptTampering,
     })
     const insufficientEvidence = !evidence.evidence.length && !evidence.qrPayloads.some((qr) => qr.crcValid)
     const needsReview = rules.verdictLevel === 'SAFE' &&
@@ -291,7 +293,8 @@ export class ForensicService {
       if (!generated) return null
       const original = generated.output.narrative
       const text = completeNarrativePayment(redact(original), dossier)
-      const grounded = isGroundedForensicNarrative(original, dossier) && isGroundedForensicNarrative(text, dossier)
+      const grounded = Boolean(screened(original, false)) &&
+        isGroundedForensicNarrative(original, dossier) && isGroundedForensicNarrative(text, dossier)
       const paymentMentioned = mentionsCasePayment(text, dossier)
       return { generated, text, grounded, paymentMentioned, accepted: grounded && paymentMentioned }
     }
@@ -300,7 +303,7 @@ export class ForensicService {
     if (narrativeRetried) candidate = await generateNarrative(true) ?? candidate
     const narrative = candidate?.accepted ? candidate : null
     const actions = (candidate?.generated.output.immediateActions ?? [])
-      .filter((action) => isGroundedForensicNarrative(action, dossier)).map(redact)
+      .filter((action) => screened(action, false) && isGroundedForensicNarrative(action, dossier)).map(redact)
     const degradedMode = evidence.visionDegraded || !narrative || (shouldReason && !reasoning)
     benchmark?.onReport({
       baselineVerdict: baseline.verdictLevel,
@@ -380,7 +383,7 @@ export class ForensicService {
 
   private async prepareReply(session: SessionContext, id: string, input: ForensicFollowUpRequest) {
     const audit = await this.read(session, id)
-    const aliases = shouldRefuseForensicPrompt(input.question) ? (await this.threatMemory?.get())?.aliases : undefined
+    const aliases = this.threatMemory?.cachedAliases()
     const profile = classifyFollowUpIntent(input.question, audit, aliases) === 'NEW_CONTEXT' ? await this.loadFinancialProfile(session) : null
     return prepareFollowUp(audit, input, profile, aliases)
   }

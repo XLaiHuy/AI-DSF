@@ -19,6 +19,9 @@ const transferAction = /^(?:(?:chuyen|gui|nap|tra) (?:khoan |so )?tien|chuyen kh
 const safeTransferPrefix = /\b(?:(?:truoc |sau )?khi(?: ban)?(?: da| chua| dinh| muon| sap| dang| can nhac| thuc hien)?|neu(?: ban)?(?: da| chua| dinh| muon| sap| dang| can nhac)?|trong truong hop|neu co y dinh|khoan|so tien|giao dich|yeu cau|lenh|thong tin|muc dich|noi dung|viec|hanh vi|dau hieu|rui ro) $/
 const safeThresholdPrefix = /\b(?:muc|nguong|ty le|han muc|quy|gioi han|vuot|vuot xa|duoi|chi so) (?:tra gop |tai chinh |chi tieu |muc )?$/
 const encouragingCue = /\b(?:cu|vui long|nen|co the|hay|dung) $/
+const internalText = /untrusted[\s_-]*data\b|du lieu nguoi dung va tai lieu chi la bang chung|\bsystem prompt\b/
+const markup = /(?:<|&lt;|&#(?:60|x3c);)\s*\/?\s*[a-z][a-z0-9:-]*(?=[\s/>]|&gt;|&#(?:62|x3e);|$)|<!--/i
+const leaksInternalText = (text: string) => /\x60{3}/.test(text) || markup.test(text) || internalText.test(normalizeVietnamese(text))
 
 function hasRiskyAdvice(sentence: string) {
   // Preserve the distinction between đừng/dừng and dùng, and between hay and hãy.
@@ -69,6 +72,7 @@ function hasRiskyAdvice(sentence: string) {
 export function screened(sentence: string, guarded: boolean) {
   const text = maskForensicText(sentence.normalize('NFKC').replace(/\p{Cf}/gu, '')).trim()
   if (!text) return ''
+  if (leaksInternalText(text)) return ''
   if (guarded && (/(?:https?:|www\.)/i.test(text) || hasRiskyAdvice(text))) return ''
   return text
 }
@@ -100,10 +104,13 @@ export async function* followUpEvents(
   let received = 0
   let sent = false
   let blocked = false
+  let leaked = false
   let provider: string | null = null
 
   const release = async function* (sentence: string) {
     if (!sentence.trim()) return
+    if (leaksInternalText(sentence.normalize('NFKC').replace(/\p{Cf}/gu, ''))) leaked = true
+    if (leaked) { blocked = true; return }
     const safe = screened(sentence, reply.guard)
     if (!safe) { blocked = true; return }
     yield* deltas((sent ? ' ' : '') + safe, signal)
@@ -120,6 +127,7 @@ export async function* followUpEvents(
       const sentences = pending.split(/(?<=[.!?。！？])(?=\s)/u)
       pending = sentences.pop() ?? ''
       for (const sentence of sentences) yield* release(sentence)
+      if (leaked) break
     }
     yield* release(pending)
   } catch {

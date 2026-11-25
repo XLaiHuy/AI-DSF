@@ -189,6 +189,7 @@ Table financial_products {
   id uuid [pk]
   institution_id uuid [not null, ref: > financial_institutions.id]
   product_category varchar(30) [not null, note: 'UNSECURED_LOAN | SECURED_LOAN | SAVING | ACCUMULATION | OPEN_FUND']
+  loan_use_case varchar(40) [note: 'UNSECURED_SALARY | HOME_MORTGAGE | AUTO_LOAN | BUSINESS_WORKING_CAPITAL | CONSUMER_FLAT_INSTALLMENT']
   product_name varchar(200) [not null]
   calc_method varchar(30) [not null, note: 'REDUCING_BALANCE | DECLINING_PRINCIPAL | FLAT_RATE | COMPOUND_DCA']
   rate_type varchar(20) [not null, note: 'FIXED | FLOATING | PROMO_THEN_FLOATING | VARIABLE_NAV']

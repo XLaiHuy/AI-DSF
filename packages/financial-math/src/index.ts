@@ -77,6 +77,53 @@ export function effectiveLoanApr(principalNet: Decimal.Value, schedule: readonly
   return pct(low.add(high).mul(600))
 }
 
+/** Pays the scheduled installment first, then closes the outstanding balance that month. */
+export function simulateEarlySettlement(
+  principalNet: Decimal.Value, schedule: readonly ScheduleRow[], settleAtMonth: number, feePct: Decimal.Value,
+) {
+  if (!Number.isInteger(settleAtMonth) || settleAtMonth < 1 || settleAtMonth > schedule.length) {
+    throw new RangeError('Settlement month must be within the loan term')
+  }
+  const feeRate = new Decimal(feePct)
+  if (!feeRate.isFinite() || feeRate.lt(0)) throw new RangeError('Settlement fee must be nonnegative')
+  const scheduled = schedule[settleAtMonth - 1]
+  const remainingPrincipal = new Decimal(scheduled.remainingBalanceVnd)
+  const penaltyFeeVnd = money(remainingPrincipal.mul(feeRate).div(100))
+  const exitPayment = new Decimal(scheduled.paymentVnd).add(remainingPrincipal).add(penaltyFeeVnd)
+  const shortened = [...schedule.slice(0, settleAtMonth - 1), { ...scheduled, paymentVnd: money(exitPayment) }]
+  return {
+    month: settleAtMonth,
+    penaltyFeeVnd,
+    remainingPrincipalVnd: money(remainingPrincipal),
+    totalPaidUntilExitVnd: money(Decimal.sum(...shortened.map(({ paymentVnd }) => paymentVnd))),
+    effectiveAprAtExitPct: effectiveLoanApr(principalNet, shortened),
+  }
+}
+
+export function summarizeAmortizationForChart(schedule: readonly ScheduleRow[], stressSchedule?: readonly ScheduleRow[]) {
+  const stressByMonth = new Map(stressSchedule?.map(({ month, paymentVnd }) => [month, paymentVnd]))
+  const points: (ScheduleRow & { stressPaymentVnd?: string })[] = []
+  const step = schedule.length <= 36 ? 1 : 12
+  for (let start = 0; start < schedule.length; start += step) {
+    const bucket = schedule.slice(start, start + step)
+    const closing = bucket[bucket.length - 1]
+    const sum = (key: 'paymentVnd' | 'principalVnd' | 'interestVnd' | 'feeVnd') =>
+      money(Decimal.sum(...bucket.map((row) => row[key] ?? 0)))
+    const stress = bucket.map(({ month }) => stressByMonth.get(month))
+    points.push({
+      ...closing,
+      ...(step > 1 ? { paymentVnd: sum('paymentVnd'), principalVnd: sum('principalVnd'),
+        interestVnd: sum('interestVnd'), feeVnd: sum('feeVnd') } : {}),
+      ...(stress.every((value) => value !== undefined) ? { stressPaymentVnd: money(Decimal.sum(...stress)) } : {}),
+    })
+  }
+  return points
+}
+
+export function repaymentCostAbovePrincipal(totalPayable: Decimal.Value, principal: Decimal.Value) {
+  return money(Decimal.max(0, new Decimal(totalPayable).sub(principal)))
+}
+
 function irr(cashflows: Decimal[], guess = new Decimal('0.02')) {
   let rate = guess
   for (let i = 0; i < 100; i += 1) {
@@ -104,7 +151,8 @@ export function assessDti(monthlyIncome: Decimal.Value, monthlyExpense: Decimal.
 }
 export type FundCalculation = { totalContributedVnd: string; grossValueVnd: string; sellFeeVnd: string; taxVnd: string; netValueVnd: string; netProfitVnd: string }
 export type RedemptionFeeTier = { throughMonths: number; ratePct: string }
-export function compoundDca(initialVnd: Decimal.Value, monthlyContributionVnd: Decimal.Value, termMonths: number, annualReturnPct: Decimal.Value, sellFeePct: Decimal.Value, taxPct: Decimal.Value, options?: { redemptionFeeTiers?: RedemptionFeeTier[]; effectiveAnnualYield?: boolean; taxFreeAfterMonths?: number }): FundCalculation {
+export type FundOptions = { redemptionFeeTiers?: RedemptionFeeTier[]; effectiveAnnualYield?: boolean; taxFreeAfterMonths?: number }
+export function compoundDca(initialVnd: Decimal.Value, monthlyContributionVnd: Decimal.Value, termMonths: number, annualReturnPct: Decimal.Value, sellFeePct: Decimal.Value, taxPct: Decimal.Value, options?: FundOptions): FundCalculation {
   const annualRate = new Decimal(annualReturnPct).div(100)
   const growth = options?.effectiveAnnualYield ? annualRate.add(1).pow(new Decimal(1).div(12)) : annualRate.div(12).add(1)
   let value = new Decimal(initialVnd)
@@ -129,4 +177,20 @@ export function compoundDca(initialVnd: Decimal.Value, monthlyContributionVnd: D
   const tax = new Decimal(money(taxableValue.mul(taxPct).div(100)))
   const net = gross.sub(sellFee).sub(tax)
   return { totalContributedVnd: money(contributed), grossValueVnd: money(gross), sellFeeVnd: money(sellFee), taxVnd: money(tax), netValueVnd: money(net), netProfitVnd: money(net.sub(contributed)) }
+}
+
+export function openFundScenarioBands(
+  initialVnd: Decimal.Value, monthlyContributionVnd: Decimal.Value, termMonths: number,
+  baseRatePct: Decimal.Value, sellFeePct: Decimal.Value, taxPct: Decimal.Value, options?: FundOptions,
+) {
+  const base = new Decimal(baseRatePct)
+  const calculate = (rate: Decimal) => ({
+    annualReturnPct: rate.toFixed(),
+    ...compoundDca(initialVnd, monthlyContributionVnd, termMonths, rate, sellFeePct, taxPct, options),
+  })
+  return {
+    conservative: calculate(Decimal.max(1, base.sub('3.5'))),
+    base: calculate(base),
+    optimistic: calculate(base.add('3.5')),
+  }
 }

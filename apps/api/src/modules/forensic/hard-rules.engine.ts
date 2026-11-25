@@ -162,6 +162,7 @@ interface HardRuleInput {
   loan?: LoanTerms | null
   conditionalLoan?: ConditionalLoanEvidence
   statedTransferAmountVnd?: string | null
+  hasPromptTampering?: boolean
 }
 
 const upfrontFee = /\b(phi (?:bao hiem|giai ngan|mo khoa|ho so|xac minh|loi 102)|coc ho so|phi (?:thu )?truoc)\b/
@@ -448,6 +449,11 @@ export function evaluateHardRules(input: HardRuleInput) {
     add('RULE_16_TRANSFER_AMOUNT_REVIEW', 'MEDIUM', 30, 'Xác minh khoản chuyển giá trị lớn',
       'Đối chiếu số tiền, người nhận và chứng từ. Kiểm tra hạn mức và yêu cầu xác thực sinh trắc học trực tiếp trong ứng dụng ngân hàng.',
       'Số tiền người dùng nêu: ' + formatCaseAmount(stated) + '.')
+  }
+  if (input.hasPromptTampering) {
+    add('RULE_17_PROMPT_INJECTION_TAMPER', 'HIGH', 45, 'Dấu hiệu thao túng giám định',
+      'Nội dung tài liệu hoặc mã QR chứa câu lệnh tìm cách điều khiển hệ thống đánh giá',
+      '[đoạn nghi thao túng đã bị cô lập]')
   }
   const deterministicOverride = findings.some(({ severity }) => severity === 'CRITICAL')
   const score = Math.min(95, findings.reduce((total, finding) => total + finding.scoreImpact, 0))

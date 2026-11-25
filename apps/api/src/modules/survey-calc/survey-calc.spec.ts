@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import { AdminProductSyncResultSchema, ManualCompareResponseSchema, SurveyInvestResponseSchema, SurveyLoanResponseSchema } from '@fincopilot/shared-types'
+import { AdminProductSyncResultSchema, LoanUseCase, ManualCompareRequestSchema, ManualCompareResponseSchema, SurveyInvestResponseSchema, SurveyLoanResponseSchema } from '@fincopilot/shared-types'
 import { describe, expect, it, vi } from 'vitest'
 import type { PrismaService } from '../../common/prisma.service'
 import type { AiGatewayService } from '../ai-gateway/ai-gateway.service'
@@ -27,7 +27,7 @@ function setup(products: Array<Record<string, unknown>> = [offer]) {
     financialProduct: { findMany: vi.fn().mockResolvedValue(products), count: vi.fn().mockResolvedValue(0) },
     financialInstitution: { findMany: vi.fn().mockResolvedValue([{ name: 'ACB', code: 'ACB' }]) },
     financialProfile: { findUnique: vi.fn().mockResolvedValue({ id: profileId }) },
-    calculationSession: { create: vi.fn().mockResolvedValue({}) },
+    calculationSession: { create: vi.fn().mockResolvedValue({}), findFirst: vi.fn() },
     marketArticle: { findFirst: vi.fn().mockResolvedValue({ id: sourceArticleId }) },
     forensicAudit: { findFirst: vi.fn().mockResolvedValue({ id: sourceAuditId }) },
   }
@@ -37,6 +37,25 @@ function setup(products: Array<Record<string, unknown>> = [offer]) {
 }
 
 describe('Survey API contracts', () => {
+  it.each(LoanUseCase.options)('selects by %s and supplies the payment after the promotional period', async (loanUseCase) => {
+    const { service, prisma } = setup([{
+      ...offer, loanUseCase, rateType: 'PROMO_THEN_FLOATING', promoMonths: 6, nominalRateMax: decimal('18'),
+    }])
+    const { offers: [result] } = SurveyLoanResponseSchema.parse(await service.loan({ ...loan, loanUseCase }, session))
+    expect(prisma.financialProduct.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.not.objectContaining({ productCategory: loan.productCategory }),
+    }))
+    expect(prisma.financialProduct.findMany.mock.calls[0][0].where.loanUseCase).toBe(loanUseCase)
+    expect(result).toMatchObject({ loanUseCase, nominalRatePct: '12', stressPaymentFirstVnd: result.schedule[6].paymentVnd })
+  })
+
+  it('uses a two-point rate shock when there is no post-promotion phase', async () => {
+    const { service } = setup()
+    const { offers: [result] } = await service.loan(loan, session)
+    expect(result.stressPaymentFirstVnd).toBe(result.stressSchedule?.[0].paymentVnd)
+    expect(decimal(result.stressPaymentFirstVnd ?? '0').gt(result.monthlyPaymentFirstVnd)).toBe(true)
+  })
+
   it.each(['UNSECURED_LOAN', 'SECURED_LOAN'] as const)('selects eligible verified loans for %s and records validated source links', async (productCategory) => {
     const { service, prisma, generateStructured } = setup([{ ...offer, productCategory }])
     const data = SurveyLoanResponseSchema.parse(await service.loan({
@@ -107,6 +126,12 @@ describe('Survey API contracts', () => {
     expect(data.offers.map(({ productCategory, scenario }) => [productCategory, scenario.annualReturnPct]))
       .toEqual([['SAVING', '3'], ['ACCUMULATION', '4'], ['OPEN_FUND', '5']])
     expect(new Prisma.Decimal(data.offers[2].scenario.sellFeeVnd).gt(0)).toBe(true)
+    expect(data.offers[2].scenarios).toMatchObject({
+      conservative: { annualReturnPct: '1.5' }, base: data.offers[2].scenario, optimistic: { annualReturnPct: '8.5' },
+    })
+    expect(data.offers[2].projection?.at(-1)).toMatchObject({
+      month: 12, contributedVnd: '22000000', baseVnd: data.offers[2].scenario.netValueVnd,
+    })
     await service.investment({ ...investment, productCategory: 'SAVING' }, session)
     expect(prisma.financialProduct.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
       where: expect.objectContaining({ productCategory: 'SAVING' }),
@@ -123,6 +148,47 @@ describe('Survey API contracts', () => {
     await expect(service.manualCompare({ offers: [a, { ...b, upfrontFeeVnd: '10000000' }] }, session)).rejects.toMatchObject({ status: 400 })
   })
 
+  it('compares all three methods, models the rate change and charges the early exit fee', async () => {
+    const { service } = setup()
+    const base = { label: 'A', principalVnd: '12000000', annualRatePct: '12', termMonths: 12 }
+    const input = ManualCompareRequestSchema.parse({ offers: [
+      base, { ...base, label: 'B', calcMethod: 'DECLINING_PRINCIPAL' },
+      { ...base, label: 'C', calcMethod: 'FLAT_RATE', monthlyFeeVnd: '20000',
+        promoMonths: 6, floatingRatePct: '24', earlySettlementMonth: 8, earlySettlementFeePct: '2' },
+      { ...base, label: 'D' },
+    ] })
+    const { offers } = await service.manualCompare(input, session)
+    expect(offers.map(({ calcMethod }) => calcMethod)).toEqual(['REDUCING_BALANCE', 'DECLINING_PRINCIPAL', 'FLAT_RATE', 'REDUCING_BALANCE'])
+    expect(offers[2].schedule[5]).toMatchObject({ paymentVnd: '1140000', interestVnd: '120000', feeVnd: '20000' })
+    expect(offers[2].schedule[6]).toMatchObject({ paymentVnd: '1260000', interestVnd: '240000', feeVnd: '20000' })
+    expect(offers[2].earlySettlement).toMatchObject({
+      month: 8, remainingPrincipalVnd: '4000000', penaltyFeeVnd: '80000', totalPaidUntilExitVnd: '13440000',
+    })
+    expect(ManualCompareRequestSchema.safeParse({ offers: [...input.offers, base] }).success).toBe(false)
+    await expect(service.manualCompare({ offers: [base, { ...base, promoMonths: 6 }] }, session)).rejects.toMatchObject({ status: 400 })
+    await expect(service.manualCompare({ offers: [base, { ...base, earlySettlementMonth: 13 }] }, session)).rejects.toMatchObject({ status: 400 })
+  })
+
+  it('replays the saved result only for its owner, including legacy manual offers', async () => {
+    const { service, prisma } = setup()
+    const id = sourceArticleId
+    const base = { label: 'A', principalVnd: '12000000', annualRatePct: '12', termMonths: 12 }
+    const legacyOffer = { label: 'A', monthlyPaymentVnd: '1066185', totalInterestVnd: '794224',
+      totalPayableVnd: '12794224', effectiveAprPct: '12', upfrontFeeVnd: '0', principalNetVnd: '12000000' }
+    prisma.calculationSession.findFirst.mockImplementation(({ where }: { where: { id: string; guestSessionId?: string } }) =>
+      where.id === id && where.guestSessionId === guestSessionId
+        ? { id, sessionMode: 'MANUAL_COMPARE', createdAt: new Date('2026-08-01'),
+          inputParamsJson: { offers: [base, base] }, mathResultsJson: { sessionId: id, offers: [legacyOffer, legacyOffer] } }
+        : null)
+    await expect(service.sessionDetail(session, id)).resolves.toMatchObject({
+      id, sessionMode: 'MANUAL_COMPARE', createdAt: '2026-08-01T00:00:00.000Z',
+      result: { offers: [expect.objectContaining({ calcMethod: 'REDUCING_BALANCE', schedule: expect.any(Array) }), expect.anything()] },
+    })
+    await expect(service.sessionDetail({ kind: 'guest', guestSessionId: profileId }, id)).rejects.toMatchObject({ status: 404 })
+    await expect(service.sessionDetail(session, sourceAuditId)).rejects.toMatchObject({ status: 404 })
+    await expect(service.sessionDetail(session, 'invalid')).rejects.toMatchObject({ status: 404 })
+  })
+
   it('syncs the curated snapshot idempotently with sources offline and preserves Admin overrides', async () => {
     const catalog = new Map<string, { id: string; isActive: boolean; catalogSyncFingerprint: string | null }>()
     const transaction = {
@@ -137,7 +203,7 @@ describe('Survey API contracts', () => {
     const prisma = { $transaction: (run: (value: typeof transaction) => unknown) => run(transaction) }
     const service = new SurveyCalcService(prisma as unknown as PrismaService, {} as AiGatewayService)
     const initial = AdminProductSyncResultSchema.parse(await service.syncTrustedProducts())
-    expect(initial.productsActivated).toBeGreaterThanOrEqual(5)
+    expect(initial.productsActivated).toBe(21)
     expect(initial.sourcesReachable).toBe(0)
     const first = [...catalog.values()][0]
     first.catalogSyncFingerprint = null

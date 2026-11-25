@@ -22,3 +22,9 @@ export const catalogInstitutions: InstitutionSeed[] = [
   { code: 'VINA', name: 'VinaCapital', institutionType: 'FUND_HOUSE', licenseIssuer: 'UBCKNN', vietqrBin: null, officialWebsite: 'https://vinacapital.com/' },
   { code: 'DCVFM', name: 'Dragon Capital Việt Nam', institutionType: 'FUND_HOUSE', licenseIssuer: 'UBCKNN', vietqrBin: null, officialWebsite: 'https://www.dragoncapital.com.vn/' },
 ]
+
+export function isCatalogSource(institution: InstitutionSeed, url: URL) {
+  const primary = new URL(institution.officialWebsite).hostname.replace(/^www\./, '')
+  const domains = institution.code === 'TCB' ? [primary, 'techcombank.com'] : [primary]
+  return domains.some((domain) => url.hostname === domain || url.hostname.endsWith('.' + domain))
+}

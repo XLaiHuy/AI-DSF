@@ -8,7 +8,7 @@ const qr1 = '00020101021238540010A00000072701240006970422011009876543210208QRIBF
 const entity = 'Công ty Tài chính ABC'
 const evidence = 'Khoản vay bị lỗi 102 và đóng băng vốn. Đóng phí giải ngân 2.500.000đ qua mã QR vào tài khoản cá nhân NGUYEN VAN HUNG, số tài khoản 0987654321. CCCD 079123456234.'
 const momo = '2|99|0901000001|Nguyen Thanh|fixture@example.test|0|0|transfer_myqr'
-const viewports = { desktop: { width: 1440, height: 900 }, mobile: { width: 390, height: 844 } }
+const viewports = { desktop: { width: 1280, height: 800 }, mobile: { width: 390, height: 844 } }
 
 const loadApi = createRequire(resolve('apps/api/package.json'))
 const writer: {
@@ -52,7 +52,7 @@ for (const [name, viewport] of Object.entries(viewports)) {
     const clientErrors: string[] = []
     page.on('pageerror', (error) => clientErrors.push(error.message))
     page.on('console', (message) => {
-      if (/hydration|did not match server/i.test(message.text())) clientErrors.push(message.text())
+      if (message.type() === 'error' || /hydration|did not match server|width.*height.*chart/i.test(message.text())) clientErrors.push(message.text())
     })
 
     await page.goto('/', { waitUntil: 'networkidle' })
@@ -182,7 +182,7 @@ for (const [name, viewport] of Object.entries(viewports)) {
     await page.getByRole('button', { name: 'Đăng nhập bằng email' }).click()
     await expect(page).toHaveURL(/\/forensic$/)
 
-    if (name === 'desktop') {
+    {
       await page.goto('/forensic')
       await page.getByRole('button', { name: 'Lãi phẳng và phí giữ lại' }).click()
       const quoteRequest = page.waitForResponse((response) =>
@@ -194,6 +194,11 @@ for (const [name, viewport] of Object.entries(viewports)) {
         termMonths: 12, principalNetVnd: '45000000', effectiveAprPct: '40.2398', effectiveEarPct: '48.5569',
       })
       await expect(page).toHaveURL(/\/forensic$/)
+      const costChart = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Chênh lệch chi phí vay' }) }).last()
+      await expect(costChart.locator('svg.recharts-surface')).toHaveCount(2)
+      await expect(costChart.getByRole('heading', { name: 'APR thực tế và mốc tham chiếu 20%/năm' })).toBeVisible()
+      await verifyLayout(page, info, 'forensic-cost-trap')
+      await costChart.screenshot({ path: info.outputPath('forensic-cost-chart.png') })
       await page.getByText('Xem chi tiết kỹ thuật (APR / EAR)').click()
       await expect(page.getByText('Lãi suất quy năm (APR)')).toBeVisible()
       await expect(page.getByText('Lãi suất năm sau ghép lãi (EAR)')).toBeVisible()
@@ -205,6 +210,26 @@ for (const [name, viewport] of Object.entries(viewports)) {
       expect(query.get('from')).toBe('forensic')
       expect(query.get('auditId')).toBe(loan.auditId)
     }
+
+    // The phase-two mock proxy forwards survey history. Use the live API for calculator writes.
+    const calculatorUrl = new URL('/api/v1/calculator/manual-compare', baseURL)
+    calculatorUrl.port = process.env.PLAYWRIGHT_PHASE_TWO_API_PORT ?? '4401'
+    const comparison = await page.request.post(calculatorUrl.href, { data: { offers: [
+      { label: 'Gói kiểm thử A', principalVnd: '12000000', annualRatePct: '12', termMonths: 12,
+        calcMethod: 'FLAT_RATE', earlySettlementMonth: 6, earlySettlementFeePct: '2' },
+      { label: 'Gói kiểm thử B', principalVnd: '12000000', annualRatePct: '9', termMonths: 12,
+        calcMethod: 'DECLINING_PRINCIPAL' },
+    ] } })
+    expect(comparison.status()).toBe(201)
+    const saved: { sessionId: string; meta?: { savedToHistory: boolean } } = await comparison.json()
+    expect(saved.meta?.savedToHistory).toBe(true)
+    await page.goto('/survey?sessionId=' + saved.sessionId)
+    await expect(page.getByRole('button', { name: 'Tự nhập so sánh' })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByLabel('Gói kiểm thử A · Phương thức tính lãi')).toHaveValue('FLAT_RATE')
+    await expect(page.getByRole('heading', { name: 'Tất toán vào tháng 6' })).toBeVisible()
+    const replayChart = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Lịch trả nợ theo dòng tiền' }) }).last()
+    await expect(replayChart.locator('svg.recharts-surface')).toBeVisible()
+    await verifyLayout(page, info, 'survey-session-replay')
     expect(clientErrors).toEqual([])
   })
 }

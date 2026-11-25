@@ -3,11 +3,11 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { Prisma } from '@prisma/client'
 import {
-  AdminProductSyncResultSchema, CalcMethod, DataProvenance, ProductCategory, RateType, SurveyTermMonthsSchema,
+  AdminProductSyncResultSchema, CalcMethod, DataProvenance, LoanCategory, LoanUseCase, ProductCategory, RateType, SurveyTermMonthsSchema,
 } from '@fincopilot/shared-types'
 import { parse } from 'yaml'
 import { z } from 'zod'
-import { catalogInstitutions } from '../../common/catalog-institutions'
+import { catalogInstitutions, isCatalogSource } from '../../common/catalog-institutions'
 import type { PrismaService } from '../../common/prisma.service'
 import { stableUuid } from '../../common/stable-uuid'
 import { fetchPublicDocument } from '../admin/threat-safety'
@@ -26,6 +26,7 @@ export const redemptionFeeTiers = z.array(z.object({
 const productSchema = z.strictObject({
   key: z.string().regex(/^[\w-]+$/), institutionCode: z.string(),
   productName: z.string().trim().min(1).max(200), productCategory: ProductCategory,
+  loanUseCase: LoanUseCase.optional(),
   calcMethod: CalcMethod, rateType: RateType, nominalRateMin: rate, nominalRateMax: rate,
   minAmountVnd: amount, maxAmountVnd: amount,
   minTermMonths: SurveyTermMonthsSchema, maxTermMonths: SurveyTermMonthsSchema,
@@ -38,10 +39,8 @@ const productSchema = z.strictObject({
 }).refine((entry) => {
   const institution = catalogInstitutions.find(({ code }) => code === entry.institutionCode)
   if (!institution) return false
-  const host = new URL(entry.sourceUrl).hostname
-  const official = new URL(institution.officialWebsite).hostname.replace(/^www\./, '')
-  const allowedDomains = entry.institutionCode === 'TCB' ? [official, 'techcombank.com'] : [official]
-  return allowedDomains.some((domain) => host === domain || host.endsWith('.' + domain)) &&
+  return (!entry.loanUseCase || LoanCategory.safeParse(entry.productCategory).success) &&
+    isCatalogSource(institution, new URL(entry.sourceUrl)) &&
     new Prisma.Decimal(entry.nominalRateMin).lte(entry.nominalRateMax) &&
     new Prisma.Decimal(entry.minAmountVnd).lte(entry.maxAmountVnd) && entry.minTermMonths <= entry.maxTermMonths
 })
@@ -82,6 +81,7 @@ export async function syncProductCatalog(prisma: PrismaService) {
       const data = {
         ...fields, institutionId: owner.id, isActive: true, catalogSyncFingerprint,
         effectiveDate: new Date(effectiveDate),
+        loanUseCase: fields.loanUseCase ?? null,
         redemptionFeeTiers: fields.redemptionFeeTiers ?? Prisma.DbNull,
         investmentTaxPct: fields.investmentTaxPct ?? null,
         investmentTaxFreeAfterMonths: fields.investmentTaxFreeAfterMonths ?? null,

@@ -227,6 +227,7 @@ model FinancialProduct {
   id                     String               @id @db.Uuid
   institutionId          String               @map("institution_id") @db.Uuid
   productCategory        String               @map("product_category") @db.VarChar(30)
+  loanUseCase            String?              @map("loan_use_case") @db.VarChar(40)
   productName            String               @map("product_name") @db.VarChar(200)
   calcMethod             String               @map("calc_method") @db.VarChar(30)
   rateType               String               @map("rate_type") @db.VarChar(20)

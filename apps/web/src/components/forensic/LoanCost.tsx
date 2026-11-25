@@ -1,5 +1,6 @@
 import type { ForensicAuditResponse } from '@fincopilot/shared-types'
 import { ChevronDown, Landmark } from 'lucide-react'
+import { ForensicCostTrapChart } from '@/components/charts/ForensicCostTrapChart'
 import { formatSpacedAmount } from '@/components/ui/money-input'
 import { TermInfo } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -98,6 +99,7 @@ export function LoanCost({ math, handoff }: { math: Breakdown; handoff: Forensic
           </div>
         ))}
       </dl>
+      <ForensicCostTrapChart math={math} />
       {!periodic && (!math.scheduleType || math.scheduleType === 'FIXED_FLAT') && !math.hasUncappedFloatingClause && <div className="space-y-1 rounded-lg bg-muted px-4 py-3 text-sm leading-relaxed">
         <h3 className="font-semibold">Lãi phẳng là gì?</h3>
         <p>{math.flatRateExplainer ?? 'Mỗi tháng, tiền lãi vẫn tính trên số tiền vay ban đầu dù bạn đã trả bớt nợ gốc. Phí thu trước làm số tiền bạn cầm về ít hơn, nên chi phí vay thực tế cao hơn con số lãi hằng tháng gợi ra.'}</p>
