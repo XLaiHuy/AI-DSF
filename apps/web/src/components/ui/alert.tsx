@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
 const alertVariants = cva(
-  'relative flex flex-col gap-1 rounded-xl border p-4 text-sm',
+  'relative flex flex-col gap-1 rounded-md border p-4 text-sm',
   {
     variants: {
       variant: {

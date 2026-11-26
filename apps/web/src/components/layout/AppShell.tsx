@@ -3,10 +3,11 @@
 import { ROUTES } from '@fincopilot/shared-types'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Activity,
+  Bookmark,
   Calculator,
   CircleUserRound,
-  House,
+  History,
+  Newspaper,
   LayoutGrid,
   ShieldCheck,
   SlidersHorizontal,
@@ -19,10 +20,9 @@ import { cn } from '@/lib/utils'
 import { sessionQuery } from '@/lib/workspace-data'
 
 const links = [
-  { href: ROUTES.home, label: 'Trang chủ', icon: House },
-  { href: ROUTES.radar, label: 'Tin & Cảnh báo', icon: Activity },
-  { href: ROUTES.survey, label: 'Khảo sát', icon: Calculator },
   { href: ROUTES.forensic, label: 'Giám định', icon: ShieldCheck },
+  { href: ROUTES.home, label: 'Bản tin', icon: Newspaper },
+  { href: ROUTES.survey, label: 'Khảo sát', icon: Calculator },
 ]
 
 function NavigationLabel({ children }: { children: ReactNode }) {
@@ -37,9 +37,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const operating = pathname === ROUTES.admin || pathname.startsWith(ROUTES.admin + '/')
   const profileHref = pathname === ROUTES.profile ? ROUTES.profile
     : `${ROUTES.profile}?returnTo=${encodeURIComponent(pathname)}`
-  const currentSection = links.find(({ href }) =>
-    href === ROUTES.home ? pathname === ROUTES.home : pathname === href || pathname.startsWith(`${href}/`),
-  )
+  const currentSection = pathname === ROUTES.radar || pathname.startsWith(`${ROUTES.radar}/`)
+    ? links.find(({ href }) => href === ROUTES.home)
+    : links.find(({ href }) => href === ROUTES.home
+      ? pathname === ROUTES.home
+      : pathname === href || pathname.startsWith(`${href}/`))
+
+  if (pathname === ROUTES.home || pathname === ROUTES.radar) return <>{children}</>
 
   return (
     <div className="app-shell">
@@ -72,6 +76,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       <nav className="app-nav" aria-label="Điều hướng chính">
+        <Link className="app-nav-profile" href={profileHref}>
+          <CircleUserRound size={24} aria-hidden="true" />
+          <span>{session.data?.kind === 'user' ? session.data.user.displayName : 'Hồ sơ tài chính'}<small>{session.data?.kind === 'guest' ? 'Phiên khách' : 'Tài khoản cá nhân'}</small></span>
+        </Link>
         <ul className="app-nav-list">
           {links.map(({ href, label, icon: Icon }) => (
             <li key={href}>
@@ -89,6 +97,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             </li>
           ))}
         </ul>
+
+        <div className="app-nav-secondary">
+          <Link href="/?feed=saved"><Bookmark size={18} aria-hidden="true" /> Tin đã lưu</Link>
+          <Link href="/?feed=history"><History size={18} aria-hidden="true" /> Lịch sử đọc</Link>
+          <Link href={profileHref}><CircleUserRound size={18} aria-hidden="true" /> Hồ sơ tài chính</Link>
+          {isAdmin && <Link href={ROUTES.admin}><SlidersHorizontal size={18} aria-hidden="true" /> Vận hành</Link>}
+        </div>
 
       </nav>
 

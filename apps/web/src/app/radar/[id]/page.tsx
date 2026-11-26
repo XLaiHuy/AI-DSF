@@ -1,16 +1,18 @@
 'use client'
 
+import { handoffRoutes } from '@fincopilot/shared-types'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, ArrowUpRight, ExternalLink, ShieldAlert, Sparkles } from 'lucide-react'
 import Link from 'next/link'
-import Image from 'next/image'
 import { useParams, useSearchParams } from 'next/navigation'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui'
 import { CategoryArtwork } from '@/components/radar/CategoryArtwork'
+import { EditorialImage } from '@/components/radar/EditorialImage'
+import { recordArticleRead } from '@/components/radar/ReadingStore'
 import { ApiError, apiClient } from '@/lib/api-client'
 
-type ArticleDetail = { id: string; title: string; publishedAt: string | null; image?: { url: string; alt: string; credit: string | null; sourceUrl: string | null } | null; categories: string[]; sources: { sourceName: string; sourceId: string; url: string; firstSeenAt: string; lastSeenAt: string }[]; analysis: { mode: string; facts: unknown; assessment: unknown; suggestedRateDelta: string | null } | null }
+type ArticleDetail = { id: string; title: string; publishedAt: string | null; image?: { url: string; proxyUrl?: string | null; alt: string; credit: string | null; sourceUrl: string | null } | null; categories: string[]; sources: { sourceName: string; sourceId: string; url: string; firstSeenAt: string; lastSeenAt: string }[]; analysis: { mode: string; facts: unknown; assessment: unknown; suggestedRateDelta: string | null } | null }
 type AlertDetail = { id: string; threatCategory: string; tacticSummary: string; preventionGuidance: string; verificationStatus: string; issuedAt: string | null; indicators: { indicatorType: string; indicatorText: string }[]; evidence: { articleId: string; title: string; sourceName: string; url: string; publishedAt: string | null }[] }
 type Analysis = { mode: string; facts: string[]; assessment: string | null; suggestedRateDelta: string | null; assumptions: string[]; citations: { sourceName: string; url: string }[]; unavailable?: boolean }
 
@@ -32,9 +34,12 @@ export default function RadarArticlePage() {
   const [analysisError, setAnalysisError] = useState('')
   const [analyzing, setAnalyzing] = useState(false)
   const activeAnalysis = useRef(false)
-  const [imageFailed, setImageFailed] = useState(false)
   const article = useQuery({ queryKey: ['radar-article', id], queryFn: () => apiClient.get<ArticleDetail>(`/radar/articles/${encodeURIComponent(id)}`), enabled: !isAlert })
   const alert = useQuery({ queryKey: ['radar-alert', id], queryFn: () => apiClient.get<AlertDetail>(`/radar/alerts/${encodeURIComponent(id)}`), enabled: isAlert })
+  useEffect(() => {
+    if (!article.data || isAlert) return
+    recordArticleRead({ id: article.data.id, title: article.data.title, publishedAt: article.data.publishedAt, sourceName: article.data.sources[0]?.sourceName ?? null })
+  }, [article.data, isAlert])
 
   async function analyze(mode: 'GENERAL' | 'PERSONALIZED') {
     if (activeAnalysis.current) return
@@ -84,7 +89,7 @@ export default function RadarArticlePage() {
   const assessment = analysis ?? (data.analysis?.assessment as { text?: string } | null)
   const assessmentText = analysis?.assessment ?? (typeof assessment === 'string' ? assessment : assessment && typeof assessment === 'object' && 'text' in assessment ? String(assessment.text ?? '') : '')
   const suggestedRateDelta = analysis?.suggestedRateDelta ?? data.analysis?.suggestedRateDelta ?? null
-  return <div className="radar-detail">
+  return <div className="radar-detail editorial-detail">
     <Link href="/radar" className="detail-back"><ArrowLeft size={15} aria-hidden="true"/> Tất cả tin và cảnh báo</Link>
     <header className="detail-header">
       <div className="detail-meta">{data.categories.map((category) => <span key={category}>{categoryLabel(category)}</span>)}</div>
@@ -92,13 +97,17 @@ export default function RadarArticlePage() {
       <h1>{data.title}</h1>
       <p className="detail-time">{data.publishedAt ? <>Công bố <time dateTime={data.publishedAt}>{formatDateTime(data.publishedAt) ?? 'chưa rõ thời gian'}</time></> : 'Chưa rõ thời gian công bố'}</p>
     </header>
-      {data.image && <figure className="detail-source-image">{imageFailed ? <CategoryArtwork categories={data.categories} /> : <Image unoptimized width={960} height={540} src={data.image.url} alt={data.image.alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setImageFailed(true)} />}<figcaption>{imageFailed ? 'Minh họa theo chủ đề' : <>{data.image.credit ? `Ảnh từ ${data.image.credit}` : 'Ảnh từ nguồn bài viết'}{data.image.sourceUrl && <> · <a href={data.image.sourceUrl} target="_blank" rel="noreferrer">Bài nguồn</a></>}</>}</figcaption></figure>}
+      {data.image && <figure className="detail-source-image"><EditorialImage imageUrl={data.image.url} proxyUrl={data.image.proxyUrl} alt={data.image.alt} credit={data.image.credit} sourceUrl={data.image.sourceUrl} categories={data.categories} /></figure>}
       {!data.image && <figure className="detail-source-image detail-image-fallback"><CategoryArtwork categories={data.categories} /><figcaption>Chưa có ảnh bài viết; đây là minh họa chủ đề, không mô tả sự kiện cụ thể.</figcaption></figure>}
 
     <section className="detail-section provenance-section" aria-labelledby="provenance-heading">
       <div className="detail-section-heading"><h2 id="provenance-heading">Nguồn gốc</h2></div>
       {data.sources.length > 0 ? <ul className="provenance-list">{data.sources.map((source) => <li key={`${source.sourceId}-${source.url}`}><a href={source.url} target="_blank" rel="noreferrer">{source.sourceName}<ExternalLink size={13} aria-hidden="true"/><span className="sr-only"> mở trong tab mới</span></a><p><span>Thu thập lần đầu</span> <time dateTime={source.firstSeenAt}>{formatDateTime(source.firstSeenAt) ?? 'chưa rõ'}</time><span className="provenance-separator">·</span><span>Gặp gần nhất</span> <time dateTime={source.lastSeenAt}>{formatDateTime(source.lastSeenAt) ?? 'chưa rõ'}</time></p></li>)}</ul> : <p className="detail-muted">Chưa có nguồn gốc được cung cấp.</p>}
     </section>
+
+    {data.categories.includes('FINANCIAL_FRAUD') && <Link className="detail-inline-link" href={handoffRoutes.homeQuickForensic({ prefillText: data.title.slice(0, 2000) })}>
+      Đối chiếu dấu hiệu trong Giám định <ArrowUpRight size={14} aria-hidden="true" />
+    </Link>}
 
     <section className="analysis-section" aria-labelledby="analysis-heading">
       <div className="analysis-heading">

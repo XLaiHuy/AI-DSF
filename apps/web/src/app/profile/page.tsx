@@ -6,8 +6,9 @@ export const metadata: Metadata = { title: 'Hồ sơ tài chính' }
 
 export default function ProfilePage() {
   return (
-    <div className="mx-auto max-w-6xl space-y-7">
-      <header className="space-y-2">
+    <div className="profile-editorial mx-auto max-w-6xl space-y-7">
+      <header className="profile-editorial-header space-y-2">
+        <p className="profile-editorial-kicker">FINCOPILOT / HỒ SƠ</p>
         <h1 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl">Hồ sơ tài chính</h1>
         <p className="max-w-[65ch] text-sm leading-relaxed text-muted-foreground sm:text-base">
           Theo dõi thu nhập, nghĩa vụ trả nợ và lưu lại các báo cáo giám định của bạn.

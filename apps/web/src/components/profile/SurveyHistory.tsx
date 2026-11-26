@@ -17,7 +17,7 @@ export function SurveyHistory() {
     {history.data?.sessions.length === 0 && <p className="text-sm text-muted-foreground">Các lần khảo sát đã lưu sẽ xuất hiện ở đây.</p>}
     {history.data && history.data.sessions.length > 0 && <ul className="divide-y">
       {history.data.sessions.map((entry) => <li key={entry.id} className="py-2 text-sm">
-        <Link href={surveySessionHref(entry.sessionMode)} className="inline-block py-1 font-medium hover:text-primary">{surveySessionLabel(entry.sessionMode)}</Link>
+        <Link href={surveySessionHref(entry.sessionMode, entry.id)} className="inline-block py-1 font-medium hover:text-primary">{surveySessionLabel(entry.sessionMode)}</Link>
         <p className="text-xs text-muted-foreground"><time dateTime={entry.createdAt}>{formatVietnamTime(entry.createdAt)}</time>
           {entry.dtiRatioPct && <span> · DTI {entry.dtiRatioPct}%</span>}
         </p>
