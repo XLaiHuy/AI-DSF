@@ -82,7 +82,7 @@ test('Radar xuất ma trận ảnh desktop và mobile cho các trạng thái s�
       if (scenario.personalized) {
         await view.getByRole('button', { name: 'Dành cho bạn', exact: true }).click()
         if (scenario.key === 'personalization-enabled') await expect(view.getByText(/Dựa trên loại Khảo sát vay gần đây/).first()).toBeVisible()
-        if (scenario.key === 'guest-no-profile') await expect(view.locator('.radar-v2-recommendations')).toContainText('Chưa có tín hiệu cá nhân được phép dùng')
+        if (scenario.key === 'guest-no-profile') await expect(view.locator('.radar-personal-feed')).toContainText('Chưa có tín hiệu cá nhân được phép dùng')
       } else await view.getByRole('group', { name: 'Loại nội dung' }).getByRole('button', { name: 'Xu hướng', exact: true }).click()
       expect(await view.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       const filename = `radar-v2-final-${scenario.key}-${viewport.name}.png`
@@ -126,14 +126,14 @@ test('Hub dùng trending và rail từ home/market, lưu tin và mở lại lị
   await expect(page.getByRole('region', { name: 'Lịch sử đọc' }).getByRole('link', { name: main.title })).toBeVisible()
 })
 
-test('Ảnh proxy 1×1 bị loại và hiện minh họa', async ({ page }) => {
+test('Ảnh proxy 1×1 bị loại và hiện minh họa đúng chủ đề', async ({ page }) => {
   const tracked = { ...makeArticle(0), image: { url: 'https://example.test/article.png', proxyUrl: '/api/v1/radar/image-proxy?url=https%3A%2F%2Fexample.test%2Farticle.png', alt: 'Ảnh bài báo', credit: 'NHNN', sourceUrl: 'https://example.test/article' } }
   await fixturePage(page, 1)
   await page.route('**/api/v1/radar/articles?**', (route) => route.fulfill({ json: { items: [tracked], page: { hasMore: false, nextCursor: null }, sources: sourceStatus } }))
   await page.route('**/api/v1/radar/image-proxy?**', (route) => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ9sAAAAASUVORK5CYII=', 'base64') }))
   await page.route('https://example.test/article.png', (route) => route.abort())
   await page.goto('/radar')
-  await expect(page.locator('.desk-feature .editorial-image-credit')).toContainText('Minh họa FinCopilot')
+  await expect(page.locator('.desk-feature').getByRole('img', { name: /Minh họa chủ đề Lãi suất/ })).toBeVisible()
 })
 
 test('Radar hiển thị cảnh báo đã công bố và bỏ qua bản nháp', async ({ page }) => {
@@ -153,8 +153,92 @@ test('Khách có thể tắt gợi ý; không cần hồ sơ để đọc tin c�
   await page.goto('/radar')
   await expect(page.getByRole('heading', { name: 'Kiểm tra trước khi chuyển tiền' })).toBeVisible()
   await page.getByRole('button', { name: 'Dành cho bạn', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Dành cho bạn', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Tin thị trường công khai' })).toBeVisible()
+  await expect(page.locator('.radar-personal-feed')).toContainText('Gợi ý cá nhân đang tắt')
+  await expect(page.locator('.radar-recommendation-row')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Tùy chỉnh' }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Bật gợi ý cá nhân' })).toBeVisible()
   await expect(page.getByText(/Chỉ dùng từng tín hiệu khi bạn bật quyền tương ứng/)).toBeVisible()
+})
+
+test('Phiên khách chỉ nhận tiêu đề theo chủ đề thực sự đã chọn', async ({ page }) => {
+  await fixturePage(page, 2)
+  await page.route('**/api/v1/auth/session', (route) => route.fulfill({ json: { kind: 'guest', user: null, oauthProviders: { google: false, github: false } } }))
+  await page.addInitScript(() => localStorage.setItem('fincopilot.radar.interests', JSON.stringify({ enabled: true, topics: ['INTEREST_RATE'], includeProfileGoal: false, includeSurveyTopics: false, includeForensicHistory: false })))
+  await page.goto('/radar?tab=personal')
+  await expect(page.getByRole('heading', { name: 'Tin theo lựa chọn của bạn' })).toBeVisible()
+  await expect(page.locator('.radar-recommendation-row').first()).toContainText('Chủ đề bạn đã chọn: lãi suất')
+  await expect(page.locator('.radar-personal-feed')).not.toContainText('hồ sơ tài chính')
+})
+
+test('Giao diện bỏ qua tín hiệu trả về khi quyền tương ứng chưa bật', async ({ page }) => {
+  const rate = { ...makeArticle(0), title: 'Lãi suất cho vay tham khảo', categories: ['INTEREST_RATE'] }
+  const fraud = { ...makeArticle(1), title: 'Cảnh báo giả mạo ngân hàng', categories: ['FINANCIAL_FRAUD'] }
+  const items = [rate, fraud]
+  await page.route('**/api/v1/radar/articles/highlights', (route) => route.fulfill({ json: { items: [], ranking: 'Fixture' } }))
+  await page.route('**/api/v1/radar/articles?**', (route) => route.fulfill({ json: { items, page: { hasMore: false, nextCursor: null }, sources: sourceStatus } }))
+  await page.route('**/api/v1/radar/articles', (route) => route.fulfill({ json: { items, page: { hasMore: false, nextCursor: null }, sources: sourceStatus } }))
+  await page.route('**/api/v1/radar/alerts**', (route) => route.fulfill({ json: { items: [] } }))
+  await page.route('**/api/v1/radar/recommendation-signals', (route) => route.fulfill({ json: { signals: [{ categoryCode: 'FINANCIAL_FRAUD', source: 'FORENSIC_HISTORY', reason: 'Từ Giám định gần đây' }] } }))
+  await page.addInitScript(() => localStorage.setItem('fincopilot.radar.interests', JSON.stringify({ enabled: true, topics: ['INTEREST_RATE'], includeProfileGoal: false, includeSurveyTopics: true, includeForensicHistory: false })))
+  await page.goto('/radar?tab=personal')
+  await expect(page.locator('.radar-recommendation-row')).toHaveCount(1)
+  await expect(page.locator('.radar-recommendation-row')).not.toContainText('Giám định')
+  await page.getByRole('button', { name: 'Tùy chỉnh' }).click()
+  await page.getByLabel('Kết quả Giám định rủi ro cao trong 30 ngày').check()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.radar-recommendation-row')).toHaveCount(2)
+  await expect(page.locator('.radar-recommendation-row').first()).toContainText('Cảnh báo giả mạo ngân hàng')
+  await expect(page.locator('.radar-recommendation-row').first()).toContainText('Chưa có trạng thái xác minh cảnh báo')
+})
+
+test('Cột Scam & Finance không lặp bài đang đọc và không gán xác minh cho bài viết', async ({ page }) => {
+  await fixturePage(page, 2)
+  const rail = (id: string, kind: 'SCAM_NEWS' | 'FINANCE_NEWS', title: string) => ({ id, kind, title, badge: 'Nhãn API', imageUrl: null, proxyUrl: null, sourceName: 'NCSC', publishedAt: null, handoffHref: `/radar/${id}` })
+  await page.unroute('**/api/v1/home/market')
+  await page.route('**/api/v1/home/market', (route) => route.fulfill({ json: { ...emptyMarket, scamFinanceRail: [rail(articleId, 'FINANCE_NEWS', makeArticle(0).title), rail('44444444-4444-4444-8444-444444444444', 'SCAM_NEWS', 'Bài khác về lừa đảo')] } }))
+  await page.goto('/radar?tab=personal')
+  await expect(page.locator('.radar-recommendation-row')).toHaveCount(2)
+  await expect(page.locator('.desk-rail .desk-pick')).toHaveCount(1)
+  await expect(page.locator('.desk-rail .desk-pick')).toContainText('Bài viết về lừa đảo · Chưa xác minh cảnh báo')
+  await expect(page.locator('.desk-rail .desk-pick')).not.toContainText(makeArticle(0).title)
+})
+
+test('Tiêu đề tiếng Việt dài, menu mobile và hộp tùy chỉnh dùng được bằng bàn phím', async ({ page }) => {
+  await fixturePage(page, 1)
+  const longTitle = 'Thông báo về biến động lãi suất cho vay đối với doanh nghiệp nhỏ và vừa trong bối cảnh thị trường tài chính thay đổi liên tục — Hướng dẫn đọc điều kiện áp dụng và ngày hiệu lực'
+  await page.route('**/api/v1/radar/articles/highlights', (route) => route.fulfill({ json: { items: [{ ...makeArticle(0), title: longTitle, editorialPriority: 'STANDARD', priorityReasons: [] }], ranking: 'Fixture' } }))
+  await page.route('**/api/v1/radar/articles?**', (route) => route.fulfill({ json: { items: [{ ...makeArticle(0), title: longTitle }], page: { hasMore: false, nextCursor: null }, sources: sourceStatus } }))
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/radar?tab=personal')
+  await expect(page.locator('.radar-recommendation-row h3')).toContainText(longTitle)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.getByRole('button', { name: 'Menu điều hướng' }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('button', { name: 'Menu điều hướng' })).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.getByRole('link', { name: /Giám định lừa đảo/ })).toBeVisible()
+  await page.getByRole('link', { name: /Giám định lừa đảo/ }).focus()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'Menu điều hướng' })).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByRole('button', { name: 'Menu điều hướng' })).toBeFocused()
+  await page.getByRole('button', { name: 'Tùy chỉnh' }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+})
+
+test('Bản tin cá nhân báo đang tải và rỗng đúng trạng thái', async ({ page }) => {
+  await page.route('**/api/v1/radar/articles/highlights', (route) => route.fulfill({ json: { items: [], ranking: 'Fixture' } }))
+  await page.route('**/api/v1/radar/articles?**', async (route) => { await new Promise((resolve) => setTimeout(resolve, 900)); await route.fulfill({ json: { items: [], page: { hasMore: false, nextCursor: null }, sources: sourceStatus } }) })
+  await page.route('**/api/v1/radar/alerts**', (route) => route.fulfill({ json: { items: [] } }))
+  await page.goto('/radar?tab=personal')
+  await expect(page.getByRole('status').filter({ hasText: 'Đang tải tin thị trường' })).toBeVisible()
+  await expect(page.locator('.radar-personal-feed')).not.toContainText('Chưa có tin công khai')
+  await expect(page.getByText('Hiện chưa có tin công khai để hiển thị. Bạn có thể xem lại sau.')).toBeVisible()
+  await expect(page.locator('.radar-recommendation-row')).toHaveCount(0)
 })
 
 test('Chỉ ưu tiên tin lừa đảo theo lịch sử Giám định sau khi người dùng bật quyền', async ({ page }) => {
@@ -174,10 +258,45 @@ test('Chỉ ưu tiên tin lừa đảo theo lịch sử Giám định sau khi ng
   await page.addInitScript(() => localStorage.setItem('fincopilot.radar.interests', JSON.stringify({ enabled: true, topics: ['INTEREST_RATE'], includeForensicHistory: false })))
   await page.goto('/radar')
   await page.getByRole('button', { name: 'Dành cho bạn', exact: true }).click()
+  await page.getByRole('button', { name: 'Tùy chỉnh' }).click()
   await page.getByLabel('Kết quả Giám định rủi ro cao trong 30 ngày').check()
+  await page.getByRole('dialog').getByRole('button', { name: 'Đóng' }).click()
   await expect.poll(() => consentPayload?.includeForensicHistory).toBe(true)
   await expect(page.locator('.radar-recommendation-row').first()).toContainText('Cảnh báo giả mạo ứng dụng ngân hàng')
   await expect(page.locator('.radar-recommendation-row').first()).toContainText('Giám định rủi ro cao gần đây')
+})
+
+test('Tin công khai và quyền riêng tư giữ nguyên khi chuyển tùy chỉnh sang hộp thoại', async ({ page }) => {
+  await fixturePage(page, 3)
+  let signalCalls = 0
+  await page.route('**/api/v1/radar/recommendation-signals', (route) => { signalCalls += 1; return route.fulfill({ json: { signals: [] } }) })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/radar?tab=personal')
+  await expect(page.locator('.radar-recommendation-row')).toHaveCount(3)
+  await expect(page.locator('.radar-recommendation-row').first()).toContainText('NHNN')
+  await expect(page.locator('.radar-recommendation-row').first()).toContainText('Chưa rõ thời gian công bố')
+  await expect(page.locator('.radar-recommendation-row').nth(1)).toContainText('Công bố')
+  await expect(page.locator('.radar-recommendation-row').first()).toContainText('Vì sao hiển thị')
+  await expect(page.locator('.radar-recommendation-row').first().locator('.desk-thumb')).toBeVisible()
+  for (const utility of await page.locator('.desk-rail .desk-section').all()) await expect(utility).toBeHidden()
+  await expect(page.locator('.desk-nav-item')).toHaveCount(8)
+  expect(signalCalls).toBe(0)
+  await page.getByRole('button', { name: 'Tùy chỉnh' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('group', { name: 'Chọn chủ đề quan tâm' }).getByRole('button', { name: 'Lãi suất' }).click()
+  await dialog.getByRole('checkbox', { name: 'Mục tiêu trong hồ sơ tài chính' }).check()
+  expect(signalCalls).toBe(0)
+  await dialog.getByRole('button', { name: 'Bật gợi ý cá nhân' }).click()
+  await expect.poll(() => signalCalls).toBe(1)
+  await dialog.getByRole('button', { name: 'Đóng' }).click()
+  await page.reload()
+  await expect(page.locator('.radar-recommendation-row')).toHaveCount(2)
+  await page.getByRole('button', { name: 'Tùy chỉnh' }).click()
+  await expect(page.getByRole('dialog').getByRole('checkbox', { name: 'Mục tiêu trong hồ sơ tài chính' })).toBeChecked()
+  await expect(page.getByRole('dialog').getByRole('checkbox', { name: 'Loại Khảo sát đã dùng gần đây' })).not.toBeChecked()
+  await expect(page.getByRole('dialog').getByRole('group', { name: 'Chọn chủ đề quan tâm' }).getByRole('button', { name: 'Lãi suất' })).toHaveAttribute('aria-pressed', 'true')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
 test('Bộ lọc lưu trữ cung cấp năm 2026 và bộ lọc ngày tự chọn', async ({ page }) => {
@@ -188,7 +307,7 @@ test('Bộ lọc lưu trữ cung cấp năm 2026 và bộ lọc ngày tự chọ
     if (url.pathname.endsWith('/radar/articles') && url.searchParams.has('year')) archiveQuery = url.search
   })
   await page.goto('/radar')
-  await page.getByRole('button', { name: 'Lọc theo chủ đề và ngày' }).click()
+  await page.getByRole('button', { name: 'Chủ đề & thời gian' }).click()
   await page.getByLabel('Lọc thời gian').selectOption('year')
   await expect(page.getByLabel('Năm công bố').locator(`option[value="${new Date().getFullYear()}"]`)).toHaveCount(1)
   await expect.poll(() => archiveQuery).toContain(`year=${new Date().getFullYear()}`)
@@ -205,7 +324,8 @@ test('Lạm phát được phân loại riêng với dữ kiện CPI', async ({ 
   await page.route('**/api/v1/radar/alerts**', (route) => route.fulfill({ json: { items: [] } }))
   await page.goto('/radar')
   await expect(page.locator('.desk-feature .desk-byline').filter({ hasText: 'Lạm phát' }).first()).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Lạm phát', exact: true }).first()).toBeVisible()
+  await page.getByRole('button', { name: 'Chủ đề & thời gian' }).click()
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Lạm phát', exact: true })).toBeVisible()
 })
 
 test('Ảnh HTTPS hiển thị kèm nguồn; ảnh hỏng rơi về minh họa chủ đề', async ({ page }) => {

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-labelledby="title desc">
+<title id="title">Minh họa yêu cầu chuyển phí đáng ngờ</title>
+<desc id="desc">Tranh minh họa nguyên bản: điện thoại hiển thị yêu cầu chuyển tiền, bên cạnh là một tờ giấy ghi kiểm tra nguồn.</desc>
+<rect width="800" height="600" fill="#dce5dc"/>
+<path d="M0 460c160-63 291-36 459-97 126-45 228-86 341-60v297H0Z" fill="#c2d2c5"/>
+<path d="M-40 160 260 29l120 289L81 449Z" fill="#3c6656" opacity=".18"/>
+<g transform="rotate(-11 410 302)">
+<rect x="224" y="55" width="282" height="481" rx="35" fill="#193b30"/>
+<rect x="236" y="67" width="258" height="456" rx="27" fill="#f9f8f1"/>
+<rect x="338" y="78" width="55" height="8" rx="4" fill="#193b30"/>
+<text x="268" y="147" fill="#53685c" font-family="Arial,sans-serif" font-size="17">TIN NHẮN MẪU</text>
+<path d="M266 182h199M266 209h150" stroke="#c7d1c8" stroke-width="12" stroke-linecap="round"/>
+<rect x="261" y="255" width="209" height="146" rx="13" fill="#e7ede5"/>
+<text x="281" y="290" fill="#2d4c3b" font-family="Arial,sans-serif" font-size="17">Phí xử lý</text>
+<text x="281" y="344" fill="#1d3b2d" font-family="Georgia,serif" font-size="31">Chuyển phí?</text>
+<path d="M281 374h143" stroke="#9aaea0" stroke-width="3"/>
+<path d="M266 444h162" stroke="#c7d1c8" stroke-width="11" stroke-linecap="round"/>
+</g>
+<g transform="rotate(10 620 374)">
+<rect x="518" y="290" width="231" height="207" fill="#f7f4e9"/>
+<path d="M551 350h160M551 377h149M551 404h116" stroke="#8ca295" stroke-width="5" stroke-linecap="round"/>
+<circle cx="571" cy="450" r="14" fill="none" stroke="#bd6046" stroke-width="5"/>
+<path d="m579 459 19 18" stroke="#bd6046" stroke-width="5" stroke-linecap="round"/>
+</g>
+<text x="40" y="558" fill="#426354" font-family="Arial,sans-serif" font-size="16" letter-spacing="2">MINH HỌA GỐC · FINCOPILOT</text>
+</svg>

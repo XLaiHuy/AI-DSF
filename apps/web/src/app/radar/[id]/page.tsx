@@ -13,13 +13,17 @@ import { recordArticleRead } from '@/components/radar/ReadingStore'
 import { ApiError, apiClient } from '@/lib/api-client'
 
 type ArticleDetail = { id: string; title: string; publishedAt: string | null; image?: { url: string; proxyUrl?: string | null; alt: string; credit: string | null; sourceUrl: string | null } | null; categories: string[]; sources: { sourceName: string; sourceId: string; url: string; firstSeenAt: string; lastSeenAt: string }[]; analysis: { mode: string; facts: unknown; assessment: unknown; suggestedRateDelta: string | null } | null }
-type AlertDetail = { id: string; threatCategory: string; tacticSummary: string; preventionGuidance: string; verificationStatus: string; issuedAt: string | null; indicators: { indicatorType: string; indicatorText: string }[]; evidence: { articleId: string; title: string; sourceName: string; url: string; publishedAt: string | null }[] }
+type AlertDetail = { id: string; threatCategory: string; tacticSummary: string; preventionGuidance: string; verificationStatus: string; issuedAt: string | null; publishedAt?: string | null; verifiedAt?: string | null; indicators: { indicatorType: string; indicatorText: string }[]; evidence: { articleId: string; title: string; sourceName: string; url: string; publishedAt: string | null }[] }
 type Analysis = { mode: string; facts: string[]; assessment: string | null; suggestedRateDelta: string | null; assumptions: string[]; citations: { sourceName: string; url: string }[]; unavailable?: boolean }
 
 const dateTimeFormat = new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })
 const categoryLabels: Record<string, string> = { INTEREST_RATE: 'Lãi suất', BANKING: 'Ngân hàng', MARKET: 'Thị trường', POLICY: 'Chính sách', INFLATION: 'Lạm phát', FINANCIAL_FRAUD: 'Lừa đảo tài chính' }
 const categoryLabel = (value: string) => categoryLabels[value] ?? value.replaceAll('_', ' ')
+const threatCategoryLabels: Record<string, string> = { PHISHING: 'Lừa đảo qua đường dẫn hoặc tin nhắn', IMPERSONATION: 'Mạo danh', FAKE_LOAN: 'Vay giả mạo', INVESTMENT_SCAM: 'Đầu tư giả mạo' }
+const threatCategoryLabel = (value: string) => threatCategoryLabels[value] ?? value.replaceAll('_', ' ').toLocaleLowerCase('vi-VN')
+const indicatorLabels: Record<string, string> = { KEYWORD: 'Cụm từ', DOMAIN: 'Tên miền', PHONE: 'Số điện thoại', BANK_ACCOUNT: 'Tài khoản nhận tiền', QR_PATTERN: 'Mẫu QR' }
 const isHashedIndicator = (value: string) => /^sha256:[a-f0-9]{64}$/i.test(value)
+const concealedIndicator = (type: string, value: string) => isHashedIndicator(value) || type === 'PHONE' || type === 'BANK_ACCOUNT' || type === 'QR_PATTERN'
 function formatDateTime(value: string | null | undefined) {
   if (!value) return null
   const date = new Date(value)
@@ -55,33 +59,37 @@ export default function RadarArticlePage() {
   }
 
   if ((isAlert && alert.isPending) || (!isAlert && article.isPending)) return <div className="radar-detail-state" role="status">Đang tải nội dung…</div>
-  if ((isAlert && alert.isError) || (!isAlert && article.isError)) return <div className="radar-detail-state"><p role="alert">{isAlert ? 'Không tải được cảnh báo.' : 'Không tải được bài viết.'}</p><Link href="/radar" className="detail-back"><ArrowLeft size={15} aria-hidden="true"/> Quay lại Radar</Link></div>
+  if ((isAlert && alert.isError) || (!isAlert && article.isError)) return <div className="radar-detail-state"><p role="alert">{isAlert ? 'Không tải được cảnh báo.' : 'Không tải được bài viết.'}</p><div className="detail-error-actions"><Button variant="outline" onClick={() => void (isAlert ? alert.refetch() : article.refetch())}>Thử lại</Button><Link href="/radar" className="detail-back"><ArrowLeft size={15} aria-hidden="true"/> Quay lại Radar</Link></div></div>
 
   if (isAlert && alert.data) {
     const verified = alert.data.verificationStatus === 'VERIFIED'
-    const visibleIndicator = alert.data.indicators.find((item) => !isHashedIndicator(item.indicatorText))
-    return <div className="radar-detail radar-alert-detail">
+    const visibleIndicator = alert.data.indicators.find((item) => item.indicatorType === 'KEYWORD' && !isHashedIndicator(item.indicatorText))
+    const evidenceSources = [...new Set(alert.data.evidence.map((item) => item.sourceName).filter(Boolean))]
+    return <div className="radar-detail radar-threat-detail">
       <Link href="/radar" className="detail-back"><ArrowLeft size={15} aria-hidden="true"/> Tất cả tin và cảnh báo</Link>
-      <header className="detail-header">
-        <div className="detail-meta"><span className={`verification-label ${verified ? 'is-verified' : 'is-pending'}`}>{verified ? 'Đã xác minh' : 'Chưa xác minh'}</span><span>{categoryLabel(alert.data.threatCategory)}</span></div>
-        <p className="page-kicker">CẢNH BÁO RỦI RO</p>
+      <header className="detail-header threat-detail-hero">
+        <p className="page-kicker">CẢNH BÁO ĐÃ CÔNG BỐ</p>
+        <div className="detail-meta"><span className={`verification-label ${verified ? 'is-verified' : 'is-pending'}`}>{verified ? 'Đã xác minh' : 'Chưa xác minh'}</span><span>{threatCategoryLabel(alert.data.threatCategory)}</span></div>
         <h1>{alert.data.tacticSummary}</h1>
-        <p className="detail-time">{alert.data.issuedAt ? <>Phát hành <time dateTime={alert.data.issuedAt}>{formatDateTime(alert.data.issuedAt)}</time></> : 'Chưa rõ thời điểm phát hành từ nguồn'}</p>
+        <p className="threat-detail-dek">Đọc dấu hiệu và nguồn dẫn chứng dưới đây. Nội dung này không thay thế việc kiểm tra trường hợp bạn đang gặp.</p>
+        <div className="threat-detail-dates"><span>{alert.data.publishedAt ? <>Công bố <time dateTime={alert.data.publishedAt}>{formatDateTime(alert.data.publishedAt)}</time></> : 'Chưa rõ ngày công bố'}</span>{alert.data.verifiedAt && <span>Xác minh <time dateTime={alert.data.verifiedAt}>{formatDateTime(alert.data.verifiedAt)}</time></span>}{alert.data.issuedAt && <span>Nguồn phát hành <time dateTime={alert.data.issuedAt}>{formatDateTime(alert.data.issuedAt)}</time></span>}</div>
+        <p className="threat-detail-source-summary">{evidenceSources.length ? <>Dẫn chứng: {evidenceSources.join(', ')} · <a href="#evidence-heading">Xem nguồn</a></> : 'Chưa có nguồn dẫn chứng được cung cấp.'}</p>
       </header>
-      <section className="detail-section prevention-section" aria-labelledby="prevention-heading">
-        <div className="detail-section-heading"><ShieldAlert size={17} aria-hidden="true"/><h2 id="prevention-heading">Cách phòng tránh</h2></div>
-        <p>{alert.data.preventionGuidance}</p>
+      <section className="detail-section threat-detail-section" aria-labelledby="indicators-heading">
+        <div className="detail-section-heading"><span className="threat-section-number">01</span><h2 id="indicators-heading">Dấu hiệu cần chú ý</h2></div>
+        <p className="detail-intro">Chỉ dấu để đối chiếu, không phải kết luận tự động về mọi trường hợp tương tự.</p>
+        {alert.data.indicators.length > 0 ? <ul className="indicator-list">{alert.data.indicators.map((item, i) => <li key={`${item.indicatorType}-${i}`}><span>{indicatorLabels[item.indicatorType] ?? item.indicatorType}</span><code>{concealedIndicator(item.indicatorType, item.indicatorText) ? 'Chỉ dấu được che; đối chiếu trong Giám định' : item.indicatorText}</code></li>)}</ul> : <p className="detail-muted">Chưa có dấu hiệu cụ thể được cung cấp.</p>}
       </section>
-      <section className="detail-section" aria-labelledby="indicators-heading">
-        <div className="detail-section-heading"><h2 id="indicators-heading">Dấu hiệu cần đối chiếu</h2></div>
-        <p className="detail-intro">Các chỉ dấu được trích xuất để đối chiếu; chúng không tự xác nhận nội dung cảnh báo.</p>
-        {alert.data.indicators.length > 0 ? <ul className="indicator-list">{alert.data.indicators.map((item, i) => <li key={`${item.indicatorType}-${i}`}><span>{item.indicatorType}</span><code>{isHashedIndicator(item.indicatorText) ? 'Chỉ dấu đã che (đối chiếu tự động trong Giám định)' : item.indicatorText}</code></li>)}</ul> : <p className="detail-muted">Chưa trích xuất chỉ dấu.</p>}
-        <Link className="detail-inline-link" href={`/forensic?from=radar&alertId=${encodeURIComponent(alert.data.id)}${visibleIndicator ? `&indicator=${encodeURIComponent(visibleIndicator.indicatorText)}` : ''}`}>Đối chiếu trong Giám định <ArrowUpRight size={14} aria-hidden="true"/></Link>
+      <section className="detail-section threat-detail-section threat-evidence-section" aria-labelledby="evidence-heading">
+        <div className="detail-section-heading"><span className="threat-section-number">02</span><h2 id="evidence-heading">Bằng chứng &amp; nguồn</h2></div>
+        <p className="detail-intro">Các liên kết bên dưới đến từ dữ liệu nguồn của cảnh báo.</p>
+        {alert.data.evidence.length > 0 ? <ul className="evidence-list">{alert.data.evidence.map((item) => <li key={`${item.articleId}-${item.url}`}><span className="threat-evidence-source">{item.sourceName}</span><span className="threat-evidence-title">{item.title}</span>{item.url ? <a href={item.url} target="_blank" rel="noreferrer">Mở nguồn gốc <ExternalLink size={13} aria-hidden="true"/><span className="sr-only"> trong tab mới</span></a> : <span className="detail-muted">Chưa có liên kết nguồn</span>}<p>{item.publishedAt ? <>Nguồn công bố <time dateTime={item.publishedAt}>{formatDateTime(item.publishedAt) ?? 'chưa rõ thời gian'}</time></> : 'Chưa rõ ngày nguồn công bố'}</p></li>)}</ul> : <p className="detail-muted">Chưa có nguồn dẫn chứng được cung cấp.</p>}
       </section>
-      <section className="detail-section" aria-labelledby="evidence-heading">
-        <div className="detail-section-heading"><h2 id="evidence-heading">Nguồn dẫn chứng</h2></div>
-        {alert.data.evidence.length > 0 ? <ul className="evidence-list">{alert.data.evidence.map((item) => <li key={`${item.articleId}-${item.url}`}><a href={item.url} target="_blank" rel="noreferrer">{item.sourceName}: {item.title}<ExternalLink size={13} aria-hidden="true"/><span className="sr-only"> mở trong tab mới</span></a><p>{item.publishedAt ? <>Công bố <time dateTime={item.publishedAt}>{formatDateTime(item.publishedAt) ?? 'chưa rõ thời gian'}</time></> : 'Chưa rõ thời gian công bố'}</p></li>)}</ul> : <p className="detail-muted">Chưa có nguồn dẫn chứng được cung cấp.</p>}
+      <section className="detail-section threat-detail-section threat-precautions" aria-labelledby="prevention-heading">
+        <div className="detail-section-heading"><span className="threat-section-number">03</span><ShieldAlert size={17} aria-hidden="true"/><h2 id="prevention-heading">Cách phòng tránh</h2></div>
+        {alert.data.preventionGuidance?.trim() ? <p>{alert.data.preventionGuidance}</p> : <p className="detail-muted">Nguồn hiện chưa cung cấp hướng dẫn phòng tránh cụ thể.</p>}
       </section>
+      <section className="threat-detail-handoff" aria-labelledby="threat-handoff-heading"><h2 id="threat-handoff-heading">Bạn gặp tình huống tương tự?</h2><p>Đọc cảnh báo không phải là đã giám định trường hợp của bạn.</p><Link className="detail-inline-link" href={`/forensic?from=radar&alertId=${encodeURIComponent(alert.data.id)}${visibleIndicator ? `&indicator=${encodeURIComponent(visibleIndicator.indicatorText)}` : ''}`}>Đối chiếu trong Giám định <ArrowUpRight size={14} aria-hidden="true"/></Link></section>
     </div>
   }
 

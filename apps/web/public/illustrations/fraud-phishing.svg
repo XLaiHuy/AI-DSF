@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-labelledby="title desc">
+<title id="title">Minh họa tin nhắn chứa đường dẫn chưa rõ nguồn</title>
+<desc id="desc">Tranh vẽ gốc: điện thoại hiển thị tin nhắn mẫu với một đường dẫn chưa rõ nguồn; tờ giấy bên cạnh ghi câu hỏi kiểm tra địa chỉ.</desc>
+<rect width="800" height="600" fill="#d9e5dc"/>
+<path d="M0 0h800v113L0 363Z" fill="#c6d8ca"/>
+<path d="M0 527 800 297v303H0Z" fill="#b5cbbd"/>
+<path d="m68 50 448-13M39 84l311-10M605 530l164-41" stroke="#a9c2af" stroke-width="2" opacity=".75"/>
+<g transform="rotate(-9 308 322)">
+<rect x="124" y="66" width="340" height="500" rx="37" fill="#183f31"/>
+<rect x="137" y="79" width="314" height="474" rx="28" fill="#faf9f2"/>
+<rect x="256" y="91" width="69" height="7" rx="4" fill="#183f31"/>
+<text x="163" y="145" fill="#45644f" font-family="Arial,sans-serif" font-size="17" font-weight="700" letter-spacing="2">TIN NHẮN MẪU</text>
+<path d="M163 174h228M163 201h189" stroke="#cad8cc" stroke-width="10" stroke-linecap="round"/>
+<rect x="163" y="247" width="254" height="154" rx="13" fill="#e8eee5"/>
+<text x="181" y="285" fill="#395b45" font-family="Arial,sans-serif" font-size="18">Xin kiểm tra tại:</text>
+<rect x="181" y="308" width="211" height="53" rx="5" fill="#f8eee7"/>
+<text x="193" y="342" fill="#a24e35" font-family="Arial,sans-serif" font-size="20" font-weight="700">liên-kết? / ...</text>
+<path d="M193 350h159" stroke="#b95d43" stroke-width="2"/>
+<path d="M163 447h211M163 473h168" stroke="#ccd9cd" stroke-width="10" stroke-linecap="round"/>
+</g>
+<g transform="rotate(8 616 329)">
+<rect x="491" y="179" width="239" height="286" fill="#fcfaf2"/>
+<path d="M517 209h188" stroke="#2d5b43" stroke-width="4"/>
+<text x="518" y="249" fill="#2d5b43" font-family="Georgia,serif" font-size="27">Kiểm tra</text>
+<text x="518" y="280" fill="#2d5b43" font-family="Georgia,serif" font-size="27">địa chỉ</text>
+<path d="M518 323h169M518 350h154M518 377h114" stroke="#abc0ae" stroke-width="7" stroke-linecap="round"/>
+<circle cx="654" cy="412" r="29" fill="none" stroke="#bc6648" stroke-width="6"/>
+<path d="m675 433 27 27" stroke="#bc6648" stroke-width="7" stroke-linecap="round"/>
+</g>
+<text x="42" y="569" fill="#385b46" font-family="Arial,sans-serif" font-size="16" letter-spacing="2">MINH HỌA GỐC · FINCOPILOT</text>
+</svg>

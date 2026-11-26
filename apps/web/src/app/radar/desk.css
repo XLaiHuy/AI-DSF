@@ -64,6 +64,7 @@ body:has(.desk-shell) {margin:0;background-color:#f58c54;background-image:linear
 .desk-rail h2{font:500 20px/26px Arial,sans-serif;letter-spacing:-.5px}
 .desk-pick{border-bottom:1px solid var(--line);padding:16px 0;min-height:153px;display:flex;flex-direction:column;gap:14px}
 .desk-pick-main{display:grid;align-items:center;grid-template-columns:minmax(0,1fr) 60px;gap:14px}
+.desk-pick-main--text{display:block}
 .desk-pick .desk-thumb{width:60px;aspect-ratio:60/46;border-radius:6px}
 .desk-section{padding:24px 0;border-bottom:1px solid var(--line)}
 .desk-cloud{display:flex;flex-wrap:wrap;gap:10px 12px;margin:16px 0}
@@ -125,6 +126,13 @@ body:has(.desk-shell){background:#faf9f7;background-image:none}
 .editorial-image-credit{position:absolute;right:4px;bottom:4px;z-index:2;max-width:90%;padding:2px 5px;background:#111b19c9;color:white;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .editorial-image-credit a{color:white!important}
 .desk-feature>.editorial-image{position:absolute;inset:0;z-index:0}
+.desk-feature .editorial-image .radar-category-art{display:block;position:relative;padding:22px;background:#1d493b;color:#b2d0bd;opacity:1}
+.desk-feature .editorial-image .radar-category-art--banking{background:#214439;color:#d6ddc3}
+.desk-feature .editorial-image .radar-category-art--financial_fraud{background:#45352b;color:#e5c79e}
+.desk-feature .editorial-image .radar-category-art--inflation{background:#3b4435;color:#d9dca9}
+.desk-feature .editorial-image .radar-category-art--policy{background:#24474b;color:#bfd9d5}
+.desk-feature .editorial-image .radar-category-art svg{height:80%;opacity:.65;stroke-width:1.4}
+.desk-feature .editorial-image .radar-category-art span{position:absolute;top:12px;right:12px;padding:3px 6px;background:#10261dbd;color:#fff;font-size:10px;letter-spacing:0}
 .desk-feature::before{z-index:1}
 .desk-feature .desk-cover-copy{position:relative;z-index:2}
 .desk-feature .desk-badge{position:absolute;top:16px;left:16px;z-index:3}
@@ -152,12 +160,12 @@ body:has(.desk-shell){background:#faf9f7;background-image:none}
 .desk-shell .desk-follow{font-size:13px}
 .desk-shell .desk-follow small{display:block;color:var(--soft)}
 .desk-shell .desk-small-button{font-size:12px}
+.desk-reading-empty{padding:18px 0 28px}
+.desk-reading-empty button{display:inline-flex;align-items:center;gap:5px;min-height:40px;margin-top:8px;color:#19543e;font-weight:700;text-decoration:underline;text-underline-offset:3px}
 .desk-shell .desk-load-more{padding:24px}
 .desk-shell .radar-load-more{padding:18px}
 .desk-shell .radar-empty-state{margin-top:24px}
-.desk-shell .radar-v2-personal{margin:0;padding:0;border:0;background:transparent}
-.desk-shell .radar-v2-personal>.radar-v2-section-head{padding:12px 0}
-.desk-shell .radar-preference-group{margin-top:10px;background:#f7f7f5}
+.desk-shell .radar-v2-personal{margin:0;padding:0;border:0;background:transparent;font-family:Arial,sans-serif;color:#1a2922}
 .desk-shell .radar-v2-recommendations{margin-top:18px}
 .desk-shell .radar-alert-feed{margin-top:10px}
 .desk-shell .radar-v2-alerts{margin-top:16px}
@@ -218,7 +226,198 @@ body:has(.desk-shell){background:#faf9f7;background-image:none}
 }
 @media(max-width:350px){
  .desk-banner .desk-icon{display:none}
+ .desk-chips{flex-wrap:wrap;overflow:visible}
+ .desk-tab{font-size:11px;white-space:nowrap}
  .desk-feature{aspect-ratio:1/1}
  .desk-feature h2{font-size:18px;line-height:24px}
  .desk-row{grid-template-columns:30% minmax(0,1fr)}
+}
+
+/* Editorial fraud feed: one illustrated lead, followed by short evidence-led reports. */
+.desk-shell .radar-alert-feed{margin-top:0}
+.desk-shell .radar-alert-intro{padding:5px 0 24px}
+.desk-shell .radar-alert-eyebrow{color:#52715c;font:700 10px/1.4 Arial,sans-serif;letter-spacing:.13em}
+.desk-shell .radar-alert-intro h1{margin:8px 0 7px;color:#183c2d;font:500 clamp(28px,3vw,35px)/1.14 Cambria,'Times New Roman',serif}
+.desk-shell .radar-alert-intro>p:last-child{max-width:58ch;color:#54645a;font-size:13px;line-height:1.6}
+.desk-shell .radar-alert-row{display:block;margin:0;padding:20px 0 22px;border:0;border-bottom:1px solid #dce5dc;background:#fff}
+.desk-shell .radar-alert-row.is-lead{display:grid;grid-template-columns:minmax(0,45%) minmax(0,1fr);align-items:start;column-gap:22px;padding:0 0 25px}
+.desk-shell .radar-alert-art{position:relative;min-width:0;margin:0}
+.desk-shell .radar-alert-row.is-lead .radar-alert-art{grid-column:1;grid-row:1 / 4}
+.desk-shell .radar-alert-row.is-lead .radar-alert-head{grid-column:2;grid-row:1}
+.desk-shell .radar-alert-row.is-lead .radar-alert-guidance{grid-column:2;grid-row:2}
+.desk-shell .radar-alert-row.is-lead .radar-alert-body{grid-column:2;grid-row:3}
+.desk-shell .radar-alert-art img{display:block;width:100%;height:280px;object-fit:cover;background:#dce5dc}
+.desk-shell .radar-alert-art figcaption{margin-top:5px;color:#75857a;font-size:10px;line-height:1.4}
+.desk-shell .radar-alert-row:not(.is-lead) .radar-alert-art{display:none}
+.desk-shell .radar-alert-status{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 10px;color:#5b7061;font:600 11px/1.45 Arial,sans-serif}
+.desk-shell .radar-alert-category{color:#315f45;overflow-wrap:anywhere}
+.desk-shell .radar-alert-status .is-verified{display:inline-flex;align-items:center;gap:5px;color:#235c44;font-weight:700;white-space:nowrap}
+.desk-shell .radar-alert-status .is-verified::before{content:'';width:5px;height:5px;flex:none;border-radius:50%;background:#286e4e}
+.desk-shell .radar-alert-published{margin:0 0 10px;color:#657267;font-size:12px;line-height:1.45}
+.desk-shell .radar-alert-row h2{max-width:36ch;margin:8px 0 9px;color:#182c21;font:500 23px/1.18 Cambria,'Times New Roman',serif;overflow-wrap:anywhere}
+.desk-shell .radar-alert-row.is-lead h2{font-size:clamp(25px,2.5vw,31px);line-height:1.15}
+.desk-shell .radar-alert-guidance{max-width:64ch;margin:0 0 13px;color:#2f4938;font-size:13px;line-height:1.55}
+.desk-shell .radar-alert-evidence{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 6px;color:#526b58;font-size:12px;line-height:1.55}
+.desk-shell .radar-alert-evidence-label{color:#475f4e;font-size:12px;font-weight:700}
+.desk-shell .radar-alert-evidence ul{display:flex;flex-wrap:wrap;gap:3px 10px;min-width:0;margin:0;padding:0;list-style:none}
+.desk-shell .radar-alert-evidence li{min-width:0;overflow-wrap:anywhere}
+.desk-shell .radar-alert-evidence a{display:inline-flex;align-items:center;gap:3px;color:#185940;font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.desk-shell .radar-alert-evidence p{margin:0;color:#69756c}
+.desk-shell .radar-alert-detail{display:inline-flex;min-height:34px;align-items:center;gap:5px;margin-top:8px;color:#185940;font-size:12px;font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.desk-shell .radar-alert-detail:hover{color:#113e2d}
+.desk-shell .radar-alert-detail:focus-visible{outline:3px solid #185940;outline-offset:2px}
+.desk-shell .radar-alert-rail{max-width:28rem}
+.desk-shell .radar-alert-rail h2{margin:7px 0 12px;color:#193d2e;font:500 23px/1.18 Cambria,'Times New Roman',serif}
+.desk-shell .radar-alert-rail>p:not(.radar-alert-eyebrow){color:#3d5145;font-size:13px;line-height:1.6}
+.desk-shell .radar-alert-rail-note{display:grid;gap:4px;margin-top:17px;padding-top:13px;border-top:1px solid #e0e6df;font-size:12px;line-height:1.55}
+.desk-shell .radar-alert-rail-note strong{color:#183c2d}
+.desk-shell .radar-alert-rail-note span{color:#58665c}
+.desk-shell .radar-alert-rail-action{display:inline-flex;min-height:42px;align-items:center;gap:5px;margin-top:16px;color:#145c46;font-size:12px;font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.desk-shell--alerts .radar-v2-alerts{border-top:1px solid #dce5dc}
+.desk-shell--alerts .radar-v2-alert-item--report{border-left:0;padding-left:0}
+@media(max-width:650px){
+ .desk-shell .radar-alert-intro{padding:0 0 18px}
+ .desk-shell .radar-alert-intro h1{margin:5px 0 4px;font-size:29px}
+ .desk-shell .radar-alert-intro>p:last-child{font-size:12px;line-height:1.45}
+ .desk-shell .radar-alert-row.is-lead{grid-template-columns:minmax(0,1fr);padding-bottom:19px}
+ .desk-shell .radar-alert-row.is-lead .radar-alert-head{grid-column:1;grid-row:1}
+ .desk-shell .radar-alert-row.is-lead .radar-alert-guidance{grid-column:1;grid-row:2;margin:2px 0 8px}
+ .desk-shell .radar-alert-row.is-lead .radar-alert-art{grid-column:1;grid-row:3;margin:4px 0 12px}
+ .desk-shell .radar-alert-row.is-lead .radar-alert-body{grid-column:1;grid-row:4}
+ .desk-shell .radar-alert-art img{height:170px}
+ .desk-shell .radar-alert-row h2{font-size:20px;line-height:1.2}
+ .desk-shell .radar-alert-row.is-lead h2{font-size:26px}
+ .desk-shell .radar-alert-row:not(.is-lead){padding:17px 0 19px}
+ .desk-shell .radar-alert-guidance{font-size:12px}
+ .desk-shell--alerts .desk-quick-check{display:grid;gap:6px;min-height:0;padding:10px 16px}
+ .desk-shell--alerts .desk-quick-check .desk-icon,.desk-shell--alerts .desk-quick-check .desk-banner-copy p{display:none}
+ .desk-shell--alerts .desk-quick-check h1{font-size:13px;line-height:18px}
+ .desk-shell--alerts .desk-quick-check form{margin-top:0}
+ .desk-shell--alerts .desk-quick-check form input,.desk-shell--alerts .desk-quick-check form button{height:36px;min-height:36px}
+ .desk-shell--alerts .desk-tools{padding:10px 16px 0}
+ .desk-shell--alerts .desk-search,.desk-shell--alerts .desk-bell{height:39px}
+ .desk-shell--alerts .desk-bell{width:39px}
+ .desk-shell--alerts .desk-chips{display:none}
+ .desk-shell--alerts .desk-tab{height:42px}
+ .desk-shell--alerts .desk-stream{padding-top:14px}
+ .desk-shell--alerts .radar-alert-intro{padding-bottom:12px}
+ .desk-shell--alerts .radar-alert-intro h1{font-size:27px}
+ .desk-shell--alerts .radar-alert-status{font-size:11px}
+}
+
+/* Preferences live within Radar; these rules do not affect the reading desk or other pages. */
+.desk-shell .radar-personal-intro{padding:10px 0 27px}
+.desk-shell .radar-personal-intro .radar-context-kicker{color:#32644d;font:700 11px/1.3 Arial,sans-serif;letter-spacing:.12em}
+.desk-shell .radar-personal-intro h2{margin:10px 0 9px;color:#183c2d;font:600 clamp(28px,3vw,34px)/1.12 Arial,sans-serif;letter-spacing:-.045em}
+.desk-shell .radar-personal-intro>p:last-child{max-width:55ch;color:#5a6960;font-size:14px;line-height:1.55}
+.desk-shell .radar-preference-topics,.desk-shell .radar-preference-privacy{border-top:1px solid #dce5dc;padding-top:24px}
+.desk-shell .radar-preference-heading{display:flex;align-items:baseline;justify-content:space-between;gap:16px}
+.desk-shell .radar-preference-heading h3{color:#1b3b2e;font:600 18px/1.3 Arial,sans-serif;letter-spacing:-.02em}
+.desk-shell .radar-preference-heading>span{flex:none;color:#617267;font-size:12px;line-height:1.4}
+.desk-shell .radar-v2-interest-list{gap:10px;margin-top:18px}
+.desk-shell .radar-v2-interest-list button{min-height:44px;padding:10px 17px;border:1px solid #cbd8ce;border-radius:999px;background:#fff;color:#294739;font-size:13px;font-weight:600;line-height:1.2;transition:background-color .15s ease,border-color .15s ease,color .15s ease}
+.desk-shell .radar-v2-interest-list button:hover{border-color:#4d8466;background:#edf4ee;color:#174735}
+.desk-shell .radar-v2-interest-list button[aria-pressed=true]{border-color:#19543e;background:#19543e;color:#fff}
+.desk-shell .radar-v2-interest-list button[aria-pressed=true]:hover{background:#286c4f;border-color:#286c4f}
+.desk-shell .radar-v2-interest-list button:focus-visible,.desk-shell .radar-personal-action:focus-visible,.desk-shell .radar-consent-options input:focus-visible,.desk-shell .radar-consent-details summary:focus-visible{outline:3px solid #bc8647;outline-offset:3px}
+.desk-shell .radar-preference-action{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:24px;padding-bottom:31px}
+.desk-shell .radar-preference-action p{color:#65746a;font-size:12px;line-height:1.5}
+.desk-shell .radar-preference-action .radar-personal-action{flex:none;min-height:44px;padding:10px 20px;border:1px solid #19543e;border-radius:5px;background:#19543e;color:#fff;font-size:13px;font-weight:700;text-decoration:none}
+.desk-shell .radar-preference-action .radar-personal-action:hover{background:#286c4f;border-color:#286c4f}
+.desk-shell .radar-preference-action .radar-personal-action[aria-pressed=true]{border-color:#8eae99;background:#fff;color:#19543e}
+.desk-shell .radar-preference-action .radar-personal-action[aria-pressed=true]:hover{background:#edf4ee}
+.desk-shell .radar-preference-privacy{padding-top:27px}
+.desk-shell .radar-privacy-intro{margin-top:7px;color:#5a6960;font-size:13px;line-height:1.55}
+.desk-shell .radar-consent-options{display:block;margin:18px 0 0;padding:0;border:0}
+.desk-shell .radar-consent-options .radar-consent-row{display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:74px;margin:0;padding:15px 0;border-top:1px solid #e4e9e3;cursor:pointer}
+.desk-shell .radar-consent-options .radar-consent-row:last-of-type{border-bottom:1px solid #e4e9e3}
+.desk-shell .radar-consent-copy{display:grid;gap:4px;min-width:0}
+.desk-shell .radar-consent-copy strong{color:#22382b;font-size:13px;font-weight:650;line-height:1.4}
+.desk-shell .radar-consent-copy span{color:#617166;font-size:12px;line-height:1.45}
+.desk-shell .radar-consent-toggle{display:inline-flex;align-items:center;gap:9px;flex:none;color:#617166;font-size:11px;font-weight:700}
+.desk-shell .radar-consent-options input[type=checkbox]{appearance:none;-webkit-appearance:none;position:relative;flex:none;width:43px;height:26px;margin:0;border:1px solid #9fac9f;border-radius:999px;background:#dfe5df;cursor:pointer;transition:background-color .15s ease,border-color .15s ease}
+.desk-shell .radar-consent-options input[type=checkbox]::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px #1b302930;transition:transform .15s ease}
+.desk-shell .radar-consent-options input[type=checkbox]:checked{border-color:#19543e;background:#19543e}
+.desk-shell .radar-consent-options input[type=checkbox]:checked::after{transform:translateX(17px)}
+.desk-shell .radar-consent-options input[type=checkbox]:hover{border-color:#19543e}
+.desk-shell .radar-consent-summary{margin:17px 0 0;color:#3b5846;font-size:12px;line-height:1.55}
+.desk-shell .radar-consent-details{margin:11px 0 0;padding-bottom:24px;color:#617166;font-size:12px;line-height:1.6}
+.desk-shell .radar-consent-details summary{display:inline-flex;align-items:center;gap:8px;min-height:42px;color:#19543e;font-size:12px;font-weight:700;text-decoration:underline;text-underline-offset:3px;list-style:none}
+.desk-shell .radar-consent-details summary::-webkit-details-marker{display:none}
+.desk-shell .radar-consent-details summary::after{content:"+";display:inline-block;font-size:16px;font-weight:400;text-decoration:none}
+.desk-shell .radar-consent-details[open] summary::after{content:"−"}
+.desk-shell .radar-consent-details p{max-width:65ch;margin:4px 0 0}
+@media(max-width:650px){
+ .desk-shell .radar-personal-intro{padding:6px 0 25px}
+ .desk-shell .radar-personal-intro h2{font-size:29px;line-height:1.13}
+ .desk-shell .radar-personal-intro>p:last-child{font-size:13px;line-height:1.55}
+ .desk-shell .radar-preference-topics,.desk-shell .radar-preference-privacy{padding-top:22px}
+ .desk-shell .radar-preference-heading h3{font-size:17px}
+ .desk-shell .radar-preference-heading>span{font-size:11px}
+ .desk-shell .radar-v2-interest-list{gap:9px 8px;margin-top:16px}
+ .desk-shell .radar-v2-interest-list button{min-height:46px;padding:10px 15px;font-size:13px}
+ .desk-shell .radar-preference-action{display:flex;flex-direction:column;align-items:stretch;gap:12px;margin-top:20px;padding-bottom:29px}
+ .desk-shell .radar-preference-action .radar-personal-action{width:100%;min-height:48px}
+ .desk-shell .radar-privacy-intro{font-size:12px}
+ .desk-shell .radar-consent-options{margin-top:15px}
+ .desk-shell .radar-consent-options .radar-consent-row{gap:16px;min-height:88px;padding:16px 0}
+ .desk-shell .radar-consent-copy strong{font-size:13px}
+ .desk-shell .radar-consent-copy span{font-size:12px}
+ .desk-shell .radar-consent-summary{margin-top:16px}
+ .desk-shell .radar-consent-details{padding-bottom:17px}
+}
+
+/* The personal tab is a reading surface; preferences retain their own dialog. */
+.desk-shell .radar-personal-feed{color:#1a2821}
+.desk-shell .radar-personal-feed-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding:5px 0 25px;border-bottom:1px solid #dce5dc}
+.desk-shell .radar-personal-feed-head .radar-context-kicker{color:#2d6047;font-size:11px;font-weight:700;letter-spacing:.12em}
+.desk-shell .radar-personal-feed-head h2{margin:8px 0 6px;color:#183c2d;font:500 clamp(30px,3vw,38px)/1.08 var(--font-editorial),Georgia,serif;letter-spacing:-.035em}
+.desk-shell .radar-personal-feed-head p:last-child{max-width:57ch;color:#59685e;font-size:13px;line-height:1.55}
+.desk-shell .radar-personal-feed-head button{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;min-height:42px;padding:9px 15px;border:1px solid #9bb7a2;border-radius:5px;background:#fff;color:#19543e;font-size:13px;font-weight:700}
+.desk-shell .radar-personal-feed-head button:hover{border-color:#19543e;background:#eef4ee}
+.desk-shell .radar-personal-explanation{margin:18px 0 0;padding:11px 14px;border-left:2px solid #618d6b;background:#f4f7f3;color:#41594b;font-size:12px;line-height:1.55}
+.desk-shell .radar-personal-list-label{margin:24px 0 0;color:#42644d;font-size:11px;font-weight:700;letter-spacing:.12em;line-height:1.5}
+.desk-shell .radar-recommendation-list{margin:13px 0 0;border-top:1px solid #dce5dc}
+.desk-shell .radar-recommendation-row{display:grid;grid-template-columns:156px minmax(0,1fr);gap:20px;align-items:start;padding:21px 0;border-bottom:1px solid #e2e8e2}
+.desk-shell .radar-recommendation-row.is-lead{grid-template-columns:minmax(0,41%) minmax(0,1fr);gap:24px;padding:24px 0}
+.desk-shell .radar-recommendation-thumb{min-width:0}
+.desk-shell .radar-recommendation-thumb .desk-thumb{width:100%;aspect-ratio:1.48;border-radius:7px}
+.desk-shell .radar-recommendation-row.is-lead .desk-thumb{aspect-ratio:1.25}
+.desk-shell .radar-recommendation-copy{min-width:0}
+.desk-shell .radar-recommendation-category{margin:0 0 7px;color:#336548;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.desk-shell .radar-recommendation-row h3{margin:0;color:#1d2922;font:500 18px/1.28 var(--font-editorial),Georgia,serif;letter-spacing:-.015em;text-wrap:pretty}
+.desk-shell .radar-recommendation-row.is-lead h3{font-size:clamp(21px,2.15vw,26px);line-height:1.2}
+.desk-shell .radar-recommendation-row h3 a{color:inherit;text-decoration:none}
+.desk-shell .radar-recommendation-row h3 a:hover{text-decoration:underline;text-decoration-color:#7b9c82;text-underline-offset:3px}
+.desk-shell .radar-recommendation-meta{display:flex;align-items:center;flex-wrap:wrap;gap:3px 13px;margin:10px 0 0;color:#5b6d61;font-size:12px;line-height:1.4}
+.desk-shell .radar-recommendation-meta .radar-source-item a{min-height:0;color:#28583f;font-size:12px;font-weight:650}
+.desk-shell .radar-recommendation-meta .radar-first-seen{font-size:11px}
+.desk-shell .radar-recommendation-meta .desk-stamp{margin:0;color:#5b6d61;font-size:12px;line-height:1.4}
+.desk-shell .radar-recommendation-verification{margin:8px 0 0;color:#8a5935;font-size:11px;line-height:1.4}
+.desk-shell .radar-recommendation-reason{margin:11px 0 0;color:#526659;font-size:12px;line-height:1.5}
+.desk-shell .radar-recommendation-reason strong{display:block;margin-bottom:2px;color:#2d6047;font-size:11px;font-weight:700}
+.desk-dialog:has(.radar-v2-personal){max-width:min(720px,calc(100vw - 32px));max-height:min(92dvh,960px);padding:24px 30px}
+.desk-dialog:has(.radar-v2-personal)>header{position:sticky;top:-24px;z-index:2;margin:-24px -30px 15px;padding:15px 30px;border-bottom:1px solid #dce5dc;background:#fff}
+.desk-dialog:has(.radar-v2-personal)>header h2{font:600 16px/1.35 Arial,sans-serif;color:#214d38}
+@media(max-width:900px){
+ .desk-shell .desk-rail .desk-section{display:none}
+}
+@media(max-width:650px){
+ .desk-shell .radar-personal-feed-head{align-items:flex-start;gap:12px;padding:5px 0 19px}
+ .desk-shell .radar-personal-feed-head h2{font-size:29px}
+ .desk-shell .radar-personal-feed-head p:last-child{font-size:12px}
+ .desk-shell .radar-personal-feed-head button{min-height:40px;padding:8px 10px;font-size:12px}
+ .desk-shell .radar-personal-feed-head button svg{display:none}
+ .desk-shell .radar-personal-list-label{margin-top:21px}
+ .desk-shell .radar-recommendation-row,.desk-shell .radar-recommendation-row.is-lead{grid-template-columns:112px minmax(0,1fr);gap:12px;padding:18px 0}
+ .desk-shell .radar-recommendation-row.is-lead{display:block;padding-top:19px}
+ .desk-shell .radar-recommendation-row.is-lead .desk-thumb{aspect-ratio:16/9;margin-bottom:15px}
+ .desk-shell .radar-recommendation-row h3{font-size:16px;line-height:1.3}
+ .desk-shell .radar-recommendation-row.is-lead h3{font-size:22px}
+ .desk-shell .radar-recommendation-thumb .desk-thumb{aspect-ratio:1.15}
+ .desk-shell .radar-recommendation-category{font-size:10px;margin-bottom:5px}
+ .desk-shell .radar-recommendation-meta{margin-top:7px;gap:2px 10px}
+ .desk-shell .radar-recommendation-reason{margin-top:8px}
+ .desk-dialog:has(.radar-v2-personal){width:100vw;max-width:none;height:100dvh;max-height:none;margin:0;padding:15px 16px 28px;border:0;border-radius:0}
+ .desk-dialog:has(.radar-v2-personal)>header{top:-15px;margin:-15px -16px 15px;padding:12px 16px}
 }
