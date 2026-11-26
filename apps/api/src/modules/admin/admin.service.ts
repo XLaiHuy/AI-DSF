@@ -28,15 +28,17 @@ function validateProductBounds(product: {
   nominalRateMin: Decimal.Value; nominalRateMax: Decimal.Value;
   minAmountVnd: Decimal.Value; maxAmountVnd: Decimal.Value;
   minTermMonths: number; maxTermMonths: number;
+  upfrontFeeRate?: Decimal.Value | null; earlySettlementFeeRate?: Decimal.Value | null;
 }) {
   const issues = [
-    [new Decimal(product.nominalRateMin).gt(product.nominalRateMax), 'nominalRateMax', 'Lãi suất tối đa'],
-    [new Decimal(product.minAmountVnd).gt(product.maxAmountVnd), 'maxAmountVnd', 'Số tiền tối đa'],
-    [product.minTermMonths > product.maxTermMonths, 'maxTermMonths', 'Kỳ hạn tối đa'],
+    [new Decimal(product.nominalRateMin).gt(product.nominalRateMax), 'nominalRateMax', 'Lãi suất tối đa phải lớn hơn hoặc bằng mức tối thiểu.'],
+    [new Decimal(product.nominalRateMax).gt(200), 'nominalRateMax', 'Lãi suất tối đa không được vượt quá 200%.'],
+    [new Decimal(product.minAmountVnd).gt(product.maxAmountVnd), 'maxAmountVnd', 'Số tiền tối đa phải lớn hơn hoặc bằng mức tối thiểu.'],
+    [product.minTermMonths > product.maxTermMonths, 'maxTermMonths', 'Kỳ hạn tối đa phải lớn hơn hoặc bằng mức tối thiểu.'],
+    [product.upfrontFeeRate != null && new Decimal(product.upfrontFeeRate).gte(100), 'upfrontFeeRate', 'Phí trả trước phải nhỏ hơn 100%.'],
+    [product.earlySettlementFeeRate != null && new Decimal(product.earlySettlementFeeRate).gt(100), 'earlySettlementFeeRate', 'Phí tất toán trước hạn không được vượt quá 100%.'],
   ] as const
-  const details = issues.filter(([invalid]) => invalid).map(([, field, label]) => ({
-    path: [field], message: label + ' phải lớn hơn hoặc bằng mức tối thiểu.',
-  }))
+  const details = issues.filter(([invalid]) => invalid).map(([, field, message]) => ({ path: [field], message }))
   if (details.length) throw new BadRequestException({
     errorCode: 'ERR_VALIDATION_FAILED', message: 'Thông tin sản phẩm không hợp lệ.', details,
   })

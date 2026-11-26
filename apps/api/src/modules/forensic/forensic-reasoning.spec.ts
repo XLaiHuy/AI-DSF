@@ -134,6 +134,7 @@ describe('grounded second-pass reasoning', () => {
     'Ngân hàng báo không nên mở đường dẫn lạ',
     'Tôi kiểm tra đơn hàng trong ứng dụng chính thức.',
     'Tôi chuyển tiền mua hàng theo hóa đơn.',
+    'Mã OTP dùng để đăng nhập. Cài đặt ứng dụng lịch từ App Store.',
   ])('keeps advice and ordinary activity at SAFE 0/100 (%s)', async (rawText) => {
     const { service } = setup(0, [])
     expect(await service.screenAudit({ rawText }, [])).toBeNull()

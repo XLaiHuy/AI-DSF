@@ -318,6 +318,23 @@ describe('Vision image preparation', () => {
     expect(unstructured.visionDegraded).toBe(true)
   })
 
+  it('classifies masked vision documentTranscript on image-only audits without benchmark observe', async () => {
+    const ai = new AiGatewayService(new ConfigService())
+    const classify = vi.spyOn(ai, 'classifyForensicIntent').mockResolvedValue(null)
+    vi.spyOn(ai, 'generateWithProvider').mockResolvedValue({
+      provider: 'fixture',
+      output: {
+        documentTranscript: 'Chuyển khoản xác minh qua đường link lạ và đọc OTP, SĐT 0901234567',
+        redFlagPhrases: [], upfrontFees: [],
+      },
+    } as never)
+    const buffer = await sharp({ create: { width: 80, height: 80, channels: 3, background: 'white' } }).png().toBuffer()
+    await extractAuditEvidence(ai, {}, [{ buffer }], 20, 5)
+    expect(classify).toHaveBeenCalledOnce()
+    expect(classify.mock.calls[0]?.[0]).toContain('đọc OTP')
+    expect(classify.mock.calls[0]?.[0]).not.toContain('0901234567')
+  })
+
   it('caps rasterized pages and sends at most eight resized JPEGs, then wipes the buffers', async () => {
     const photo = sharp({ create: { width: 1800, height: 1500, channels: 3, background: 'white' } })
     const files = [

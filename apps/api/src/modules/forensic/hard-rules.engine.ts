@@ -424,10 +424,14 @@ export function evaluateHardRules(input: HardRuleInput) {
     const evidence = (text: string) => !negation.test(text) &&
       !((ruleCode === 'RULE_09_BIOMETRIC_OTP_PHISHING' || ruleCode === 'RULE_11_DEEPFAKE_URGENT_COERCION') && remote.advice.test(text)) &&
       !(recoveryAdvice && (safeRecovery.test(text) || bankContact.test(text) && !recoveryOffer.test(text)))
+    const sameClause = findQuote((text) => tactic.topic.test(text) && tactic.corroboration.test(text) && evidence(text))
     const topic = findQuote((text) => tactic.topic.test(text) && evidence(text))
-    const corroboration = findQuote((text) => tactic.corroboration.test(text) && evidence(text))
-    if (topic && corroboration) {
-      add(ruleCode, 'CRITICAL', 85, title, description, topic === corroboration ? topic : corroboration)
+    const corroboration = ruleCode === 'RULE_09_BIOMETRIC_OTP_PHISHING'
+      ? sameClause
+      : findQuote((text) => tactic.corroboration.test(text) && evidence(text))
+    if (sameClause || (topic && corroboration)) {
+      const quote = sameClause ?? (topic === corroboration ? topic! : corroboration!)
+      add(ruleCode, 'CRITICAL', 85, title, description, quote)
     } else if (topic && signal !== undefined && signal >= 0.7) {
       add(ruleCode, 'HIGH', 38, title, description, topic)
     }

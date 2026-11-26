@@ -556,6 +556,11 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
         <div role="alert" className={cn(!error && 'sr-only')}>
           {error && <p className="rounded-xl bg-verdict-danger-bg px-2 py-1.5 text-sm text-verdict-danger">{error}</p>}
         </div>
+        {!followingUp && (
+          <p className="px-2 text-xs text-muted-foreground">
+            Ảnh/PDF được thu nhỏ để phân tích và xóa khỏi bộ nhớ sau xử lý; bạn nên che CCCD, SĐT trước khi tải lên.
+          </p>
+        )}
         {session.isError && (
           <Alert variant="danger" className="flex flex-wrap items-center gap-2">
             <p>Chưa kết nối được phiên giám định.</p>

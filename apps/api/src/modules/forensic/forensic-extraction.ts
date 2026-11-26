@@ -102,14 +102,15 @@ export async function extractAuditEvidence(
           images: visionImages,
         })
         : null,
-      !intentText.trim() && observe ? null : ai.classifyForensicIntent(intentText),
+      !intentText.trim() ? null : ai.classifyForensicIntent(intentText),
     ])
     if (intentResult.status === 'rejected') throw intentResult.reason
     const vision = visionResult.status === 'fulfilled' ? visionResult.value : null
     const documentTranscript = vision?.output.documentTranscript ?? ''
     const safeTranscript = isolate(documentTranscript)
-    const intentSignals = !intentText.trim() && observe
-      ? await ai.classifyForensicIntent(maskForensicText(safeTranscript || 'Hồ sơ chỉ có tệp đính kèm.').slice(0, 12_000))
+    const transcriptIntent = maskForensicText(safeTranscript || (observe ? 'Hồ sơ chỉ có tệp đính kèm.' : '')).slice(0, 12_000)
+    const intentSignals = !intentText.trim()
+      ? (transcriptIntent.trim() ? await ai.classifyForensicIntent(transcriptIntent) : null)
       : intentResult.value
     observe?.({
       vision: vision?.output ?? null, visionProvider: vision?.provider ?? null, visionNeeded,

@@ -101,8 +101,6 @@
   .radar-daily-brief-deck { margin-top: 0.3rem; }
   .radar-daily-brief-items { margin-top: 0.2rem; }
   .radar-daily-brief-item { padding-block: 0.55rem; }
-  .radar-daily-brief-item:nth-child(n + 3) { display: none; }
-  .radar-daily-brief.is-expanded .radar-daily-brief-item:nth-child(n + 3) { display: block; }
   .radar-feed { grid-row: 2; }
   .radar-context-alert { grid-row: 3; }
   .radar-context-sources { grid-row: 4; }

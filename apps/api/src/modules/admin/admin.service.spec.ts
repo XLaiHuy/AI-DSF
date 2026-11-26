@@ -36,4 +36,14 @@ describe('Admin product updates', () => {
       isActive: true, dataProvenance: 'WEB_REFERENCE',
     })
   })
+
+  it.each([
+    { upfrontFeeRate: '100' },
+    { earlySettlementFeeRate: '101' },
+    { nominalRateMax: '201' },
+  ])('rejects out-of-range fee or rate bounds %j', async (patch) => {
+    const { service, update } = setup()
+    await expect(service.updateProduct('product', patch)).rejects.toMatchObject({ status: 400 })
+    expect(update).not.toHaveBeenCalled()
+  })
 })

@@ -41,7 +41,7 @@ describe('Radar V2 parsing and date rules', () => {
     }))
   })
 
-  function briefArticle(id: string, publishedAt = new Date('2026-11-24T08:00:00.000Z')) {
+  function briefArticle(id: string, publishedAt = new Date()) {
     return {
       id, title: `Tin nguồn ${id}`, canonicalUrl: `https://publisher.example/${id}`, publishedAt,
       updatedAt: publishedAt, feedStatus: 'ACTIVE',
@@ -51,7 +51,7 @@ describe('Radar V2 parsing and date rules', () => {
     }
   }
 
-  function briefAlert(id: string, verificationStatus: string, publishedAt = new Date('2026-11-24T08:00:00.000Z')) {
+  function briefAlert(id: string, verificationStatus: string, publishedAt = new Date()) {
     return {
       id, tacticSummary: `Cảnh báo nguồn ${id}`, preventionGuidance: 'Xác minh qua kênh chính thức.',
       verificationStatus, publishedAt, updatedAt: publishedAt, indicators: [],

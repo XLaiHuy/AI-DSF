@@ -184,18 +184,27 @@ export class SurveyCalcService {
         existingDebtPaymentVnd: profile.existingDebtPaymentVnd.toString() }
       : undefined)
     const recipes = new Map<string, z.infer<typeof stressRecipeSchema>>()
+    let rateOutOfRange = false
     const offers = catalog.products.flatMap((product): SurveyLoanResponse['offers'] => {
       const calcMethod = loanMethods.find((method) => method === product.calcMethod)
       if (!calcMethod) return []
       const source = offerSource(product)
-      const initialRate = validateRate(product.nominalRateMin.add(shock))
+      const initialRate = product.nominalRateMin.add(shock)
+      if (initialRate.lt(0) || initialRate.gt(200)) {
+        rateOutOfRange = true
+        return []
+      }
       let rateAssumption = product.rateNote ?? undefined
       let laterRate
       if (source.rateType === 'FLOATING' || source.rateType === 'PROMO_THEN_FLOATING') {
         const hasLaterRate = source.rateType === 'PROMO_THEN_FLOATING' && product.promoMonths != null
           && product.promoMonths < input.termMonths && product.nominalRateMax.gt(product.nominalRateMin)
         if (hasLaterRate && product.promoMonths != null) {
-          const rate = validateRate(product.nominalRateMax.add(shock))
+          const rate = product.nominalRateMax.add(shock)
+          if (rate.lt(0) || rate.gt(200)) {
+            rateOutOfRange = true
+            return []
+          }
           laterRate = { afterMonths: product.promoMonths, annualRatePct: rate }
           rateAssumption = [rateAssumption, 'Kịch bản dùng mức lãi cao trong danh mục sau ưu đãi. Hợp đồng thực tế có thể theo lãi tham chiếu' +
             (product.floatingMargin ? ' cộng ' + product.floatingMargin + ' điểm phần trăm.' : '.')].filter(Boolean).join(' ')
@@ -205,7 +214,8 @@ export class SurveyCalcService {
       }
       const upfrontFee = principal.mul(product.upfrontFeeRate ?? 0).div(100).toDecimalPlaces(0)
       const monthlyFee = new D(product.monthlyFeeVnd ?? 0).toDecimalPlaces(0)
-      const net = disbursement(principal, upfrontFee)
+      const net = principal.sub(upfrontFee).toDecimalPlaces(0)
+      if (upfrontFee.gte(principal) || !net.gt(0)) return []
       const calculation = amortizeLoan(principal, initialRate, input.termMonths, calcMethod, { monthlyFeeVnd: monthlyFee, laterRate })
       const shockedRate = (rate: Prisma.Decimal) => D.min(200, rate.add(2))
       const recipe = {
@@ -233,6 +243,8 @@ export class SurveyCalcService {
         dtiPct: dti?.bestOfferDtiPct ?? null, dtiAssessment: dti, schedule: calculation.schedule,
       }]
     })
+    if (!offers.length && rateOutOfRange) invalid('Lãi suất hằng năm sau điều chỉnh phải từ 0% đến 200%.')
+    const catalogStatus = catalog.catalogStatus === 'AVAILABLE' && !offers.length ? 'NO_MATCH' as const : catalog.catalogStatus
     const priorityField = {
       LOWEST_APR: 'effectiveAprPct', LOWEST_MONTHLY_PAYMENT: 'monthlyPaymentFirstVnd', LOWEST_TOTAL_COST: 'totalInterestAndFeesVnd',
     } as const
@@ -257,7 +269,7 @@ export class SurveyCalcService {
       sessionId: randomUUID(), offers, dtiAssessment: dti, aiExplanation,
       trustFilterSummary: { totalLicensedFound: offers.length, blockedEntities: [] },
     }
-    const meta = { degradedMode, catalogStatus: catalog.catalogStatus, savedToHistory: true,
+    const meta = { degradedMode, catalogStatus, savedToHistory: true,
       ...(degradedMode ? { errorCode: 'ERR_AI_DEGRADED_FALLBACK' as const } : {}) }
     const savedToHistory = await this.saveSession(session, 'LOAN_SURVEY', input, { ...result, meta },
       { ...links, profileId: profile?.id }, dti, shock.toString(), {

@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { handoffRoutes, ROUTES } from '@fincopilot/shared-types'
 import { PrismaService } from '../../common/prisma.service'
 
@@ -80,7 +81,7 @@ export class HomeController {
         take: 10,
       }),
       this.prisma.financialProduct.findMany({
-        where: { isActive: true },
+        where: { isActive: true, effectiveDate: { lte: new Date() } },
         select: { productCategory: true, nominalRateMin: true, nominalRateMax: true },
       }),
     ])
@@ -176,19 +177,20 @@ export class HomeController {
         }
       })
 
-    const grouped = new Map<string, number[]>()
+    const grouped = new Map<string, { mins: Prisma.Decimal[]; maxes: Prisma.Decimal[] }>()
     for (const row of activeProducts) {
-      const list = grouped.get(row.productCategory) ?? []
-      list.push(Number(row.nominalRateMin.toString()))
-      grouped.set(row.productCategory, list)
+      const bucket = grouped.get(row.productCategory) ?? { mins: [], maxes: [] }
+      bucket.mins.push(new Prisma.Decimal(row.nominalRateMin.toString()))
+      bucket.maxes.push(new Prisma.Decimal(row.nominalRateMax.toString()))
+      grouped.set(row.productCategory, bucket)
     }
-    const marketRates = [...grouped.entries()].map(([category, rates]) => ({
+    const marketRates = [...grouped.entries()].map(([category, { mins, maxes }]) => ({
       category,
       label: categoryBenchmarkLabels[category] ?? category,
-      minRatePct: Math.min(...rates),
-      medianRatePct: medianOf(rates),
-      maxRatePct: Math.max(...rates),
-      sampleCount: rates.length,
+      minRatePct: Prisma.Decimal.min(...mins).toNumber(),
+      medianRatePct: medianOf(mins.map((rate) => rate.toNumber())),
+      maxRatePct: Prisma.Decimal.max(...maxes).toNumber(),
+      sampleCount: mins.length,
     }))
 
     const latestAlert = alerts[0]

@@ -136,6 +136,19 @@ describe('Survey API contracts', () => {
     }
   })
 
+  it('skips broken catalog offers and keeps valid ones during fee or negative shock evaluation', async () => {
+    const healthy = { ...offer, id: 'healthy', productName: 'Gói hợp lệ', nominalRateMin: decimal('7'), nominalRateMax: decimal('11') }
+    const invalidFee = { ...offer, id: 'bad-fee', productName: 'Gói phí sai', upfrontFeeRate: decimal('100') }
+    const { service: feeService } = setup([invalidFee, healthy])
+    const feeResult = await feeService.loan(loan, session)
+    expect(feeResult.offers.map((item) => item.productId)).toEqual(['healthy'])
+
+    const lowRate = { ...offer, id: 'low', nominalRateMin: decimal('5'), nominalRateMax: decimal('9') }
+    const { service: shockService } = setup([lowRate, healthy])
+    const shockResult = await shockService.loan({ ...loan, rateShockDeltaPct: '-6' }, session)
+    expect(shockResult.offers.map((item) => item.productId)).toEqual(['healthy'])
+  })
+
   it('returns all three investment categories with product rates and fees', async () => {
     const products = ['SAVING', 'ACCUMULATION', 'OPEN_FUND'].map((productCategory, index) => ({
       ...offer, id: 'product-' + index, productCategory, nominalRateMin: decimal(String(index + 3)),
