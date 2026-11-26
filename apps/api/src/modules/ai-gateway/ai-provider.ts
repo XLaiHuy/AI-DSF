@@ -18,6 +18,7 @@ const adapters: Record<Provider, (key: string, id: string) => LanguageModel> = {
 export type AiInput = {
   text: string
   images?: readonly (Uint8Array | string)[]
+  closingTag?: string
 }
 
 export type ThinkingLevel = 'low' | 'medium'
@@ -53,6 +54,7 @@ function userContent(input: AiInput) {
   return [
     { type: 'text' as const, text: input.text },
     ...(input.images ?? []).map((image): ImagePart => ({ type: 'image', image })),
+    ...(input.closingTag ? [{ type: 'text' as const, text: input.closingTag }] : []),
   ]
 }
 

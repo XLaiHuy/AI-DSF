@@ -193,7 +193,20 @@ export const scamTactics = {
     corroboration: /\b(nap them|nap phi|mo khoa rut|dong thue|nop thue|phi rut tien|san gia|app gia|web gia|mao danh|nhai)\b/,
   },
   coercion: {
-    topic: /\b(deepfake|gia (?:giong|mat)|gia mao (?:video|giong noi)|bat coc|tong tien|gia danh (?:cong an|toa an)|cuoc goi video)\b/,
+    topic: /\b(deepfake|gia (?:giong|mat)|gia mao (?:video|giong noi)|bat coc|tong tien|gia danh (?:cong an|toa an|sep|ke toan)|mao danh (?:sep|ke toan)|cuoc goi video)\b/,
     corroboration: /\b(chuyen tien ngay|chuyen gap|nop tien ngay|tien chuoc|giai cuu|chung minh (?:thu nhap|vo toi)|giu bi mat)\b/,
+  },
+  remoteRequest: {
+    authority: /\b(?:cong an|canh sat|vien kiem sat|toa an|cuc thue|chi cuc thue|co quan thue|dien luc)\b/,
+    sender: /\b(?:shipper|giao hang|don hang|hai quan|thue|dien luc|ngan hang)\b/,
+    contact: /\b(?:goi|nhan (?:tin|bao|yeu cau)|tin nhan|tu xung|mao danh|gia danh|gui sms)\b/,
+    request: /\b(?:yeu cau|bao|bat|doi|de nghi|gui (?:cho )?(?:link|duong link|duong dan))\b/,
+    identity: /\b(?:vneid|dinh danh|cccd|can cuoc cong dan|sinh trac hoc)\b/,
+    install: /\b(?:cai(?: dat)?|tai(?: ve| xuong)?) (?:app|ung dung|file apk|tep apk|apk|vneid)\b/,
+    link: /\b(?:bam|nhap|mo|click|truy cap|an)\b.{0,25}\b(?:link|duong dan|lien ket)\b/,
+    sentInstaller: /\b(?:apk|(?:qua|tu|theo) (?:link|duong link|duong dan|lien ket|tep gui kem))\b/,
+    verifyOrPay: /\b(?:xac minh|xac thuc|chuyen(?: khoan| tien)|nop tien)\b/,
+    advice: /\b(?:canh bao (?:thu doan|lua dao|ve viec)|canh giac (?:voi|thu doan)|(?:khong|dung|cho) (?:(?:nen|duoc|can|phai) )?(?:yeu cau|bao|bat|doi|de nghi|bam|nhap|mo|click|truy cap|an|cai|tai|chuyen|nop|xac minh|xac thuc))\b/,
+    officialStore: /\b(?:app store|ch play|google play)\b/,
   },
 }

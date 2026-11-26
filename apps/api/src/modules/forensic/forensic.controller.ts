@@ -56,9 +56,8 @@ async function parseAuditUpload(request: FastifyRequest, body: unknown) {
   } catch (error) {
     for (const { buffer } of files) buffer.fill(0)
     if (error instanceof Error && 'code' in error) {
-      if (error.code === 'FST_REQ_FILE_TOO_LARGE') throw fileLimit()
-      if (error.code === 'FST_FILES_LIMIT' || error.code === 'FST_FIELDS_LIMIT' ||
-        error.code === 'FST_PARTS_LIMIT') throw new BadRequestException()
+      if (error.code === 'FST_REQ_FILE_TOO_LARGE' || error.code === 'FST_FILES_LIMIT') throw fileLimit()
+      if (error.code === 'FST_FIELDS_LIMIT' || error.code === 'FST_PARTS_LIMIT') throw new BadRequestException()
     }
     throw error
   }

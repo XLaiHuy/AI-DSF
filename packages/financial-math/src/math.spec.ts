@@ -1,5 +1,59 @@
 import { describe, expect, it } from 'vitest'
-import { assessDti, compoundDca, decliningPrincipalLoan, flatRateLoan, reducingBalanceLoan } from './index'
+import { amortizeLoan, assessDti, compoundDca, decliningPrincipalLoan, effectiveLoanApr, flatRateLoan, openFundScenarioBands, reducingBalanceLoan, simulateEarlySettlement, summarizeAmortizationForChart } from './index'
+
+describe('Survey cash flows', () => {
+  it('adds principal and penalty to the last payment of the shortened schedule', () => {
+    const { schedule } = amortizeLoan('12000000', '12', 12, 'DECLINING_PRINCIPAL', { monthlyFeeVnd: '20000' })
+    const exit = simulateEarlySettlement('11800000', schedule, 3, '2')
+    expect(exit).toEqual({
+      month: 3, remainingPrincipalVnd: '9000000', penaltyFeeVnd: '180000',
+      totalPaidUntilExitVnd: '12570000',
+      effectiveAprAtExitPct: effectiveLoanApr('11800000', [
+        schedule[0], schedule[1], { ...schedule[2], paymentVnd: '10300000' },
+      ]),
+    })
+  })
+
+  it('reconciles a settlement at maturity and rejects an out-of-range month', () => {
+    const loan = reducingBalanceLoan('12000000', '9', 12)
+    expect(simulateEarlySettlement('12000000', loan.schedule, 12, '2')).toMatchObject({
+      penaltyFeeVnd: '0', remainingPrincipalVnd: '0', totalPaidUntilExitVnd: loan.totalPayableVnd,
+    })
+    expect(() => simulateEarlySettlement('12000000', loan.schedule, 0, '2')).toThrow(RangeError)
+    expect(() => simulateEarlySettlement('12000000', loan.schedule, 13, '2')).toThrow(RangeError)
+    expect(() => simulateEarlySettlement('12000000', loan.schedule, 1, '-1')).toThrow(RangeError)
+  })
+
+  it('models three NAV bands with the same fees and cash contributions', () => {
+    const options = { effectiveAnnualYield: true, redemptionFeeTiers: [{ throughMonths: 12, ratePct: '1' }] }
+    const bands = openFundScenarioBands('20000000', '1000000', 12, '3', '0', '0.1', options)
+    expect(bands.conservative.annualReturnPct).toBe('1')
+    expect(bands.base).toEqual({ annualReturnPct: '3', ...compoundDca('20000000', '1000000', 12, '3', '0', '0.1', options) })
+    expect(bands.optimistic.annualReturnPct).toBe('6.5')
+    expect(BigInt(bands.optimistic.netValueVnd)).toBeGreaterThan(BigInt(bands.base.netValueVnd))
+    expect(BigInt(bands.base.netValueVnd)).toBeGreaterThan(BigInt(bands.conservative.netValueVnd))
+  })
+
+  it('keeps 36 monthly points and aligns stress payments by month', () => {
+    const loan = reducingBalanceLoan('36000000', '12', 36)
+    const stress = reducingBalanceLoan('36000000', '14', 36)
+    const summary = summarizeAmortizationForChart(loan.schedule, stress.schedule)
+    expect(summary).toHaveLength(36)
+    expect(summary[0]).toMatchObject({ ...loan.schedule[0], stressPaymentVnd: stress.schedule[0].paymentVnd })
+    expect(summarizeAmortizationForChart([])).toEqual([])
+  })
+
+  it('sums yearly cash flows and takes the closing balance for a partial year', () => {
+    const loan = amortizeLoan('37000000', '12', 37, 'DECLINING_PRINCIPAL', { monthlyFeeVnd: '10000' })
+    const stress = decliningPrincipalLoan('37000000', '14', 37)
+    const summary = summarizeAmortizationForChart(loan.schedule, stress.schedule)
+    expect(summary.map(({ month }) => month)).toEqual([12, 24, 36, 37])
+    expect(summary[0]).toMatchObject({ principalVnd: '12000000', feeVnd: '120000', remainingBalanceVnd: '25000000' })
+    expect(summary[0].stressPaymentVnd).toBe(stress.schedule.slice(0, 12).reduce((sum, row) => sum + BigInt(row.paymentVnd), 0n).toString())
+    expect(summary.reduce((sum, row) => sum + BigInt(row.paymentVnd), 0n).toString()).toBe(loan.totalPayableVnd)
+    expect(summary.at(-1)).toMatchObject({ ...loan.schedule[36], stressPaymentVnd: stress.schedule[36].paymentVnd })
+  })
+})
 
 it.each([reducingBalanceLoan, decliningPrincipalLoan])('reconciles a rounded 600-month schedule', (calculate) => {
   const result = calculate('100000', '0', 600)

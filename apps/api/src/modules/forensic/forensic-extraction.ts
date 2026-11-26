@@ -6,6 +6,7 @@ import { validateFiles } from './file-guard'
 import { findLoanQuoteAmount, findLoanTerms, type LoanTerms } from './hard-rules.engine'
 import { inspectConditionalLoan } from './conditional-loan.parser'
 import { extractPdf } from './pdf-extractor'
+import { inspectForensicInput, stripZeroWidthAndBidi } from './forensic-prompt-guard'
 import { maskForensicText } from './qr-evidence'
 import { decodeAnyQrs, findCryptoWallets, parseAnyQr } from './vietqr-parser'
 
@@ -22,18 +23,16 @@ export type ForensicExtractionObservation = {
 const maxRasterizedPages = 8
 
 async function prepareVisionImages(buffers: readonly Buffer[], maxImages = 8) {
-  const images: Buffer[] = []
-  for (const buffer of buffers.slice(0, maxImages)) {
+  const images = await Promise.all(buffers.slice(0, maxImages).map(async (buffer) => {
     try {
-      const image = await sharp(buffer, { limitInputPixels: 25_000_000 })
+      return await sharp(buffer, { limitInputPixels: 25_000_000 })
         .rotate().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true })
         .flatten({ background: 'white' }).jpeg({ quality: 80, mozjpeg: true }).toBuffer()
-      images.push(image)
     } catch {
-      // Keep the remaining images and text available when an image cannot be decoded.
+      return null
     }
-  }
-  return images
+  }))
+  return images.filter((image) => image !== null)
 }
 
 function namedBeneficiary(text: string): string | null {
@@ -78,17 +77,24 @@ export async function extractAuditEvidence(
     const pastedWallets = findCryptoWallets(fields.rawText ?? '')
     const qrs = [...new Map([manualQr, pastedQr?.qrScheme !== 'UNKNOWN' ? pastedQr : null, ...decodedQrs, ...pastedWallets]
       .filter((qr) => qr !== null).map((qr) => [qr.raw, qr])).values()]
-    const qrPurposes = qrs.flatMap((qr) => qr.crcValid && qr.purpose ? [qr.purpose] : [])
-    const rawText = [pastedQr && pastedQr.qrScheme !== 'UNKNOWN' ? undefined : fields.rawText, ...pdfText]
-      .filter(Boolean).join('\n').slice(0, 50_000)
-    const aiText = maskForensicText(rawText)
+    let hasPromptTampering = false
+    const isolate = (value: string) => {
+      const inspection = inspectForensicInput(value)
+      if (inspection.strippedControlSpans > 0) hasPromptTampering = true
+      return inspection.sanitizedText
+    }
+    const safeQrs = qrs.map((qr) => ({ ...qr, purpose: qr.purpose ? isolate(qr.purpose) : qr.purpose }))
+    const qrPurposes = safeQrs.flatMap((qr) => qr.crcValid && qr.purpose ? [qr.purpose] : [])
+    const rawText = isolate([pastedQr && pastedQr.qrScheme !== 'UNKNOWN' ? undefined : fields.rawText, ...pdfText]
+      .filter(Boolean).join('\n').slice(0, 50_000))
+    const aiText = maskForensicText(stripZeroWidthAndBidi(rawText))
     const allImages = [...images, ...derivedImages]
     const flatLoan = findLoanTerms(rawText)
     const textLoan = inspectConditionalLoan(rawText)
     visionImages = await prepareVisionImages(allImages)
     const visionNeeded = allImages.length > 0 || (rawText.length > 120 && !flatLoan && !textLoan.spec && qrs.length === 0)
     const visionTask = 'FORENSIC_VISION_EXTRACT'
-    const intentText = maskForensicText([rawText, ...qrPurposes].join('\n')).slice(0, 12_000)
+    const intentText = maskForensicText(stripZeroWidthAndBidi([rawText, ...qrPurposes].join('\n'))).slice(0, 12_000)
     const [visionResult, intentResult] = await Promise.allSettled([
       visionNeeded && (visionImages.length > 0 || aiText.length > 0)
         ? ai.generateWithProvider(visionTask, AI_TASK_SCHEMAS[visionTask], {
@@ -100,14 +106,16 @@ export async function extractAuditEvidence(
     ])
     if (intentResult.status === 'rejected') throw intentResult.reason
     const vision = visionResult.status === 'fulfilled' ? visionResult.value : null
+    const documentTranscript = vision?.output.documentTranscript ?? ''
+    const safeTranscript = isolate(documentTranscript)
     const intentSignals = !intentText.trim() && observe
-      ? await ai.classifyForensicIntent(maskForensicText(vision?.output.documentTranscript || 'Hồ sơ chỉ có tệp đính kèm.').slice(0, 12_000))
+      ? await ai.classifyForensicIntent(maskForensicText(safeTranscript || 'Hồ sơ chỉ có tệp đính kèm.').slice(0, 12_000))
       : intentResult.value
     observe?.({
       vision: vision?.output ?? null, visionProvider: vision?.provider ?? null, visionNeeded,
       imageCount: visionImages.length, pdfRasterCount: derivedImages.length, decodedQrCount: decodedQrs.length,
     })
-    const supportsQuote = (quote: string) => visionImages.length > 0 || aiText.includes(quote)
+    const supportsQuote = (quote: string) => isolate(quote) === quote && (visionImages.length > 0 || aiText.includes(quote))
     const facts = vision?.output && { ...vision.output, ratePhases: vision.output.ratePhases?.slice(0, 30) ?? null }
     const beneficiary = facts?.visionBeneficiaryName
     const beneficiaryName = namedBeneficiary(rawText) ?? (beneficiary && supportsQuote(beneficiary.evidenceQuote) &&
@@ -128,7 +136,7 @@ export async function extractAuditEvidence(
       .filter((quote): quote is string => Boolean(quote && supportsQuote(quote)))
     const normalizeQuote = (quote: string) => quote.normalize('NFC').replace(/\s+/g, ' ').trim()
     const normalizedText = normalizeQuote(aiText)
-    const transcript = visionImages.length && facts?.documentTranscript ? normalizeQuote(facts.documentTranscript) : ''
+    const transcript = visionImages.length && safeTranscript ? normalizeQuote(safeTranscript) : ''
     const visualSchedule = facts && groundVisualSchedule(facts, (quote) => {
       const normalized = normalizeQuote(quote)
       return normalizedText.includes(normalized) || transcript.includes(normalized)
@@ -140,16 +148,17 @@ export async function extractAuditEvidence(
       insuranceQuote: textLoan.insuranceQuote ?? (visualSchedule ? visualSchedule.insuranceQuote : undefined),
     }
     return {
-      claimedEntityName: (fields.claimedEntityName ?? extractedEntity)?.slice(0, 200) ?? null,
+      claimedEntityName: (fields.claimedEntityName ? isolate(fields.claimedEntityName) : extractedEntity)?.slice(0, 200) ?? null,
       beneficiaryName,
-      evidence: [rawText, ...quotes, ...qrPurposes].filter(Boolean),
+      evidence: [rawText, ...quotes, ...qrPurposes, ...(safeTranscript !== documentTranscript ? [safeTranscript] : [])].filter(Boolean),
       visionQuotes: [...visionQuotes, ...[
         conditionalLoan.conditionalQuote, conditionalLoan.floatingQuote, conditionalLoan.insuranceQuote,
         ...(conditionalLoan.spec?.ratePhases.map(({ evidenceQuote }) => evidenceQuote) ?? []),
       ].filter((quote): quote is string => Boolean(quote))],
       hasVisionRedFlags: facts?.redFlagPhrases.some(({ evidenceQuote }) => supportsQuote(evidenceQuote)) ?? false,
+      hasPromptTampering,
       rawText,
-      qrPayloads: qrs.map((qr, index) => ({
+      qrPayloads: safeQrs.map((qr, index) => ({
         ...qr,
         // An OCR name returned for multiple QR images cannot safely be assigned to a specific QR.
         visionBeneficiaryName: qrs.length === 1 && index === 0 ? beneficiaryName : null,

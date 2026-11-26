@@ -41,6 +41,7 @@ describe('offline benchmark regression', () => {
     } as unknown as PrismaService
     const service = new ForensicService(prisma, ai, config)
     const buffer = item.fixtureKey ? await createFixture(item.fixtureKey) : undefined
+    expect(await service.screenAudit(item.fields, buffer ? [{ buffer }] : [])).toBeNull()
     const audit = await service.audit(session, item.fields, buffer ? [{ buffer }] : [])
     if (buffer) expect(buffer.every((byte) => byte === 0)).toBe(true)
     if (item.fixtureKey) {
@@ -55,8 +56,14 @@ describe('offline benchmark regression', () => {
     })
     // Current offline behavior is versioned separately from the gold labels.
     // Known misses remain visible in the live benchmark without changing the rule engine to match the dataset.
+    const tamperRule = 'RULE_17_PROMPT_INJECTION_TAMPER'
+    const tamperFindings = audit.findings.filter(({ ruleCode }) => ruleCode === tamperRule)
+    // Assert the additive finding independently while preserving the original benchmark projection.
+    expect(tamperFindings).toEqual(item.id === 'G09-01'
+      ? [expect.objectContaining({ ruleCode: tamperRule, severity: 'HIGH' })]
+      : [])
     expect([
-      audit.verdictLevel, audit.riskScore, audit.findings.map(({ ruleCode }) => ruleCode).sort().join(','),
+      audit.verdictLevel, audit.riskScore, audit.findings.map(({ ruleCode }) => ruleCode).filter((code) => code !== tamperRule).sort().join(','),
       audit.mathBreakdown?.effectiveAprPct ?? '', audit.personalImpact?.status ?? '',
       audit.qrPayloads.map(({ qrScheme, currencyCode }) => [qrScheme, currencyCode ?? ''].join(':')).sort().join(','),
       followUps?.join(',') ?? '',

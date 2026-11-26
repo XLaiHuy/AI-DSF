@@ -162,6 +162,7 @@ interface HardRuleInput {
   loan?: LoanTerms | null
   conditionalLoan?: ConditionalLoanEvidence
   statedTransferAmountVnd?: string | null
+  hasPromptTampering?: boolean
 }
 
 const upfrontFee = /\b(phi (?:bao hiem|giai ngan|mo khoa|ho so|xac minh|loi 102)|coc ho so|phi (?:thu )?truoc)\b/
@@ -399,6 +400,7 @@ export function evaluateHardRules(input: HardRuleInput) {
       title: 'Giả danh và ép chuyển tiền khẩn cấp', description: 'Người gọi có thể dùng giọng hoặc hình ảnh giả rồi thúc bạn chuyển tiền trước khi kịp kiểm tra. Hãy ngắt cuộc gọi và gọi lại số bạn đã lưu.',
     },
   ] as const
+  const remote = scamTactics.remoteRequest
   for (const { ruleCode, tactic, signal, title, description } of extraRules) {
     if (ruleCode === 'RULE_09_BIOMETRIC_OTP_PHISHING') {
       const url = qrPayloads.find((qr) => qr.targetUrl && suspiciousQrLink(qr.raw ?? qr.targetUrl, context))?.targetUrl
@@ -420,6 +422,7 @@ export function evaluateHardRules(input: HardRuleInput) {
     const bankContact = /\b(?:chuyen nham|lien he ngan hang|tong dai (?:chinh thuc|ngan hang)|luu bien lai)\b/
     const recoveryOffer = /\b(?:hua|cam ket|bao dam|thu hoi ho|lay lai ho|yeu cau|doi|bat buoc|can tam ung)\b/
     const evidence = (text: string) => !negation.test(text) &&
+      !((ruleCode === 'RULE_09_BIOMETRIC_OTP_PHISHING' || ruleCode === 'RULE_11_DEEPFAKE_URGENT_COERCION') && remote.advice.test(text)) &&
       !(recoveryAdvice && (safeRecovery.test(text) || bankContact.test(text) && !recoveryOffer.test(text)))
     const topic = findQuote((text) => tactic.topic.test(text) && evidence(text))
     const corroboration = findQuote((text) => tactic.corroboration.test(text) && evidence(text))
@@ -428,6 +431,34 @@ export function evaluateHardRules(input: HardRuleInput) {
     } else if (topic && signal !== undefined && signal >= 0.7) {
       add(ruleCode, 'HIGH', 38, title, description, topic)
     }
+  }
+
+  // Contextual requests need their sender and requested action in the same evidence clause.
+  const requestedAction = (text: string) => {
+    if (remote.advice.test(text)) return ''
+    const request = remote.request.exec(text)
+    return request ? text.slice(request.index) : ''
+  }
+  const appOrLink = (action: string) => remote.link.test(action) ||
+    (remote.install.test(action) && (remote.sentInstaller.test(action) || !remote.officialStore.test(action)))
+  const identityRequest = findQuote((text) => remote.identity.test(text) && appOrLink(requestedAction(text)) &&
+    (remote.contact.test(text) || remote.authority.test(text) || remote.sender.test(text) || remote.sentInstaller.test(text)))
+  const authorityRequest = findQuote((text) => remote.authority.test(text) && remote.contact.test(text) &&
+    (remote.verifyOrPay.test(requestedAction(text)) || appOrLink(requestedAction(text))))
+  const channelRequest = findQuote((text) => remote.sender.test(text) && appOrLink(requestedAction(text)))
+  if (identityRequest) {
+    if (!findings.some(({ ruleCode }) => ruleCode === 'RULE_09_BIOMETRIC_OTP_PHISHING')) {
+      add('RULE_09_BIOMETRIC_OTP_PHISHING', 'HIGH', 55, 'Yêu cầu định danh qua ứng dụng hoặc liên kết cần xác minh',
+        'Không cài ứng dụng từ tệp được gửi và tránh mở liên kết trong tin nhắn. Tự mở ứng dụng chính thức hoặc liên hệ cơ quan qua số công khai để kiểm tra yêu cầu.', identityRequest)
+    }
+  } else if (authorityRequest) {
+    if (!findings.some(({ ruleCode }) => ruleCode === 'RULE_11_DEEPFAKE_URGENT_COERCION')) {
+      add('RULE_11_DEEPFAKE_URGENT_COERCION', 'HIGH', 45, 'Yêu cầu từ người tự nhận là cơ quan hoặc đơn vị dịch vụ',
+        'Tạm dừng thao tác và tra số liên hệ chính thức của đơn vị để xác minh. Giữ lại tin nhắn hoặc thông tin cuộc gọi nếu cần trình báo.', authorityRequest)
+    }
+  } else if (channelRequest) {
+    add('RULE_15_CHANNEL_RISK', 'MEDIUM', 40, 'Yêu cầu mở liên kết hoặc cài ứng dụng cần xác minh',
+      'Tự mở ứng dụng hoặc trang chính thức của đơn vị và kiểm tra đơn hàng hay giao dịch tại đó. Tránh mở liên kết hoặc cài ứng dụng theo tin nhắn hay cuộc gọi.', channelRequest)
   }
 
   for (const { channelIntelligence: channel, channelIndicatorId } of qrPayloads) {
@@ -448,6 +479,11 @@ export function evaluateHardRules(input: HardRuleInput) {
     add('RULE_16_TRANSFER_AMOUNT_REVIEW', 'MEDIUM', 30, 'Xác minh khoản chuyển giá trị lớn',
       'Đối chiếu số tiền, người nhận và chứng từ. Kiểm tra hạn mức và yêu cầu xác thực sinh trắc học trực tiếp trong ứng dụng ngân hàng.',
       'Số tiền người dùng nêu: ' + formatCaseAmount(stated) + '.')
+  }
+  if (input.hasPromptTampering) {
+    add('RULE_17_PROMPT_INJECTION_TAMPER', 'HIGH', 45, 'Dấu hiệu thao túng giám định',
+      'Nội dung tài liệu hoặc mã QR chứa câu lệnh tìm cách điều khiển hệ thống đánh giá',
+      '[đoạn nghi thao túng đã bị cô lập]')
   }
   const deterministicOverride = findings.some(({ severity }) => severity === 'CRITICAL')
   const score = Math.min(95, findings.reduce((total, finding) => total + finding.scoreImpact, 0))

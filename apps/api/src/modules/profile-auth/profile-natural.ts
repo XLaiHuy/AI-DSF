@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js'
 import { FinancialHealthRequestSchema, type FinancialHealthRequest } from '@fincopilot/shared-types'
+import { stripSpoofedBoundaryTags } from '../../common/untrusted-text'
 
 const Precise = Decimal.clone({ precision: 32 })
 const labels = {
@@ -17,7 +18,8 @@ const multiplier: Record<string, string> = {
 }
 
 function normalize(text: string) {
-  return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replaceAll('đ', 'd')
+  return stripSpoofedBoundaryTags(text).normalize('NFKC').normalize('NFD')
+    .replace(/\p{M}/gu, '').toLowerCase().replaceAll('đ', 'd')
 }
 
 function parseAmounts(text: string) {

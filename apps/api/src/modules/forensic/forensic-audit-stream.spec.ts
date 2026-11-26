@@ -21,13 +21,16 @@ const session = { kind: 'guest', guestSessionId: '6efaf59b-554d-4bd8-80e9-c864ad
 const boundary = 'forensic-test-boundary'
 const signingSecret = 'test-signing-secret'
 
-function upload(buffer: Buffer, field = 'files') {
+function upload(buffer: Buffer, field = 'files', count = 1) {
   return {
     headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
     payload: Buffer.concat([
       Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="rawText"\r\n\r\nMình xem lại hóa đơn tiền ăn.\r\n`),
-      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${field}"; filename="test.png"\r\nContent-Type: image/png\r\n\r\n`),
-      buffer, Buffer.from(`\r\n--${boundary}--\r\n`),
+      ...Array.from({ length: count }, () => [
+        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${field}"; filename="test.png"\r\nContent-Type: image/png\r\n\r\n`),
+        buffer, Buffer.from('\r\n'),
+      ]).flat(),
+      Buffer.from(`--${boundary}--\r\n`),
     ]),
   }
 }
@@ -143,6 +146,15 @@ describe('audit stream route', () => {
       expect(response.json()).toMatchObject({ statusCode, errorCode })
     }
     expect(audit).not.toHaveBeenCalled()
+  })
+
+  it.each(['audit', 'audit/stream'])('returns standard 413 for too many files on %s', async (path) => {
+    const { inject, audit, create } = await setup()
+    const response = await inject(upload(Buffer.from('image contents'), 'files', 7), path)
+    expect(response.statusCode).toBe(413)
+    expect(response.json()).toMatchObject({ statusCode: 413, errorCode: 'ERR_FILE_TOO_LARGE' })
+    expect(audit).not.toHaveBeenCalled()
+    expect(create).not.toHaveBeenCalled()
   })
 
   it('emits the extraction error in-band and preserves the legacy JSON error', async () => {

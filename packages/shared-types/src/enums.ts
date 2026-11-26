@@ -11,6 +11,7 @@ export const RuleCode = z.enum([
   'RULE_10_FAKE_EXCHANGE_CRYPTO_CLONE', 'RULE_11_DEEPFAKE_URGENT_COERCION',
   'RULE_12_CONDITIONAL_LOAN_TERMS', 'RULE_13_INSURANCE_BUNDLING',
   'RULE_14_CHANNEL_REPUTATION', 'RULE_15_CHANNEL_RISK', 'RULE_16_TRANSFER_AMOUNT_REVIEW',
+  'RULE_17_PROMPT_INJECTION_TAMPER',
 ])
 export type RuleCode = z.infer<typeof RuleCode>
 
@@ -30,6 +31,9 @@ export const InstitutionType = z.enum(['BANK', 'FINANCE_COMPANY', 'FUND_HOUSE', 
 export const LicenseIssuer = z.enum(['NHNN', 'UBCKNN'])
 export const TrustStatus = z.enum(['LICENSED', 'SUSPENDED', 'BLACKLISTED'])
 export const LoanCategory = z.enum(['UNSECURED_LOAN', 'SECURED_LOAN'])
+export const LoanUseCase = z.enum([
+  'UNSECURED_SALARY', 'HOME_MORTGAGE', 'AUTO_LOAN', 'BUSINESS_WORKING_CAPITAL', 'CONSUMER_FLAT_INSTALLMENT',
+])
 export const InvestmentCategory = z.enum(['SAVING', 'ACCUMULATION', 'OPEN_FUND'])
 export const ProductCategory = z.enum([...LoanCategory.options, ...InvestmentCategory.options])
 export const CalcMethod = z.enum(['REDUCING_BALANCE', 'DECLINING_PRINCIPAL', 'FLAT_RATE', 'COMPOUND_DCA'])
@@ -52,6 +56,7 @@ export type InstitutionType = z.infer<typeof InstitutionType>
 export type LicenseIssuer = z.infer<typeof LicenseIssuer>
 export type TrustStatus = z.infer<typeof TrustStatus>
 export type LoanCategory = z.infer<typeof LoanCategory>
+export type LoanUseCase = z.infer<typeof LoanUseCase>
 export type InvestmentCategory = z.infer<typeof InvestmentCategory>
 export type ProductCategory = z.infer<typeof ProductCategory>
 export type CalcMethod = z.infer<typeof CalcMethod>

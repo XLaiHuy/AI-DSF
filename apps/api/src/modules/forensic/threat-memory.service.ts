@@ -189,6 +189,11 @@ export class ThreatMemoryService {
     return this.refresh
   }
 
+  cachedAliases() {
+    const cached = this.snapshot
+    return cached && cached.expiresAt > Date.now() ? cached.data.aliases : []
+  }
+
   async retrieve(text: string, iocs: readonly ThreatIoc[], options?: { shouldEmbed?: boolean; queryEmbeddings?: ReadonlyMap<string, number[]> }) {
     const snapshot = await this.get()
     const { normalized, glossary, expandedCount } = expandTeencode(text, snapshot.aliases)

@@ -6,7 +6,7 @@ import { evaluateHardRules, parseVnd } from './hard-rules.engine'
 import { formatCaseAmount } from './payment-qr-description'
 import { evaluatePersonalImpact } from './personal-impact.engine'
 import { maskForensicText } from './qr-evidence'
-import { shouldRefuseForensicPrompt, type TeencodeAlias } from './forensic-prompt-guard'
+import { isOffTopicPrompt, shouldRefuseForensicPrompt, type TeencodeAlias } from './forensic-prompt-guard'
 
 type Intent = NonNullable<ForensicFollowUpResponse['meta']['intent']>
 const vnd = /(?<![\p{L}\d.,])(\d+(?:[., ]\d+){0,5})\s*(triệu|tr|tỷ|tỉ|nghìn|ngàn|k|đồng|vnd|vnđ|đ|₫)(?![\p{L}\d])/giu
@@ -39,7 +39,7 @@ export function statedTransferAmount(text: string) {
 export function classifyFollowUpIntent(question: string, audit: ForensicAuditResponse, aliases?: readonly TeencodeAlias[]): Intent {
   const plain = normalizeVietnamese(question)
   if (!/[?？]/u.test(question) && plain.split(' ').length <= 4 && ack.test(plain)) return 'ACK'
-  if (shouldRefuseForensicPrompt(question, aliases)) return 'OFF_TOPIC'
+  if (isOffTopicPrompt(question) || shouldRefuseForensicPrompt(question, aliases)) return 'OFF_TOPIC'
   const { amountVnd, purposeText, foreign } = facts(question)
   const sameAmount = amountVnd && audit.qrPayloads.some((qr) => qr.qrAmountVnd && new Decimal(qr.qrAmountVnd).eq(amountVnd))
   const samePurpose = purposeText && audit.qrPayloads.some((qr) => normalizeVietnamese(qr.purposeText ?? '') === normalizeVietnamese(purposeText))

@@ -1,5 +1,7 @@
 import type { ForensicAuditResponse } from '@fincopilot/shared-types'
 import { ChevronDown, Landmark } from 'lucide-react'
+import { validChartAmount } from '@/components/charts/chart-math'
+import { ForensicCostTrapChart } from '@/components/charts/ForensicCostTrapChart'
 import { formatSpacedAmount } from '@/components/ui/money-input'
 import { TermInfo } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -15,7 +17,7 @@ function legacyPayments(math: Breakdown, handoff: ForensicAuditResponse['handoff
   const rate = /^(\d{1,3}(?:\.\d{1,4})?)%\/tháng \(Lãi phẳng\)$/.exec(math.quotedRateLabel)?.[1]
   const term = handoff?.suggestedTermMonths
   const currency = /^\d{1,16}(?:\.\d{1,2})?$/
-  if (!rate || !handoff || !term || term > 600 || !currency.test(math.principalNominalVnd) || !currency.test(math.principalNetVnd) ||
+  if (!rate || !handoff || !term || !Number.isInteger(term) || term < 1 || term > 600 || !currency.test(math.principalNominalVnd) || !currency.test(math.principalNetVnd) ||
       !currency.test(handoff.suggestedAmountVnd)) return null
   const principal = scaledDecimal(math.principalNominalVnd, 2)
   if (principal !== scaledDecimal(handoff.suggestedAmountVnd, 2)) return null
@@ -34,7 +36,7 @@ function legacyPayments(math: Breakdown, handoff: ForensicAuditResponse['handoff
 
 const money = (value: string) => `${formatSpacedAmount(value)} đ`.replaceAll(' ', '\u00a0')
 const percent = (value: string) => value.replace('.', ',')
-const annualRate = (value: string | null) => value === null ? 'Chưa xác định' : percent(value) + '%'
+const annualRate = (value: string | null) => validChartAmount(value) ? percent(value) + '%' : 'Chưa xác định'
 
 function LegalReference({ reference }: { reference: Breakdown['legalReference'] }) {
   const excess = reference?.excessOverCeilingPct
@@ -98,6 +100,7 @@ export function LoanCost({ math, handoff }: { math: Breakdown; handoff: Forensic
           </div>
         ))}
       </dl>
+      <ForensicCostTrapChart math={math} />
       {!periodic && (!math.scheduleType || math.scheduleType === 'FIXED_FLAT') && !math.hasUncappedFloatingClause && <div className="space-y-1 rounded-lg bg-muted px-4 py-3 text-sm leading-relaxed">
         <h3 className="font-semibold">Lãi phẳng là gì?</h3>
         <p>{math.flatRateExplainer ?? 'Mỗi tháng, tiền lãi vẫn tính trên số tiền vay ban đầu dù bạn đã trả bớt nợ gốc. Phí thu trước làm số tiền bạn cầm về ít hơn, nên chi phí vay thực tế cao hơn con số lãi hằng tháng gợi ra.'}</p>

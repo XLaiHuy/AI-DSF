@@ -1,5 +1,8 @@
-import { Body, Controller, Get, Post, Req, UseGuards, UsePipes } from '@nestjs/common'
-import { ManualCompareRequestSchema, SurveyInvestRequestSchema, SurveyLoanRequestSchema } from '@fincopilot/shared-types'
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common'
+import {
+  ManualCompareRequestSchema, SurveyInvestRequestSchema, SurveyLoanRequestSchema,
+  type ManualCompareRequest, type SurveyInvestRequest, type SurveyLoanRequest,
+} from '@fincopilot/shared-types'
 import type { FastifyRequest } from 'fastify'
 import { GuestSessionGuard } from '../../common/guest-session.guard'
 import { ZodValidationPipe } from '../../common/zod-validation.pipe'
@@ -11,17 +14,25 @@ export class SurveyCalcController {
   constructor(private readonly service: SurveyCalcService) {}
 
   @Post('survey/loan')
-  @UsePipes(new ZodValidationPipe(SurveyLoanRequestSchema))
-  surveyLoan(@Body() body: unknown, @Req() request: FastifyRequest) { return this.service.loan(body as never, request.session) }
+  surveyLoan(@Body(new ZodValidationPipe(SurveyLoanRequestSchema)) body: SurveyLoanRequest, @Req() request: FastifyRequest) {
+    return this.service.loan(body, request.session)
+  }
 
   @Post('survey/investment')
-  @UsePipes(new ZodValidationPipe(SurveyInvestRequestSchema))
-  surveyInvestment(@Body() body: unknown, @Req() request: FastifyRequest) { return this.service.investment(body as never, request.session) }
+  surveyInvestment(@Body(new ZodValidationPipe(SurveyInvestRequestSchema)) body: SurveyInvestRequest, @Req() request: FastifyRequest) {
+    return this.service.investment(body, request.session)
+  }
 
   @Post('calculator/manual-compare')
-  @UsePipes(new ZodValidationPipe(ManualCompareRequestSchema))
-  compareManual(@Body() body: unknown, @Req() request: FastifyRequest) { return this.service.manualCompare(body as never, request.session) }
+  compareManual(@Body(new ZodValidationPipe(ManualCompareRequestSchema)) body: ManualCompareRequest, @Req() request: FastifyRequest) {
+    return this.service.manualCompare(body, request.session)
+  }
 
   @Get('survey/history')
   history(@Req() request: FastifyRequest) { return this.service.history(request.session) }
+
+  @Get('survey/sessions/:id')
+  sessionDetail(@Req() request: FastifyRequest, @Param('id') id: string) {
+    return this.service.sessionDetail(request.session, id)
+  }
 }
