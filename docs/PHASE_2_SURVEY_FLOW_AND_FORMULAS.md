@@ -7,8 +7,6 @@ Tài liệu này mô tả cách chạy, luồng xử lý của `/survey` và cá
 Mở PowerShell tại thư mục dự án:
 
 ```powershell
-cd D:\Momo\AI-DSF
-$env:COREPACK_HOME = "D:\Momo\.corepack"
 corepack pnpm install
 docker compose up -d
 corepack pnpm --filter api db:migrate
@@ -90,7 +88,26 @@ Base URL khi chạy local: `http://localhost:4000`.
 | Tính khảo sát vay | POST | `/api/v1/survey/loan` |
 | Tính đầu tư / tích lũy | POST | `/api/v1/survey/investment` |
 | So sánh số liệu tự nhập | POST | `/api/v1/calculator/manual-compare` |
+| Mở phiên đã lưu theo chủ sở hữu | GET | `/api/v1/survey/sessions/:id` |
 | Lấy lịch sử khảo sát | GET | `/api/v1/survey/history` |
+
+Mở lại kết quả qua /survey?sessionId=ID. Máy chủ kiểm tra chủ sở hữu và trả 404 nếu phiên không thuộc người gọi. Với phiên vay mới, máy chủ khôi phục lịch trả nợ khi lãi tăng từ các tham số đã lưu tại thời điểm tính. Các phiên cũ vẫn dùng lịch đã lưu.
+
+| Mục đích vay | Giá trị loanUseCase | Khoảng kỳ hạn trong bản danh mục tham chiếu |
+|---|---|---|
+| Tín chấp theo lương | UNSECURED_SALARY | 6–60 tháng |
+| Mua nhà | HOME_MORTGAGE | 12–420 tháng |
+| Mua ô tô | AUTO_LOAN | 12–96 tháng |
+| Bổ sung vốn kinh doanh | BUSINESS_WORKING_CAPITAL | 1–12 tháng |
+| Trả góp tiêu dùng | CONSUMER_FLAT_INSTALLMENT | 6–36 tháng |
+
+Danh mục đang hoạt động quyết định số tiền, kỳ hạn và gói đủ điều kiện. Khoảng trên là biên tổng hợp của các sản phẩm trong từng nhóm.
+
+So sánh thủ công nhận 2–4 phương án, mỗi phương án có phương thức trả nợ, phí trả trước, phí hằng tháng, lãi sau ưu đãi và tùy chọn tất toán. Khi tất toán sau kỳ đã chọn, tổng chi gồm các khoản đã trả, dư nợ còn lại và phí tất toán trên dư nợ. APR tại thời điểm tất toán được tính từ dòng tiền đến kỳ đó.
+
+Đầu tư có ba nhóm tiết kiệm, tích lũy và quỹ mở. Với OPEN_FUND, kịch bản cơ sở lấy tỷ suất mô phỏng từ sản phẩm. Kịch bản thận trọng giảm 3,5 điểm phần trăm với sàn 1%, kịch bản tích cực tăng 3,5 điểm. Đường dự phóng thể hiện vốn góp và giá trị ròng sau phí, thuế theo giả định.
+
+Recharts hiển thị lịch trả nợ và lịch khi lãi tăng, lãi công bố so với APR, DTI, dự phóng đầu tư và chi phí khoản vay trong Giám định. Với kỳ hạn trên 36 tháng, biểu đồ cộng dòng tiền từng năm và lấy dư nợ cuối kỳ. Bảng giữ chi tiết từng tháng.
 
 Ví dụ body khảo sát vay:
 

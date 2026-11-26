@@ -17,6 +17,12 @@ const D = Prisma.Decimal
 const sessionIdSchema = z.guid()
 const investmentCategories = InvestmentCategory.options
 const loanMethods = ['REDUCING_BALANCE', 'DECLINING_PRINCIPAL', 'FLAT_RATE'] as const
+const storedRate = z.string().max(64).regex(/^\d+(?:\.\d+)?$/)
+const stressRecipeSchema = z.strictObject({
+  annualRatePct: storedRate,
+  laterRate: z.strictObject({ afterMonths: z.number().int().min(1).max(600), annualRatePct: storedRate }).optional(),
+})
+const storedLoanSchema = z.strictObject({ result: z.unknown(), stressRecipes: z.array(stressRecipeSchema) })
 const blockedTerms = ['app vay', 'vay nong', 'tin dung den', 'tindungden', 'ponzi', 'lua dao', 'bao loi']
 const fallbackExplanation = {
   summary: 'Kết quả được tính từ dòng tiền của từng phương án.',
@@ -145,12 +151,12 @@ export class SurveyCalcService {
   private async saveSession(
     session: SessionContext, mode: string, input: object, result: { sessionId: string; aiExplanation?: unknown; meta?: object },
     links: { profileId?: string; sourceArticleId?: string; sourceAuditId?: string } = {},
-    dti?: NonNullable<SurveyLoanResponse['dtiAssessment']> | null, shock?: string,
+    dti?: NonNullable<SurveyLoanResponse['dtiAssessment']> | null, shock?: string, storedResult: object = result,
   ) {
     try {
       await this.prisma.calculationSession.create({ data: {
         id: result.sessionId, sessionMode: mode, ...owner(session), ...links,
-        inputParamsJson: input as Prisma.InputJsonValue, mathResultsJson: result as Prisma.InputJsonValue,
+        inputParamsJson: input as Prisma.InputJsonValue, mathResultsJson: storedResult as Prisma.InputJsonValue,
         dtiRatioPct: dti?.bestOfferDtiPct, dtiRiskBand: dti?.riskBand, rateShockDelta: shock,
         aiExplanationJson: result.aiExplanation ? result.aiExplanation as Prisma.InputJsonValue : undefined,
       } })
@@ -177,6 +183,7 @@ export class SurveyCalcService {
       ? { monthlyIncomeVnd: profile.monthlyIncomeVnd.toString(), monthlyExpenseVnd: profile.monthlyExpenseVnd.toString(),
         existingDebtPaymentVnd: profile.existingDebtPaymentVnd.toString() }
       : undefined)
+    const recipes = new Map<string, z.infer<typeof stressRecipeSchema>>()
     const offers = catalog.products.flatMap((product): SurveyLoanResponse['offers'] => {
       const calcMethod = loanMethods.find((method) => method === product.calcMethod)
       if (!calcMethod) return []
@@ -201,9 +208,13 @@ export class SurveyCalcService {
       const net = disbursement(principal, upfrontFee)
       const calculation = amortizeLoan(principal, initialRate, input.termMonths, calcMethod, { monthlyFeeVnd: monthlyFee, laterRate })
       const shockedRate = (rate: Prisma.Decimal) => D.min(200, rate.add(2))
-      const stressSchedule = amortizeLoan(principal, laterRate ? initialRate : shockedRate(initialRate), input.termMonths, calcMethod, {
-        monthlyFeeVnd: monthlyFee,
-        laterRate: laterRate && { ...laterRate, annualRatePct: shockedRate(laterRate.annualRatePct) },
+      const recipe = {
+        annualRatePct: (laterRate ? initialRate : shockedRate(initialRate)).toFixed(),
+        ...(laterRate && { laterRate: { afterMonths: laterRate.afterMonths, annualRatePct: shockedRate(laterRate.annualRatePct).toFixed() } }),
+      }
+      recipes.set(product.id, recipe)
+      const stressSchedule = amortizeLoan(principal, recipe.annualRatePct, input.termMonths, calcMethod, {
+        monthlyFeeVnd: monthlyFee, laterRate: recipe.laterRate,
       }).schedule
       const stressPaymentFirstVnd = laterRate
         ? D.max(...calculation.schedule.slice(laterRate.afterMonths).map(({ paymentVnd }) => paymentVnd)).toFixed(0)
@@ -249,7 +260,10 @@ export class SurveyCalcService {
     const meta = { degradedMode, catalogStatus: catalog.catalogStatus, savedToHistory: true,
       ...(degradedMode ? { errorCode: 'ERR_AI_DEGRADED_FALLBACK' as const } : {}) }
     const savedToHistory = await this.saveSession(session, 'LOAN_SURVEY', input, { ...result, meta },
-      { ...links, profileId: profile?.id }, dti, shock.toString())
+      { ...links, profileId: profile?.id }, dti, shock.toString(), {
+        result: { ...result, meta, offers: offers.map(({ stressSchedule: _schedule, ...offer }) => offer) },
+        stressRecipes: offers.map((offer) => recipes.get(offer.productId)),
+      })
     return { ...result, meta: { ...meta, savedToHistory } }
   }
 
@@ -349,12 +363,23 @@ export class SurveyCalcService {
     const row = await this.prisma.calculationSession.findFirst({ where: { id, ...owner(session) },
       select: { id: true, sessionMode: true, createdAt: true, inputParamsJson: true, mathResultsJson: true } })
     if (!row) throw notFound()
+    const compact = row.sessionMode === 'LOAN_SURVEY' ? storedLoanSchema.safeParse(row.mathResultsJson).data : undefined
     const detail = SurveySessionDetailResponseSchema.safeParse({
       id: row.id, sessionMode: row.sessionMode, createdAt: row.createdAt.toISOString(),
-      inputParams: row.inputParamsJson, result: row.mathResultsJson,
+      inputParams: row.inputParamsJson, result: compact ? compact.result : row.mathResultsJson,
     })
     if (!detail.success) throw notFound()
     const saved = detail.data
+    if (saved.sessionMode === 'LOAN_SURVEY' && compact) {
+      if (saved.result.offers.length !== compact.stressRecipes.length) throw notFound()
+      saved.result.offers.forEach((offer, index) => {
+        const recipe = compact.stressRecipes[index]
+        const method = loanMethods.find((candidate) => candidate === offer.calcMethod)
+        if (!method) throw notFound()
+        offer.stressSchedule = amortizeLoan(saved.inputParams.principalVnd, recipe.annualRatePct,
+          saved.inputParams.termMonths, method, { monthlyFeeVnd: offer.monthlyFeeVnd, laterRate: recipe.laterRate }).schedule
+      })
+    }
     if (saved.sessionMode === 'MANUAL_COMPARE') {
       saved.result.offers.forEach((offer, index) => {
         const input = saved.inputParams.offers[index]

@@ -3,9 +3,9 @@ import { CalcMethod, DataProvenance, DtiRiskBand, InvestmentCategory, LoanCatego
 import { decimalString, nonnegativeDecimal, positiveDecimal } from './decimal'
 
 const dtiOverrideSchema = z.strictObject({
-  monthlyIncomeVnd: nonnegativeDecimal,
-  monthlyExpenseVnd: nonnegativeDecimal,
-  existingDebtPaymentVnd: nonnegativeDecimal,
+  monthlyIncomeVnd: nonnegativeDecimal.max(64),
+  monthlyExpenseVnd: nonnegativeDecimal.max(64),
+  existingDebtPaymentVnd: nonnegativeDecimal.max(64),
 })
 
 const surveyOptions = {
@@ -18,14 +18,14 @@ const savedMetadata = { savedToHistory: z.boolean().optional() }
 const catalogStatus = z.enum(['AVAILABLE', 'EMPTY_CATALOG', 'NO_MATCH', 'CATALOG_UNAVAILABLE'])
 
 export const SurveyLoanRequestSchema = z.strictObject({
-  principalVnd: positiveDecimal,
+  principalVnd: positiveDecimal.max(64),
   termMonths: SurveyTermMonthsSchema,
   productCategory: LoanCategory,
   loanUseCase: LoanUseCase.optional(),
   priority: z.enum(['LOWEST_APR', 'LOWEST_MONTHLY_PAYMENT', 'LOWEST_TOTAL_COST']),
   ...surveyOptions,
   dtiOverride: dtiOverrideSchema.optional(),
-  rateShockDeltaPct: decimalString.optional(),
+  rateShockDeltaPct: decimalString.max(64).optional(),
   sourceArticleId: z.uuid().optional(),
   sourceAuditId: z.uuid().optional(),
 })
@@ -54,7 +54,7 @@ const loanSchedule = z.array(z.strictObject({
   interestVnd: nonnegativeDecimal,
   feeVnd: nonnegativeDecimal.optional(),
   remainingBalanceVnd: nonnegativeDecimal,
-}))
+})).max(600)
 
 export const SurveyLoanResponseSchema = z.strictObject({
   sessionId: z.guid(),
@@ -101,8 +101,8 @@ export const SurveyLoanResponseSchema = z.strictObject({
 export type SurveyLoanResponse = z.infer<typeof SurveyLoanResponseSchema>
 
 export const SurveyInvestRequestSchema = z.strictObject({
-  initialVnd: nonnegativeDecimal,
-  monthlyContributionVnd: nonnegativeDecimal,
+  initialVnd: nonnegativeDecimal.max(64),
+  monthlyContributionVnd: nonnegativeDecimal.max(64),
   termMonths: SurveyTermMonthsSchema,
   productCategory: InvestmentCategory.optional(),
   ...surveyOptions,
@@ -146,16 +146,16 @@ export type SurveyInvestResponse = z.infer<typeof SurveyInvestResponseSchema>
 const loanCalcMethod = CalcMethod.exclude(['COMPOUND_DCA'])
 const manualOffer = z.strictObject({
   label: z.string().trim().min(1).max(120),
-  principalVnd: positiveDecimal,
-  annualRatePct: nonnegativeDecimal,
+  principalVnd: positiveDecimal.max(64),
+  annualRatePct: nonnegativeDecimal.max(64),
   termMonths: SurveyTermMonthsSchema,
-  upfrontFeeVnd: nonnegativeDecimal.optional(),
+  upfrontFeeVnd: nonnegativeDecimal.max(64).optional(),
   calcMethod: loanCalcMethod.optional(),
-  monthlyFeeVnd: nonnegativeDecimal.optional(),
+  monthlyFeeVnd: nonnegativeDecimal.max(64).optional(),
   promoMonths: SurveyTermMonthsSchema.optional(),
-  floatingRatePct: nonnegativeDecimal.optional(),
+  floatingRatePct: nonnegativeDecimal.max(64).optional(),
   earlySettlementMonth: SurveyTermMonthsSchema.optional(),
-  earlySettlementFeePct: nonnegativeDecimal.optional(),
+  earlySettlementFeePct: nonnegativeDecimal.max(64).optional(),
 })
 export const ManualCompareRequestSchema = z.strictObject({ offers: z.array(manualOffer).min(2).max(4) })
 export type ManualCompareRequest = z.infer<typeof ManualCompareRequestSchema>

@@ -23,18 +23,16 @@ export type ForensicExtractionObservation = {
 const maxRasterizedPages = 8
 
 async function prepareVisionImages(buffers: readonly Buffer[], maxImages = 8) {
-  const images: Buffer[] = []
-  for (const buffer of buffers.slice(0, maxImages)) {
+  const images = await Promise.all(buffers.slice(0, maxImages).map(async (buffer) => {
     try {
-      const image = await sharp(buffer, { limitInputPixels: 25_000_000 })
+      return await sharp(buffer, { limitInputPixels: 25_000_000 })
         .rotate().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true })
         .flatten({ background: 'white' }).jpeg({ quality: 80, mozjpeg: true }).toBuffer()
-      images.push(image)
     } catch {
-      // Keep the remaining images and text available when an image cannot be decoded.
+      return null
     }
-  }
-  return images
+  }))
+  return images.filter((image) => image !== null)
 }
 
 function namedBeneficiary(text: string): string | null {

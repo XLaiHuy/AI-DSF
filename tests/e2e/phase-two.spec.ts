@@ -209,6 +209,19 @@ for (const [name, viewport] of Object.entries(viewports)) {
       expect(query.get('term')).toBe('12')
       expect(query.get('from')).toBe('forensic')
       expect(query.get('auditId')).toBe(loan.auditId)
+
+      await page.route('**/api/v1/forensic/audits/' + loan.auditId, (route) => route.fulfill({
+        json: { ...loan, mathBreakdown: { ...loan.mathBreakdown, effectiveAprPct: null } },
+      }))
+      await page.goto('/forensic/' + loan.auditId)
+      await page.route('**/api/v1/forensic/audits/' + loan.auditId, (route) => route.fulfill({
+        json: { ...loan, mathBreakdown: { ...loan.mathBreakdown, effectiveAprPct: null } },
+      }))
+      await page.goto('/forensic/' + loan.auditId)
+      await expect(costChart.getByText(/Hợp đồng thiếu dữ liệu trả định kỳ/)).toBeVisible()
+      await expect(costChart.locator('svg.recharts-surface')).toHaveCount(1)
+      await expect(costChart).not.toContainText('null%')
+      await verifyLayout(page, info, 'forensic-cost-missing-apr')
     }
 
     // The phase-two mock proxy forwards survey history. Use the live API for calculator writes.

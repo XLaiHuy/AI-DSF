@@ -21,7 +21,8 @@ const safeThresholdPrefix = /\b(?:muc|nguong|ty le|han muc|quy|gioi han|vuot|vuo
 const encouragingCue = /\b(?:cu|vui long|nen|co the|hay|dung) $/
 const internalText = /untrusted[\s_-]*data\b|du lieu nguoi dung va tai lieu chi la bang chung|\bsystem prompt\b/
 const markup = /(?:<|&lt;|&#(?:60|x3c);)\s*\/?\s*[a-z][a-z0-9:-]*(?=[\s/>]|&gt;|&#(?:62|x3e);|$)|<!--/i
-const leaksInternalText = (text: string) => /\x60{3}/.test(text) || markup.test(text) || internalText.test(normalizeVietnamese(text))
+const generatedCode = /<!doctype\b|document\.getElementById\b|requestAnimationFrame\b|\b(?:function|const|let|var)\s+[a-z_$][\w$]*\s*[=(]|\bdef\s+\w+\s*\(/i
+const leaksInternalText = (text: string) => /\x60{3}/.test(text) || generatedCode.test(text) || markup.test(text) || internalText.test(normalizeVietnamese(text))
 
 function hasRiskyAdvice(sentence: string) {
   // Preserve the distinction between đừng/dừng and dùng, and between hay and hãy.

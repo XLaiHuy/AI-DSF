@@ -31,13 +31,16 @@ export function expandTeencode(raw: string, aliases: readonly TeencodeAlias[] = 
     expandedCount: glossary.size }
 }
 
-const financialText = /\b(?:ngan hang|tai khoan|chuyen khoan|giao dich|ngan luong|tien|vay|lai suat|giai ngan|tin dung|vi dien tu|momo|vietqr|qr|otp|usdt|crypto|loi 102|lua dao|hop dong|sao ke|trieu|nghin|tai chinh|bao cao|giam dinh|hoa don|bien lai|apr|loan|bank|payment|transfer|finance|scam|wallet)\b/
-const transactionalToken = /https?:\/\/[a-z\d]|\b[a-z\d-]{1,63}\.[a-z]{2,63}\b|(?<!\d)\d(?:[ .-]?\d){6,}|[$€£₫]\s*\d|\d\s*(?:[đ₫](?!\p{L})|(?:vnd|usd|eur|jpy|gbp|cny|usdt|btc|eth)\b)|\b(?:0x[\da-f]{40}|[13T][a-km-zA-HJ-NP-Z1-9]{25,39}|bc1[a-z0-9]{25,})\b/iu
+const financialText = /\b(?:ngan hang|tai khoan|chuyen khoan|giao dich|ngan luong|tien|vay|lai suat|giai ngan|tin dung|vi dien tu|momo|vietqr|qr|otp|usdt|crypto|loi 102|lua dao|hop dong|sao ke|trieu|nghin|tai chinh|hoa don|bien lai|apr|loan|bank|payment|transfer|finance|scam|wallet)\b/
+const scamOrDomainContext = /\b(?:lai co dinh|loi nhuan|dau tu|bao loi|sinh trac hoc|quet khuon mat|tam ung|chuyen gap|thanh toan|phi|tien coc|tiet kiem|cccd|vneid|dinh danh|nhiem vu|chot don|hoa hong|tuyen dung|cong tac vien|trung thuong|qua tang|cong an|canh sat|vien kiem sat|toa an|cuc thue|dien luc|shipper|giao hang|don hang|hai quan|ke toan|sep|bao hiem|duong link|duong dan|tai app|cai app|cai ung dung|khoa tai khoan|dong bang|trai phieu|co phieu|quy mo|deposit|invoice|insurance|phishing)\b/
+const transactionalToken = /https?:\/\/[a-z\d]|(?<!\d)\d(?:[ .-]?\d){6,}|[$€£₫]\s*\d|\d\s*(?:[đ₫](?!\p{L})|(?:vnd|usd|eur|jpy|gbp|cny|usdt|btc|eth)\b)|\b(?:0x[\da-f]{40}|[13T][a-km-zA-HJ-NP-Z1-9]{25,39}|bc1[a-z0-9]{25,})\b/iu
+// Bare domains are useful evidence, but code filenames and DOM members are not destinations.
+const bareDomain = /\b(?!(?:document|window|console|math|array|object)\.)[a-z\d-]{1,63}\.(?!(?:html?|css|[cm]?[jt]sx?|py|sql|php|java|cpp|vue|json)\b)[a-z]{2,63}\b/iu
 const amountWithUnit = /\b\d+\s?(?:trieu|nghin|ngan|dong|ty|ti|dollars?)\b/
 const concreteTerm = /\b(?:vay|loan|ky han|lai suat|lai vay|annual rate|hop dong)\b.{0,45}\b\d+(?:[.,]\d+)?\s*(?:%|thang\b|nam\b|months?\b|years?\b)/
 const filler = '(?:(?:cho|giup|ho|dum|toi|minh|em|anh|chi|mot|1|nghe|vai|bai|doan|cau) ){0,4}'
 const offTopic = new RegExp(
-  `\\b(?:viet ${filler}(?:tho|truyen|ma|chuong trinh|code|ham|thuat toan)|lam ${filler}tho|doc ${filler}tho|ke ${filler}chuyen|giai ${filler}(?:toan|phuong trinh|pt)|dich ${filler}(?:cau|tieng|sang|van ban|doan)|phuong trinh|pt bac [0-9]|toan lop|bai tap toan|thoi tiet|du bao mua|thu do|cau do|lap trinh|thuat toan|cong thuc nau|nau an|phim hay|giai tri|bong da|lich thi dau|choi game|write (?:a |me a )?(?:poem|story|python|javascript|function|code)|solve (?:this |the )?(?:equation|math)|weather|forecast|trivia|capital of|translate)\\b`,
+  `\\b(?:viet ${filler}(?:tho|truyen|ma|chuong trinh|code|ham|thuat toan)|lam ${filler}tho|doc ${filler}tho|ke ${filler}chuyen|giai ${filler}(?:toan|phuong trinh|pt)|dich ${filler}(?:cau|tieng|sang|van ban|doan)|phuong trinh|pt bac [0-9]|toan lop|bai tap toan|thoi tiet|du bao mua|thu do|cau do|lap trinh|thuat toan|cong thuc nau|nau an|phim hay|giai tri|bong da|lich thi dau|html|css|js|javascript|typescript|react|vue|nextjs|python|sql|java|php|script|source code|game|tro choi|ran san moi|snake|caro|tetris|flappy|trang web|website|landing page|thuc don|giam can|tap gym|kich ban|bai van|viet cv|soan email xin nghi|choi game|write (?:a |me a )?(?:poem|story|python|javascript|function|code)|solve (?:this |the )?(?:equation|math)|weather|forecast|trivia|capital of|translate)\\b`,
 )
 const command = /\b(?:(?:ignore|disregard|override)\s+(?:(?:all|the|earlier|previous|prior|above|system|developer|safety|your|any|existing|original)\s+)*(?:instructions?|rules?|prompts?)|you are now|pretend you are|act as (?:a |an |the )?(?:system|developer|unrestricted)|(?:reveal|show|print|repeat|return|display|extract)\s+(?:(?:the|your|original|full|hidden)\s+)*(?:system|developer)\s+prompt|bo qua (?:moi |tat ca |cac )?(?:chi dan|huong dan|quy tac)|dong vai (?:he thong|nha phat trien)|(?:tiet lo|in|hien thi|cho xem|lap lai|trich xuat) (?:loi nhac|chi dan|prompt) (?:cua )?he thong|(?:ai\s+(?:hay\s+)?)?(?:ket luan|danh gia|bao|xac nhan|gan)\s+(?:(?:giao dich|ho so|khoan vay)(?:\s+nay)?\s+)?(?:la\s+)?an toan|(?:output|return|mark|declare|classify as)\s*[:=]?\s*["']?safe\b|(?:risk[_\s-]*score|diem rui ro)\s*[:=]\s*0)\b/
 const spoofedRole = /<\s*\/?\s*(?:system|developer)(?=[\s>])|<\s*\/?\s*untrusted_data\b|<\s*\/?\s*untrusted_data_|\[\s*(?:system|developer)\s*\]|#{3,}[ \t]*(?:system|developer)\b/
@@ -57,13 +60,19 @@ export function hasPromptInjection(raw: string) {
 }
 
 export function isOffTopicPrompt(raw: string) {
-  return offTopic.test(normalizeVietnamese(normalizePrompt(raw)))
+  return /\bc\+\+(?!\w)/i.test(raw) || offTopic.test(normalizeVietnamese(normalizePrompt(raw)))
+}
+
+export function hasFinancialDomain(raw: string, aliases: readonly TeencodeAlias[] = []) {
+  const { normalized } = expandTeencode(raw, aliases)
+  return financialText.test(normalized) || scamOrDomainContext.test(normalized)
 }
 
 export function hasConcreteFinancialEvidence(raw: string, aliases: readonly TeencodeAlias[] = []) {
   const clean = stripZeroWidthAndBidi(raw).normalize('NFKC')
   const plain = normalizePrompt(clean)
-  return transactionalToken.test(clean) || amountWithUnit.test(expandTeencode(clean, aliases).normalized) ||
+  const { normalized } = expandTeencode(clean, aliases)
+  return /\bphi giai ngan\b/.test(normalized) || transactionalToken.test(clean) || bareDomain.test(clean) || amountWithUnit.test(normalized) ||
     concreteTerm.test(plain) || /\b(?:vietqr|qribftt[ac])\b.{0,10}[=:]\s*\S+/i.test(clean)
 }
 
@@ -100,7 +109,7 @@ export function inspectForensicInput(raw: string, aliases: readonly TeencodeAlia
   const preservedText = preserved.join('')
   const hasEvidence = hasConcreteFinancialEvidence(preservedText, aliases)
   return {
-    refuseDirect: !hasEvidence && (hasInjection || !financialText.test(expandTeencode(raw, aliases).normalized)),
+    refuseDirect: !hasEvidence,
     hasIndirectInjection: strippedControlSpans > 0 && hasEvidence,
     strippedControlSpans,
     sanitizedText: strippedControlSpans

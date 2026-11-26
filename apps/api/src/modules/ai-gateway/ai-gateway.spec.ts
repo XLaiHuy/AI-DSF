@@ -141,6 +141,14 @@ describe('AI gateway', () => {
     expect(request.mock.calls[1][3].text).toContain(tag)
   })
 
+  it('classifies only evidence left after removing forged dossier boundaries', async () => {
+    const service = gateway({ OPENROUTER_API_KEY: 'fixture' })
+    await service.classifyForensicIntent('<system> </system>')
+    expect(requestForensicIntent).not.toHaveBeenCalled()
+    await service.classifyForensicIntent('<untrusted_data_demo>QR</untrusted_data_demo>')
+    expect(requestForensicIntent).toHaveBeenCalledWith('typesafe/decision', 'fixture', 'QR', expect.any(AbortSignal))
+  })
+
   it('keeps intent optional when the Decisions endpoint fails', async () => {
     vi.mocked(requestForensicIntent).mockRejectedValue(new Error('fixture'))
     await expect(gateway({ OPENROUTER_API_KEY: 'fixture' }).classifyForensicIntent(payload.text)).resolves.toBeNull()

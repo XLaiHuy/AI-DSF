@@ -41,6 +41,7 @@ describe('offline benchmark regression', () => {
     } as unknown as PrismaService
     const service = new ForensicService(prisma, ai, config)
     const buffer = item.fixtureKey ? await createFixture(item.fixtureKey) : undefined
+    expect(await service.screenAudit(item.fields, buffer ? [{ buffer }] : [])).toBeNull()
     const audit = await service.audit(session, item.fields, buffer ? [{ buffer }] : [])
     if (buffer) expect(buffer.every((byte) => byte === 0)).toBe(true)
     if (item.fixtureKey) {

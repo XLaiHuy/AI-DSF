@@ -1,7 +1,7 @@
 'use client'
 
 import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
-import { summarizeAmortizationForChart, type ScheduleRow } from '../../../../../packages/financial-math/src'
+import { summarizeAmortizationForChart, type ScheduleRow } from './chart-math'
 import { formatVnd } from '@/lib/workspace-data'
 import { ChartCard } from './ChartCard'
 import { chartAxis, chartColors, chartTooltip, compactValue, FinancialChartFrame } from './FinancialChartFrame'

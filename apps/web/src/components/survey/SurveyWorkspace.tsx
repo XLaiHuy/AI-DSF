@@ -14,6 +14,7 @@ import { LoanAmortizationChart } from '@/components/charts/LoanAmortizationChart
 import { LoanAprDtiChart } from '@/components/charts/LoanAprDtiChart'
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, TermInfo } from '@/components/ui'
 import { stripSpacedAmount } from '@/components/ui/money-input'
+import { validChartAmount } from '@/components/charts/chart-math'
 import { apiClient, ApiError } from '@/lib/api-client'
 import { formatVnd, profileQuery, surveyHistoryQuery } from '@/lib/workspace-data'
 import { decimal, Field, fieldStyle, manualDraft, manualInput, ManualOfferFields, methodLabels, MoneyField } from './SurveyFields'
@@ -22,7 +23,7 @@ type Handoff = ReturnType<typeof parseSurveyHandoff>
 type Tab = 'loan' | 'invest' | 'manual'
 type Result =
   | { tab: 'loan'; data: SurveyLoanResponse; amount: string; term: number }
-  | { tab: 'invest'; data: SurveyInvestResponse; initial: string; term: number }
+  | { tab: 'invest'; data: SurveyInvestResponse; queriedFilter: InvestmentFilter; initial: string; term: number }
   | { tab: 'manual'; data: ManualCompareResponse; inputs: ManualCompareRequest['offers'] }
 
 const tabs = [
@@ -37,15 +38,16 @@ const investmentLabels = { SAVING: 'Tiết kiệm', ACCUMULATION: 'Tích lũy', 
 type InvestmentFilter = keyof typeof investmentLabels | 'ALL'
 const investmentFilters = [['ALL', 'Tất cả'], ['SAVING', 'Tiết kiệm'], ['ACCUMULATION', 'Tích lũy'], ['OPEN_FUND', 'Quỹ mở']] as const
 const loanDefaults = {
-  UNSECURED_SALARY: { label: 'Vay tín chấp theo lương', amount: '50000000', term: '24', category: 'UNSECURED_LOAN' },
-  HOME_MORTGAGE: { label: 'Vay mua nhà', amount: '1000000000', term: '240', category: 'SECURED_LOAN' },
-  AUTO_LOAN: { label: 'Vay mua ô tô', amount: '400000000', term: '60', category: 'SECURED_LOAN' },
-  BUSINESS_WORKING_CAPITAL: { label: 'Vay bổ sung vốn kinh doanh', amount: '200000000', term: '12', category: 'SECURED_LOAN' },
-  CONSUMER_FLAT_INSTALLMENT: { label: 'Vay trả góp tiêu dùng', amount: '20000000', term: '12', category: 'UNSECURED_LOAN' },
-} satisfies Record<LoanUseCase, { label: string; amount: string; term: string; category: SurveyLoanRequest['productCategory'] }>
+  UNSECURED_SALARY: { range: '6–60', label: 'Vay tín chấp theo lương', amount: '50000000', term: '24', category: 'UNSECURED_LOAN' },
+  HOME_MORTGAGE: { range: '12–420', label: 'Vay mua nhà', amount: '1000000000', term: '240', category: 'SECURED_LOAN' },
+  AUTO_LOAN: { range: '12–96', label: 'Vay mua ô tô', amount: '400000000', term: '60', category: 'SECURED_LOAN' },
+  BUSINESS_WORKING_CAPITAL: { range: '1–12', label: 'Vay bổ sung vốn kinh doanh', amount: '200000000', term: '12', category: 'SECURED_LOAN' },
+  CONSUMER_FLAT_INSTALLMENT: { range: '6–36', label: 'Vay trả góp tiêu dùng', amount: '20000000', term: '12', category: 'UNSECURED_LOAN' },
+} satisfies Record<LoanUseCase, { range: string; label: string; amount: string; term: string; category: SurveyLoanRequest['productCategory'] }>
 const rateLabels = { FIXED: 'Cố định', FLOATING: 'Thả nổi', PROMO_THEN_FLOATING: 'Ưu đãi rồi thả nổi', VARIABLE_NAV: 'Biến động theo NAV' }
 const percent = (value: string) => value.includes('.') ? value.replace(/0+$/, '').replace(/\.$/, '') : value
 const hasHighApr = (value: string) => {
+  if (!validChartAmount(value)) return false
   const [whole, fraction = ''] = value.split('.')
   const integer = BigInt(whole)
   return integer > 20n || (integer === 20n && /[1-9]/.test(fraction))
@@ -111,7 +113,7 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
         setTab('invest')
         setInvestmentFilter(input.productCategory ?? 'ALL')
         setForm((old) => ({ ...old, initial: input.initialVnd, contribution: input.monthlyContributionVnd, invest: String(input.termMonths) }))
-        setResult({ tab: 'invest', data: saved.result, initial: input.initialVnd, term: input.termMonths })
+        setResult({ tab: 'invest', queriedFilter: input.productCategory ?? 'ALL', data: saved.result, initial: input.initialVnd, term: input.termMonths })
       } else {
         const inputs = saved.inputParams.offers
         setTab('manual')
@@ -185,9 +187,10 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
       } else if (tab === 'invest') {
         const initial = stripSpacedAmount(form.initial)
         const data = await apiClient.post('/survey/investment', {
+          productCategory: investmentFilter === 'ALL' ? undefined : investmentFilter,
           initialVnd: initial, monthlyContributionVnd: stripSpacedAmount(form.contribution), termMonths: term,
         }, { schema: SurveyInvestResponseSchema, signal })
-        next = { tab, data, initial, term }
+        next = { tab, data, initial, term, queriedFilter: investmentFilter }
       } else {
         const input = ManualCompareRequestSchema.safeParse({ offers: manualOffers.map(manualInput) })
         if (!input.success) {
@@ -237,7 +240,7 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
             </p>}
             <div className="grid gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-2">
               <label className="min-w-0 space-y-1.5 text-sm font-medium">Mục đích vay
-                <select className={fieldStyle} value={loanUseCase} onChange={({ currentTarget }) => changeLoanUseCase(currentTarget.value)}>
+                <select aria-describedby={loanUseCase ? "catalog-term-hint" : undefined} className={fieldStyle} value={loanUseCase} onChange={({ currentTarget }) => changeLoanUseCase(currentTarget.value)}>
                   {loanUseCase === '' && <option value="">{category === 'SECURED_LOAN' ? 'Vay thế chấp' : 'Vay tín chấp'} · Nhóm ban đầu</option>}
                   {LoanUseCase.options.map((value) => <option key={value} value={value}>{loanDefaults[value].label}</option>)}
                 </select>
@@ -247,8 +250,8 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
                   {Object.entries(priorities).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                 </select>
               </label>
-              {loanUseCase && <p className="text-xs text-muted-foreground sm:col-span-2">
-                Mức để bắt đầu mô phỏng {formatVnd(loanDefaults[loanUseCase].amount)} trong {loanDefaults[loanUseCase].term} tháng.
+              {loanUseCase && <p id="catalog-term-hint" className="text-xs text-muted-foreground sm:col-span-2">
+                Theo danh mục tham chiếu, {loanDefaults[loanUseCase].label.toLowerCase()} hỗ trợ {loanDefaults[loanUseCase].range} tháng. Mức để bắt đầu mô phỏng {formatVnd(loanDefaults[loanUseCase].amount)} trong {loanDefaults[loanUseCase].term} tháng.
               </p>}
             </div>
           </>}
@@ -312,10 +315,14 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
 }
 
 function Results({ result, investmentFilter }: { result: Result; investmentFilter: InvestmentFilter }) {
+  if (result.tab === 'invest' && result.queriedFilter !== 'ALL' && result.queriedFilter !== investmentFilter) {
+    return <p role="status" className="text-sm text-muted-foreground">Bấm “Tính và xem phương án” để tra danh mục cho nhóm vừa chọn.</p>
+  }
   if (!result.data.offers.length) {
     const status = result.tab === 'manual' ? undefined : result.data.meta?.catalogStatus
     const message = status === 'CATALOG_UNAVAILABLE' ? 'Kho sản phẩm tạm thời không kết nối được.'
       : status === 'EMPTY_CATALOG' ? 'Danh mục hiện chưa có sản phẩm đang dùng trong nhóm này.'
+        : status === 'NO_MATCH' ? 'Chưa có gói phù hợp. Hãy điều chỉnh số tiền, kỳ hạn hoặc chọn nhóm sản phẩm khác rồi tính lại.'
         : 'Chưa có gói phù hợp với số tiền và kỳ hạn đã nhập.'
     return <p role="status" className="rounded-xl border border-border bg-card p-5 text-sm">{message}</p>
   }

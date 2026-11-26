@@ -49,6 +49,19 @@ describe('Survey API contracts', () => {
     expect(result).toMatchObject({ loanUseCase, nominalRatePct: '12', stressPaymentFirstVnd: result.schedule[6].paymentVnd })
   })
 
+  it('replays a 360-month multi-offer stress simulation from compact immutable inputs', async () => {
+    const { service, prisma } = setup([offer, { ...offer, id: 'promo', rateType: 'PROMO_THEN_FLOATING',
+      promoMonths: 12, nominalRateMax: decimal('16'), monthlyFeeVnd: decimal('7000') }])
+    const result = await service.loan({ ...loan, termMonths: 360, rateShockDeltaPct: '1' }, session)
+    const { data } = prisma.calculationSession.create.mock.calls[0][0]
+    expect(result.offers).toHaveLength(2)
+    expect(JSON.stringify(data.mathResultsJson)).not.toContain('stressSchedule')
+    expect(JSON.stringify(data.mathResultsJson).length).toBeLessThan(JSON.stringify(result).length * 0.6)
+    prisma.calculationSession.findFirst.mockResolvedValue({ ...data, createdAt: new Date() })
+    expect((await service.sessionDetail(session, result.sessionId)).result).toEqual(result)
+    expect(prisma.financialProduct.findMany).toHaveBeenCalledTimes(1)
+  })
+
   it('uses a two-point rate shock when there is no post-promotion phase', async () => {
     const { service } = setup()
     const { offers: [result] } = await service.loan(loan, session)
