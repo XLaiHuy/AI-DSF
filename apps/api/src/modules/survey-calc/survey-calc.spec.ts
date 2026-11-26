@@ -62,6 +62,15 @@ describe('Survey API contracts', () => {
     expect(prisma.financialProduct.findMany).toHaveBeenCalledTimes(1)
   })
 
+  it('replays legacy loan sessions that already contain a stress schedule', async () => {
+    const { service, prisma } = setup()
+    const result = await service.loan({ ...loan, termMonths: 360 }, session)
+    expect(result.offers[0].stressSchedule).toHaveLength(360)
+    const { data } = prisma.calculationSession.create.mock.calls[0][0]
+    prisma.calculationSession.findFirst.mockResolvedValue({ ...data, mathResultsJson: result, createdAt: new Date() })
+    await expect(service.sessionDetail(session, result.sessionId)).resolves.toMatchObject({ result })
+  })
+
   it('uses a two-point rate shock when there is no post-promotion phase', async () => {
     const { service } = setup()
     const { offers: [result] } = await service.loan(loan, session)

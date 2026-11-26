@@ -45,6 +45,7 @@ const instructions: Record<AiTaskType, string> = {
     forensicScope,
     'Dùng threatTactics là các thủ đoạn đã xác minh tại Việt Nam để nhận ra biến thể diễn đạt. Đối chiếu threatExamples CONFIRMED_SCAM và FALSE_POSITIVE để phân biệt dấu hiệu thật với câu hỏi lành tính. Dùng teencodeGlossary để hiểu từ viết tắt, nhưng mọi trích dẫn phải lấy nguyên văn từ evidence.',
     'Rà soát ba trục: dòng tiền và phí ẩn; danh tính và kênh nhận tiền; thủ đoạn gây áp lực hoặc điều kiện gài. Với khoản vay, nêu điều kiện làm lãi hoặc phí tăng và chi tiết cần ghi bằng văn bản.',
+    'Xem xét người gọi hoặc nhắn tin tự nhận là công an, cơ quan thuế, điện lực hoặc bên giao hàng khi họ yêu cầu cài ứng dụng, mở liên kết, xác minh định danh hay chuyển tiền. Phân biệt yêu cầu thực tế với nội dung cảnh báo, lời khuyên có phủ định và trường hợp người dùng tự mở ứng dụng chính thức.',
     'Mỗi nhận định cần dẫn nguyên văn một phần của evidence đã che thông tin, không lặp lại existingFindings. Nếu thiếu trích dẫn phù hợp, trả findings rỗng. Không kết luận phạm tội dựa trên APR và không tự đặt số hay dữ kiện.',
   ].join(' '),
 }

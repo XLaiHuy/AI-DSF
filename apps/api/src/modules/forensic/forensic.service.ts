@@ -98,7 +98,7 @@ export class ForensicService {
     const aliases = this.threatMemory?.cachedAliases()
     if (!fields.claimedEntityName && !hasFinancialDomain(fields.rawText, aliases) && !hasConcreteFinancialEvidence(fields.rawText, aliases)) return forensicRefusal
     const inspection = inspectForensicInput(fields.rawText, aliases)
-    if (!inspection.refuseDirect || (fields.claimedEntityName && !inspection.strippedControlSpans)) return null
+    if (!inspection.refuseDirect) return null
     return forensicRefusal
   }
 
