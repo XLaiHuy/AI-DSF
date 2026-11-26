@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Be_Vietnam_Pro, JetBrains_Mono } from 'next/font/google'
+import { Be_Vietnam_Pro, JetBrains_Mono, Newsreader } from 'next/font/google'
 import type { ReactNode } from 'react'
 import { AppShell } from '@/components/layout/AppShell'
 import { QueryProvider } from '@/components/layout/QueryProvider'
@@ -18,6 +18,7 @@ const jetbrainsMono = JetBrains_Mono({
   variable: '--font-mono',
   display: 'swap',
 })
+const newsreader = Newsreader({ subsets: ['latin', 'vietnamese'], variable: '--font-editorial', display: 'swap' })
 
 export const metadata: Metadata = {
   title: { default: 'FinCopilot AI', template: '%s · FinCopilot AI' },
@@ -26,7 +27,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="vi" className={`${beVietnamPro.variable} ${jetbrainsMono.variable}`}>
+    <html lang="vi" className={`${beVietnamPro.variable} ${jetbrainsMono.variable} ${newsreader.variable}`}>
       <body className="font-sans antialiased">
         <QueryProvider>
           <AppShell>{children}</AppShell>

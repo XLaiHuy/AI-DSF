@@ -4,6 +4,8 @@ import { mkdir } from 'node:fs/promises'
 const articleId = '11111111-1111-4111-8111-111111111111'
 const source = { sourceId: '33333333-3333-4333-8333-333333333333', sourceKey: 'nhnn', sourceName: 'NHNN', url: 'https://example.test/rate-news', firstSeenAt: '2026-11-20T08:30:00.000Z', lastSeenAt: '2026-11-20T09:00:00.000Z' }
 const sourceStatus = ['CafeF', 'VnEconomy', 'Vietstock', 'NHNN', 'NCSC'].map((name, index) => ({ sourceKey: name.toLocaleLowerCase('en'), name, lastFetchStatus: index === 2 ? 'ERROR' : 'SUCCESS', lastAttemptAt: '2026-11-20T09:00:00.000Z', lastSuccessAt: '2026-11-20T08:00:00.000Z' }))
+const emptyMarket = { alert: null, articles: [], trending: [], scamFinanceRail: [], marketRates: [] }
+test.beforeEach(async ({ page }) => { await page.route('**/api/v1/home/market', (route) => route.fulfill({ json: emptyMarket })) })
 const makeArticle = (index: number) => ({
   id: index === 0 ? articleId : `11111111-1111-4111-8111-${String(index + 1).padStart(12, '0')}`,
   title: `Tin minh họa kiểm thử giao diện · Chủ đề lãi suất ${index + 1}`,
@@ -30,9 +32,9 @@ for (const count of [0, 1, 5, 20, 100]) {
     await page.goto('/radar')
     if (count === 0) await expect(page.getByRole('heading', { name: 'Chưa có tin phù hợp' })).toBeVisible()
     else {
-      await expect(page.locator('.radar-feature')).toHaveCount(Math.min(count, 2))
-      await expect(page.locator('.radar-story-row')).toHaveCount(Math.max(0, count - 2))
-      if (count === 1) await expect(page.getByText('Chưa rõ thời gian công bố')).toBeVisible()
+      await expect(page.locator('.desk-feature')).toHaveCount(Math.min(count, 2))
+      await expect(page.locator('.desk-row')).toHaveCount(Math.max(0, count - 2))
+      if (count === 1) await expect(page.locator('.desk-feature').getByText('Chưa rõ thời gian công bố')).toBeVisible()
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
@@ -54,8 +56,9 @@ test('Radar xuất ma trận ảnh desktop và mobile cho các trạng thái s�
     { key: 'guest-no-profile', count: 5, alerts: false, image: false, personalized: true },
   ]
   for (const scenario of cases) {
-    for (const viewport of [{ width: 1440, height: 900, name: 'desktop' }, { width: 390, height: 844, name: 'mobile' }]) {
+    for (const viewport of [{ width: 1280, height: 800, name: 'desktop' }, { width: 390, height: 844, name: 'mobile' }]) {
       const view = await page.context().newPage()
+      await view.route('**/api/v1/home/market', (route) => route.fulfill({ json: emptyMarket }))
       const articles = Array.from({ length: scenario.count }, (_, index) => ({
         ...makeArticle(index),
         ...(scenario.image && index === 0 ? { image: { url: 'https://cdn.publisher.example.test/article.svg', alt: 'Biểu đồ lãi suất', credit: 'NHNN', sourceUrl: 'https://publisher.example.test/article' } } : {}),
@@ -71,13 +74,16 @@ test('Radar xuất ma trận ảnh desktop và mobile cho các trạng thái s�
       await view.addInitScript(({ enabled, includeSurveyTopics }) => localStorage.setItem('fincopilot.radar.interests', JSON.stringify({ enabled, topics: [], includeProfileGoal: false, includeSurveyTopics })), { enabled: scenario.personalized, includeSurveyTopics: surveyConsent })
       await view.setViewportSize({ width: viewport.width, height: viewport.height })
       await view.goto('/radar')
-      await expect(view.getByRole('heading', { name: 'Radar thị trường' })).toBeVisible()
-      await expect(view.locator('.radar-feature')).toHaveCount(Math.min(scenario.count, 2), { timeout: 15_000 })
+      await expect(view.getByRole('heading', { name: 'Kiểm tra trước khi chuyển tiền' })).toBeVisible()
+      await expect(view.locator('.desk-feature')).toHaveCount(Math.min(scenario.count, 2), { timeout: 15_000 })
+      await view.getByRole('group', { name: 'Loại nội dung' }).getByRole('button', { name: 'Cảnh báo', exact: true }).click()
       if (scenario.alerts) await expect(view.getByText('Đã xác minh').first()).toBeVisible()
-      else await expect(view.locator('.radar-v2-alerts--empty')).toBeVisible()
-      if (scenario.key === 'personalization-enabled') await expect(view.getByText(/Dựa trên loại Khảo sát vay gần đây/).first()).toBeVisible()
-      if (scenario.key === 'guest-no-profile') await expect(view.locator('.radar-v2-recommendations')).toContainText('Chưa có tín hiệu cá nhân được phép dùng')
-      if (scenario.key === 'personalization-enabled' || scenario.key === 'personalization-disabled' || scenario.key === 'guest-no-profile') await view.locator('.radar-v2-personal').scrollIntoViewIfNeeded()
+      else await expect(view.getByRole('heading', { name: 'Chưa có cảnh báo được công bố' })).toBeVisible()
+      if (scenario.personalized) {
+        await view.getByRole('button', { name: 'Dành cho bạn', exact: true }).click()
+        if (scenario.key === 'personalization-enabled') await expect(view.getByText(/Dựa trên loại Khảo sát vay gần đây/).first()).toBeVisible()
+        if (scenario.key === 'guest-no-profile') await expect(view.locator('.radar-v2-recommendations')).toContainText('Chưa có tín hiệu cá nhân được phép dùng')
+      } else await view.getByRole('group', { name: 'Loại nội dung' }).getByRole('button', { name: 'Xu hướng', exact: true }).click()
       expect(await view.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       const filename = `radar-v2-final-${scenario.key}-${viewport.name}.png`
       const path = `${directory}/${filename}`
@@ -96,6 +102,40 @@ test('Radar báo lỗi nguồn thay vì thay dữ liệu cũ thành tin mới', 
   await expect(page.locator('.radar-error-state')).toContainText(/Nguồn Radar tạm gián đoạn|Yêu cầu thất bại/, { timeout: 15_000 })
 })
 
+test('Hub dùng trending và rail từ home/market, lưu tin và mở lại lịch sử đọc', async ({ page }) => {
+  const main = makeArticle(0)
+  await fixturePage(page, 3)
+  await page.unroute('**/api/v1/home/market')
+  await page.route('**/api/v1/home/market', (route) => route.fulfill({ json: {
+    ...emptyMarket,
+    trending: [{ rank: 1, id: articleId, title: main.title, summary: null, imageUrl: null, proxyUrl: null, sourceName: 'NHNN', publishedAt: null, readMinutes: 3, categories: ['INTEREST_RATE'], suggestedRateDelta: null, trendReason: 'Đang được quan tâm' }],
+    scamFinanceRail: [{ id: articleId, kind: 'FINANCE_NEWS', title: main.title, badge: 'Lãi suất', imageUrl: null, proxyUrl: null, sourceName: 'NHNN', publishedAt: null, handoffHref: '/survey?mode=loan' }],
+  } }))
+  await page.route(`**/api/v1/radar/articles/${articleId}`, (route) => route.fulfill({ json: { ...main, analysis: null } }))
+  await page.goto('/')
+  await expect(page.locator('.desk-feature')).toHaveCount(1)
+  await expect(page.locator('.desk-pick')).toHaveCount(1)
+  await page.getByRole('button', { name: `Lưu ${main.title}` }).click()
+  await page.getByRole('group', { name: 'Loại nội dung' }).getByRole('button', { name: 'Đã lưu' }).click()
+  await expect(page.getByRole('region', { name: 'Tin đã lưu' }).getByRole('link', { name: main.title })).toBeVisible()
+  await page.getByRole('region', { name: 'Tin đã lưu' }).getByRole('link', { name: main.title }).click()
+  await expect(page).toHaveURL(new RegExp(`/radar/${articleId}$`))
+  await expect(page.getByRole('heading', { name: main.title })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('fincopilot.radar.history.v1') ?? '[]').length)).toBe(1)
+  await page.goto('/?feed=history')
+  await expect(page.getByRole('region', { name: 'Lịch sử đọc' }).getByRole('link', { name: main.title })).toBeVisible()
+})
+
+test('Ảnh proxy 1×1 bị loại và hiện minh họa', async ({ page }) => {
+  const tracked = { ...makeArticle(0), image: { url: 'https://example.test/article.png', proxyUrl: '/api/v1/radar/image-proxy?url=https%3A%2F%2Fexample.test%2Farticle.png', alt: 'Ảnh bài báo', credit: 'NHNN', sourceUrl: 'https://example.test/article' } }
+  await fixturePage(page, 1)
+  await page.route('**/api/v1/radar/articles?**', (route) => route.fulfill({ json: { items: [tracked], page: { hasMore: false, nextCursor: null }, sources: sourceStatus } }))
+  await page.route('**/api/v1/radar/image-proxy?**', (route) => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ9sAAAAASUVORK5CYII=', 'base64') }))
+  await page.route('https://example.test/article.png', (route) => route.abort())
+  await page.goto('/radar')
+  await expect(page.locator('.desk-feature .editorial-image-credit')).toContainText('Minh họa FinCopilot')
+})
+
 test('Radar hiển thị cảnh báo đã công bố và bỏ qua bản nháp', async ({ page }) => {
   await fixturePage(page, 1)
   await page.route('**/api/v1/radar/alerts**', (route) => route.fulfill({ json: { items: [
@@ -103,6 +143,7 @@ test('Radar hiển thị cảnh báo đã công bố và bỏ qua bản nháp', 
     { id: '22222222-2222-4222-8222-222222222223', threatCategory: 'PHISHING', tacticSummary: 'Cảnh báo đang chờ đối chiếu', verificationStatus: 'UNVERIFIED', publishedAt: null, evidence: [] },
   ] } }))
   await page.goto('/radar')
+  await page.getByRole('group', { name: 'Loại nội dung' }).getByRole('button', { name: 'Cảnh báo', exact: true }).click()
   await expect(page.getByText('Đã xác minh').first()).toBeVisible()
   await expect(page.getByText('Cảnh báo đang chờ đối chiếu')).toHaveCount(0)
 })
@@ -110,7 +151,8 @@ test('Radar hiển thị cảnh báo đã công bố và bỏ qua bản nháp', 
 test('Khách có thể tắt gợi ý; không cần hồ sơ để đọc tin công khai', async ({ page }) => {
   await fixturePage(page, 1)
   await page.goto('/radar')
-  await expect(page.getByRole('heading', { name: 'Radar thị trường' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Kiểm tra trước khi chuyển tiền' })).toBeVisible()
+  await page.getByRole('button', { name: 'Dành cho bạn', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Bật gợi ý cá nhân' })).toBeVisible()
   await expect(page.getByText(/Chỉ dùng từng tín hiệu khi bạn bật quyền tương ứng/)).toBeVisible()
 })
@@ -131,6 +173,7 @@ test('Chỉ ưu tiên tin lừa đảo theo lịch sử Giám định sau khi ng
   })
   await page.addInitScript(() => localStorage.setItem('fincopilot.radar.interests', JSON.stringify({ enabled: true, topics: ['INTEREST_RATE'], includeForensicHistory: false })))
   await page.goto('/radar')
+  await page.getByRole('button', { name: 'Dành cho bạn', exact: true }).click()
   await page.getByLabel('Kết quả Giám định rủi ro cao trong 30 ngày').check()
   await expect.poll(() => consentPayload?.includeForensicHistory).toBe(true)
   await expect(page.locator('.radar-recommendation-row').first()).toContainText('Cảnh báo giả mạo ứng dụng ngân hàng')
@@ -145,9 +188,10 @@ test('Bộ lọc lưu trữ cung cấp năm 2026 và bộ lọc ngày tự chọ
     if (url.pathname.endsWith('/radar/articles') && url.searchParams.has('year')) archiveQuery = url.search
   })
   await page.goto('/radar')
+  await page.getByRole('button', { name: 'Lọc theo chủ đề và ngày' }).click()
   await page.getByLabel('Lọc thời gian').selectOption('year')
-  await expect(page.getByLabel('Năm công bố').locator('option[value="2026"]')).toHaveCount(1)
-  await expect.poll(() => archiveQuery).toContain('year=2026')
+  await expect(page.getByLabel('Năm công bố').locator(`option[value="${new Date().getFullYear()}"]`)).toHaveCount(1)
+  await expect.poll(() => archiveQuery).toContain(`year=${new Date().getFullYear()}`)
   await page.getByLabel('Lọc thời gian').selectOption('custom')
   await expect(page.getByLabel('Từ ngày')).toBeVisible()
   await expect(page.getByLabel('Đến ngày')).toBeVisible()
@@ -160,7 +204,7 @@ test('Lạm phát được phân loại riêng với dữ kiện CPI', async ({ 
   await page.route('**/api/v1/radar/articles', (route) => route.fulfill({ json: { items: [inflation], page: { limit: 20, hasMore: false, nextCursor: null }, sources: sourceStatus } }))
   await page.route('**/api/v1/radar/alerts**', (route) => route.fulfill({ json: { items: [] } }))
   await page.goto('/radar')
-  await expect(page.locator('.radar-feature-topic').filter({ hasText: 'Lạm phát' }).first()).toBeVisible()
+  await expect(page.locator('.desk-feature .desk-byline').filter({ hasText: 'Lạm phát' }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Lạm phát', exact: true }).first()).toBeVisible()
 })
 
@@ -172,11 +216,11 @@ test('Ảnh HTTPS hiển thị kèm nguồn; ảnh hỏng rơi về minh họa c
     const id = new URL(route.request().url()).pathname.split('/').at(-1) ?? goodId
     return route.fulfill({ json: detail(id, id === goodId ? 'https://publisher.example.test/ok.png' : 'https://publisher.example.test/missing.png') })
   })
-  await page.route('https://publisher.example.test/ok.png', (route) => route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ9sAAAAASUVORK5CYII=', 'base64') }))
+  await page.route('https://publisher.example.test/ok.png', (route) => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="190"><rect width="320" height="190" fill="#d6ded3"/></svg>' }))
   await page.route('https://publisher.example.test/missing.png', (route) => route.abort())
   await page.goto(`/radar/${goodId}`)
   await expect(page.locator('.detail-source-image img')).toBeVisible()
-  await expect(page.getByText('Nguồn NHNN')).toBeVisible()
+  await expect(page.locator('.detail-source-image .editorial-image-credit')).toContainText('Nguồn NHNN')
   await page.goto(`/radar/${brokenId}`)
   await expect(page.getByRole('img', { name: /Minh họa chủ đề/ })).toBeVisible()
 })

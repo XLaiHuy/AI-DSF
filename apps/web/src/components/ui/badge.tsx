@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
 export const badgeVariants = cva(
-  'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold tracking-tight whitespace-nowrap transition-colors',
+  'inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-0.5 text-xs font-semibold tracking-tight whitespace-nowrap transition-colors',
   {
     variants: {
       variant: {

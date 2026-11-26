@@ -1,40 +1,27 @@
 @import "tailwindcss";
 
-/* Keep loan cards focused on the key figures shown to users. */
-.mt-3.grid.gap-2.text-xs.text-muted-foreground.sm\:grid-cols-4 > span:nth-child(2),
-.mt-3.grid.gap-2.text-xs.text-muted-foreground.sm\:grid-cols-4 > span:nth-child(4) {
-  display: none;
-}
-
-@media (min-width: 640px) {
-  .mt-3.grid.gap-2.text-xs.text-muted-foreground.sm\:grid-cols-4 {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-}
 @import "tw-animate-css";
 
 :root {
   color-scheme: light;
-  --background: #f6f7f4;
-  --foreground: #13221c;
+  --background: #faf9f7;
+  --foreground: #111418;
   --card: #ffffff;
-  --card-foreground: #13221c;
+  --card-foreground: #111418;
   --popover: #ffffff;
-  --popover-foreground: #13221c;
+  --popover-foreground: #111418;
   --primary: #145c46;
   --primary-foreground: #ffffff;
-  --secondary: #eaf0eb;
-  --secondary-foreground: #13221c;
-  --muted: #edf2ed;
-  --muted-foreground: #4f635a;
-  --accent: #e2f1ea;
+  --secondary: #f3f3f1;
+  --secondary-foreground: #111418;
+  --muted: #f4f3f0;
+  --muted-foreground: #5b6268;
+  --accent: #f0f3ef;
   --accent-foreground: #134a39;
   --destructive: #b42318;
   --destructive-foreground: #ffffff;
-  --border: #dce4de;
-  --input: #dce4de;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
   --ring: #1d755a;
   --radius: 0.75rem;
 
@@ -48,6 +35,20 @@
   --verdict-danger-bg: #fef0ef;
   --verdict-danger-border: #f7c3be;
 }
+
+/* Editorial surfaces shared by the reading brief and the financial profile. */
+.editorial-detail .detail-header h1,.profile-editorial h1,.profile-editorial h2,.profile-editorial h3 {
+  font-family: var(--font-editorial), Georgia, serif;
+  font-weight: 500;
+}
+.editorial-detail .detail-header h1 { font-size: clamp(2.25rem, 5vw, 4.3rem); line-height: 1.08; letter-spacing: -0.035em; }
+.editorial-detail .detail-section,.editorial-detail .analysis-section { border-radius: 0; box-shadow: none; }
+.editorial-detail .detail-source-image .editorial-image { width: 100%; height: auto; aspect-ratio: 16 / 9; }
+.editorial-detail .detail-source-image .editorial-image > img { object-fit: cover; }
+.profile-editorial-header { padding: 1.5rem 0 1.75rem; border-bottom: 1px solid #e5e7eb; }
+.profile-editorial-kicker { color: #745847; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.13em; }
+.profile-editorial h1 { color: #111418; font-size: clamp(2.4rem, 5vw, 4rem); }
+.profile-editorial :is(input,select,textarea) { border-color: #e5e7eb; }
 
 /* Radar daily brief and rights-cleared secondary story thumbnails. */
 .radar-daily-brief {
@@ -389,9 +390,11 @@ body {
 
 .app-nav-list {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.2rem;
 }
+
+.app-nav-profile,.app-nav-secondary { display: none; }
 
 
 .app-nav-link {
@@ -429,7 +432,7 @@ body {
   grid-area: main;
   min-inline-size: 0;
   padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 4vw, 3rem) calc(5.75rem + env(safe-area-inset-bottom));
-  background-image: radial-gradient(ellipse 55rem 26rem at 55% 0%, #e7f3e9 0%, #fbf8ee60 55%, transparent 100%);
+  background: var(--background);
 }
 
 .app-main:has(.forensic-workspace-shell) {
@@ -1101,8 +1104,8 @@ body {
     block-size: calc(100dvh - 4rem);
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    gap: 1.5rem;
+    justify-content: flex-start;
+    gap: 1rem;
     padding: 1.25rem 0.9rem;
     border-block-start: 0;
     border-inline-end: 1px solid var(--border);
@@ -1114,6 +1117,13 @@ body {
     grid-template-columns: 1fr;
     gap: 0.3rem;
   }
+
+  .app-nav-profile { display: flex; align-items: center; gap: 0.65rem; min-height: 3.75rem; padding: 0.5rem 0.7rem; border: 1px solid var(--border); border-radius: 0.5rem; color: var(--foreground); font-size: 0.8rem; text-decoration: none; }
+  .app-nav-profile span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app-nav-profile small { display: block; color: var(--muted-foreground); font-size: 0.7rem; }
+  .app-nav-secondary { display: grid; gap: 0.3rem; border-top: 1px solid var(--border); padding-top: 0.9rem; }
+  .app-nav-secondary a { display: flex; align-items: center; gap: 0.7rem; min-height: 2.65rem; padding: 0 0.75rem; border-radius: 0.35rem; color: var(--muted-foreground); font-size: 0.875rem; text-decoration: none; }
+  .app-nav-secondary a:hover { background: var(--muted); color: var(--foreground); }
 
 
   .app-nav-link {

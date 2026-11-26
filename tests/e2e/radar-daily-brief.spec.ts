@@ -3,6 +3,7 @@ import { mkdir } from 'node:fs/promises'
 
 const publishedAt = '2026-11-24T09:00:00.000Z'
 const source = { sourceId: '33333333-3333-4333-8333-333333333333', sourceKey: 'nhnn', sourceName: 'NHNN', url: 'https://example.test/brief-source', firstSeenAt: publishedAt, lastSeenAt: publishedAt }
+const emptyMarket = { alert: null, articles: [], trending: [], scamFinanceRail: [], marketRates: [] }
 
 function makeBrief(count: number) {
   return {
@@ -20,6 +21,7 @@ function makeBrief(count: number) {
 }
 
 async function installStubs(page: import('@playwright/test').Page, count: number) {
+  await page.route('**/api/v1/home/market', (route) => route.fulfill({ json: emptyMarket }))
   const article = {
     id: '11111111-1111-4111-8111-111111111111', title: 'Tin minh họa kiểm thử giao diện · lãi suất',
     canonicalUrl: 'https://example.test/article', publishedAt, image: null, categories: ['INTEREST_RATE'], sources: [source],
@@ -41,7 +43,7 @@ test('Bản tin ngày hiển thị 0, 1, 3, 5, 10 và hơn 10 mục đúng trạ
     await installStubs(page, count)
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/radar')
-    const brief = page.locator('.radar-daily-brief')
+    const brief = page.locator('.desk-brief-inline .radar-daily-brief')
     await expect(brief).toBeVisible()
     if (count === 0) {
       await expect(brief).toContainText('Chưa có nội dung đủ nguồn')
@@ -68,18 +70,20 @@ test('Daily brief chụp ảnh desktop/mobile và mở rộng không che điều
     const page = await browser.newPage({ viewport })
     await installStubs(page, 8)
     await page.goto('/radar')
-    await expect(page.locator('.radar-daily-brief')).toContainText('24/11/2026')
-    await expect(page.locator('.radar-daily-brief-item')).toHaveCount(3)
+    const brief = page.locator('.desk-brief-inline .radar-daily-brief')
+    await expect(brief).toContainText('24/11/2026')
+    await expect(brief.locator('.radar-daily-brief-item')).toHaveCount(3)
     await page.waitForTimeout(600)
     await page.screenshot({ path: `${path}/radar-daily-brief-collapsed-${viewport.key}.png` })
-    await page.locator('.radar-daily-brief').getByRole('button', { name: 'Xem đầy đủ' }).click()
-    await expect(page.locator('.radar-daily-brief-item')).toHaveCount(8)
+    await brief.getByRole('button', { name: 'Xem đầy đủ' }).click()
+    await expect(brief.locator('.radar-daily-brief-item')).toHaveCount(8)
     await page.waitForTimeout(1_000)
     await page.screenshot({ path: `${path}/radar-daily-brief-expanded-${viewport.key}.png` })
     if (viewport.key === 'mobile') {
       const nav = page.getByRole('navigation', { name: 'Điều hướng chính' })
       await expect(nav).toBeVisible()
-      await nav.getByRole('link', { name: 'Tin & Cảnh báo' }).click()
+      await nav.getByRole('button', { name: 'Menu điều hướng' }).click()
+      await nav.getByRole('button', { name: 'Bảng tin & Thị trường' }).click()
       await expect(page).toHaveURL(/\/radar$/)
       await page.setViewportSize({ width: 320, height: 844 })
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -93,10 +97,20 @@ test('Daily brief giữ citation gốc, hiển thị fallback và tôn trọng r
   await installStubs(page, 2)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/radar')
-  const brief = page.locator('.radar-daily-brief')
+  const brief = page.locator('.desk-brief-inline .radar-daily-brief')
   await expect(brief.getByRole('link', { name: /NHNN/ }).first()).toHaveAttribute('href', 'https://example.test/brief-source/1')
   await expect(brief).toContainText('chưa phải xác minh độc lập')
-  await expect(page.locator('.radar-daily-brief-item').first()).not.toHaveCSS('animation-name', 'radar-brief-arrive')
+  await expect(brief.locator('.radar-daily-brief-item').first()).not.toHaveCSS('animation-name', 'radar-brief-arrive')
+})
+
+test('Thanh Giám định nhanh hoạt động bằng bàn phím', async ({ page }) => {
+  await installStubs(page, 2)
+  await page.goto('/radar')
+  const input = page.getByRole('textbox', { name: 'Nội dung cần giám định' })
+  await input.fill('Tin nhắn yêu cầu chuyển phí xác minh')
+  await input.focus()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/forensic\?prefillText=.+/)
 })
 
 test('Daily brief tự làm mới khi qua nửa đêm tại Việt Nam', async ({ page }) => {
@@ -112,7 +126,7 @@ test('Daily brief tự làm mới khi qua nửa đêm tại Việt Nam', async (
   })
   await page.clock.install({ time: new Date('2026-11-24T16:59:50.000Z') })
   await page.goto('/radar')
-  const brief = page.locator('.radar-daily-brief')
+  const brief = page.locator('.desk-brief-inline .radar-daily-brief')
   await expect(brief).toContainText('24/11/2026')
   await page.clock.fastForward(15_000)
   await expect(brief).toContainText('25/11/2026')
@@ -132,10 +146,10 @@ test('Tin thứ cấp hiện ảnh có nguồn và dùng minh họa chủ đề 
   await page.route('**/api/v1/radar/articles', (route) => route.fulfill({ json: { items: articles, page: { limit: 20, hasMore: false, nextCursor: null }, sources: [] } }))
   await page.route('**/api/v1/radar/alerts**', (route) => route.fulfill({ json: { items: [] } }))
   await page.route('**/api/v1/radar/recommendation-signals', (route) => route.fulfill({ json: { signals: [] } }))
-  await page.route('https://example.test/cleared.jpg', (route) => route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ9sAAAAASUVORK5CYII=', 'base64') }))
+  await page.route('https://example.test/cleared.jpg', (route) => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="190"><rect width="320" height="190" fill="#d6ded3"/></svg>' }))
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/radar')
-  await expect(page.locator('.radar-story-thumb-image')).toHaveCount(1)
-  await expect(page.locator('.radar-story-thumb').filter({ hasText: 'Minh họa theo chủ đề' })).toHaveCount(1)
-  await expect(page.locator('.radar-story-thumb figcaption').filter({ hasText: 'NHNN' })).toBeVisible()
+  await expect(page.locator('.desk-row .desk-thumb img[src="https://example.test/cleared.jpg"]')).toHaveCount(1)
+  await expect(page.locator('.desk-row .editorial-image-credit').filter({ hasText: 'Minh họa FinCopilot' }).first()).toBeVisible()
+  await expect(page.locator('.desk-row .editorial-image-credit').filter({ hasText: 'NHNN' })).toBeVisible()
 })

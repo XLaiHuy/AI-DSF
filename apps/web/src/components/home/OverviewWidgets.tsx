@@ -15,7 +15,7 @@ import { MoneyInput, stripSpacedAmount } from '@/components/ui/money-input'
 import { verdictLabels } from '@/components/forensic/verdict'
 import { CategoryArtwork } from '@/components/radar/CategoryArtwork'
 
-function ProfileStatus() {
+export function ProfileStatus() {
   const session = useQuery(sessionQuery)
   const profile = useQuery(profileQuery)
   const savedProfile = profile.data?.profile
@@ -52,7 +52,7 @@ function ProfileStatus() {
   )
 }
 
-function QuickSurvey() {
+export function QuickSurvey() {
   const router = useRouter()
   const [error, setError] = useState('')
   const [loanAmount, setLoanAmount] = useState('50000000')
@@ -187,13 +187,13 @@ function MorningBrief() {
   </div>
 }
 
-function RecentActivity() {
+export function RecentActivity() {
   const audits = useQuery(auditListQuery)
   const survey = useQuery(surveyHistoryQuery)
   const entries = [
     ...(audits.data?.audits ?? []).map((audit) => ({ id: audit.auditId, date: audit.createdAt, href: auditHref(audit.auditId),
       title: audit.claimedEntityName || 'Giám định tài chính', summary: verdictLabels[audit.verdictLevel] })),
-    ...(survey.data?.sessions ?? []).map((item) => ({ id: item.id, date: item.createdAt, href: surveySessionHref(item.sessionMode),
+    ...(survey.data?.sessions ?? []).map((item) => ({ id: item.id, date: item.createdAt, href: surveySessionHref(item.sessionMode, item.id),
       title: surveySessionLabel(item.sessionMode), summary: item.dtiRatioPct ? `DTI ${item.dtiRatioPct}%` : 'Khảo sát' })),
   ].sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, 6)
   return <Card className="gap-2 p-4 sm:px-6">
