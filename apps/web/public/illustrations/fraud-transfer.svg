@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-labelledby="title desc">
+<title id="title">Minh họa tin nhắn yêu cầu chuyển phí</title>
+<desc id="desc">Tranh vẽ gốc: điện thoại hiển thị lời nhắn yêu cầu chuyển phí, bên cạnh là một phiếu đề nghị kiểm tra kênh liên hệ.</desc>
+<rect width="800" height="600" fill="#dce7dd"/>
+<path d="M0 0h800v163L0 408Z" fill="#cbdccc"/>
+<path d="M0 519 800 287v313H0Z" fill="#b9cebd"/>
+<g transform="rotate(-10 297 302)">
+<rect x="122" y="58" width="328" height="510" rx="37" fill="#193e30"/>
+<rect x="135" y="71" width="302" height="484" rx="27" fill="#faf9f2"/>
+<rect x="249" y="83" width="66" height="7" rx="4" fill="#193e30"/>
+<text x="161" y="142" fill="#3f624b" font-family="Arial,sans-serif" font-size="18" font-weight="700" letter-spacing="2">TIN NHẮN MẪU</text>
+<path d="M161 178h218M161 205h172" stroke="#c7d6c8" stroke-width="10" stroke-linecap="round"/>
+<rect x="161" y="248" width="246" height="169" rx="13" fill="#f5eae1"/>
+<text x="181" y="285" fill="#9c573f" font-family="Arial,sans-serif" font-size="17">Yêu cầu chuyển phí</text>
+<text x="181" y="337" fill="#193e30" font-family="Georgia,serif" font-size="29">Mở khóa?</text>
+<path d="M181 352h166" stroke="#bd684c" stroke-width="3"/>
+<path d="M161 463h209M161 490h163" stroke="#c7d6c8" stroke-width="10" stroke-linecap="round"/>
+</g>
+<g transform="rotate(8 607 330)">
+<rect x="480" y="184" width="267" height="293" fill="#fbfaf2"/>
+<path d="M506 216h216" stroke="#356249" stroke-width="4"/>
+<text x="506" y="259" fill="#315b43" font-family="Georgia,serif" font-size="27">Tự kiểm tra</text>
+<text x="506" y="291" fill="#315b43" font-family="Georgia,serif" font-size="27">kênh liên hệ</text>
+<path d="M507 330h177M507 358h194M507 386h143" stroke="#b3c6b6" stroke-width="8" stroke-linecap="round"/>
+<path d="M507 426h85" stroke="#bc674c" stroke-width="3"/>
+</g>
+<text x="42" y="569" fill="#3e604a" font-family="Arial,sans-serif" font-size="16" letter-spacing="2">MINH HỌA GỐC · FINCOPILOT</text>
+</svg>

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-labelledby="title desc">
+<title id="title">Minh họa yêu cầu nộp phí trước</title>
+<desc id="desc">Tranh vẽ gốc: giấy đề nghị vay và phiếu yêu cầu phí tách rời, nhấn vào câu hỏi phí trước giải ngân.</desc>
+<rect width="800" height="600" fill="#e2e6dc"/>
+<path d="M0 85 800 0v410L0 600Z" fill="#cfdbcc"/>
+<path d="m0 420 800-193v373H0Z" fill="#b8cdbb"/>
+<g transform="rotate(-12 282 297)">
+<rect x="91" y="49" width="384" height="487" fill="#f9f8f0"/>
+<path d="M120 86h326" stroke="#315a43" stroke-width="5"/>
+<text x="122" y="131" fill="#305740" font-family="Arial,sans-serif" font-size="19" font-weight="700" letter-spacing="2">HỒ SƠ VAY MẪU</text>
+<path d="M122 169h275M122 195h244M122 221h269" stroke="#bbcbbd" stroke-width="10" stroke-linecap="round"/>
+<path d="M122 285h110M122 330h305M122 356h257M122 382h278" stroke="#bdcbbd" stroke-width="8" stroke-linecap="round"/>
+<path d="M123 443h127m90 0h92" stroke="#3a6b4f" stroke-width="3"/>
+<text x="122" y="465" fill="#63806a" font-family="Arial,sans-serif" font-size="14">điều khoản</text>
+</g>
+<g transform="rotate(9 581 319)">
+<rect x="444" y="168" width="279" height="320" fill="#f7efe5"/>
+<path d="M468 200h231" stroke="#bd684b" stroke-width="5"/>
+<text x="469" y="249" fill="#9b503a" font-family="Arial,sans-serif" font-size="18" font-weight="700" letter-spacing="2">YÊU CẦU MẪU</text>
+<text x="469" y="316" fill="#1e4433" font-family="Georgia,serif" font-size="36">Phí trước?</text>
+<path d="M469 337h196" stroke="#be684c" stroke-width="4"/>
+<path d="M469 384h203M469 411h170" stroke="#cbbcae" stroke-width="9" stroke-linecap="round"/>
+<text x="470" y="457" fill="#996650" font-family="Arial,sans-serif" font-size="15">Trước giải ngân</text>
+</g>
+<text x="42" y="569" fill="#42634d" font-family="Arial,sans-serif" font-size="16" letter-spacing="2">MINH HỌA GỐC · FINCOPILOT</text>
+</svg>

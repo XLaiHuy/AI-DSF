@@ -150,6 +150,6 @@ test('Tin thứ cấp hiện ảnh có nguồn và dùng minh họa chủ đề 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/radar')
   await expect(page.locator('.desk-row .desk-thumb img[src="https://example.test/cleared.jpg"]')).toHaveCount(1)
-  await expect(page.locator('.desk-row .editorial-image-credit').filter({ hasText: 'Minh họa FinCopilot' }).first()).toBeVisible()
+  await expect(page.locator('.desk-row .radar-category-art').first()).toHaveAttribute('aria-label', /Minh họa chủ đề Lãi suất/)
   await expect(page.locator('.desk-row .editorial-image-credit').filter({ hasText: 'NHNN' })).toBeVisible()
 })

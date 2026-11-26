@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-labelledby="title desc">
+<title id="title">Minh họa một hồ sơ tự nhận là nhân viên hỗ trợ</title>
+<desc id="desc">Tranh vẽ gốc: hai hồ sơ người gửi xếp chồng, một hồ sơ tự nhận là nhân viên nhưng danh tính chưa được đối chiếu.</desc>
+<rect width="800" height="600" fill="#e8e4d8"/>
+<path d="M0 0h800v196L0 429Z" fill="#dadccd"/>
+<path d="M0 501 800 245v355H0Z" fill="#c7d4c5"/>
+<g transform="rotate(10 495 267)">
+<rect x="334" y="79" width="334" height="389" rx="7" fill="#b9cbbb"/>
+<rect x="359" y="116" width="283" height="17" fill="#e3eee2"/>
+<path d="M359 174h211M359 205h237M359 236h181" stroke="#e8eee6" stroke-width="11" stroke-linecap="round"/>
+<path d="M359 376h218" stroke="#e8eee6" stroke-width="9" stroke-linecap="round"/>
+</g>
+<g transform="rotate(-7 321 316)">
+<rect x="105" y="109" width="423" height="396" rx="8" fill="#faf9f2"/>
+<path d="M135 142h363" stroke="#295a40" stroke-width="5"/>
+<text x="137" y="183" fill="#345c45" font-family="Arial,sans-serif" font-size="19" font-weight="700" letter-spacing="2">HỒ SƠ NGƯỜI GỬI</text>
+<circle cx="224" cy="294" r="72" fill="#d0dfd1"/>
+<circle cx="224" cy="276" r="29" fill="#71927a"/>
+<path d="M171 348c9-59 97-59 106 0" fill="#71927a"/>
+<path d="M323 256h158M323 287h129M323 318h147" stroke="#afc2b1" stroke-width="11" stroke-linecap="round"/>
+<path d="M137 409h300M137 439h244" stroke="#c2d0c2" stroke-width="10" stroke-linecap="round"/>
+</g>
+<g transform="rotate(8 624 405)">
+<rect x="524" y="337" width="211" height="124" fill="#b96047"/>
+<text x="543" y="382" fill="#fff8ed" font-family="Arial,sans-serif" font-size="18" font-weight="700">Tự nhận là</text>
+<text x="543" y="414" fill="#fff8ed" font-family="Arial,sans-serif" font-size="21" font-weight="700">nhân viên?</text>
+</g>
+<text x="42" y="569" fill="#5b705d" font-family="Arial,sans-serif" font-size="16" letter-spacing="2">MINH HỌA GỐC · FINCOPILOT</text>
+</svg>
