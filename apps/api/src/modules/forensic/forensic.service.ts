@@ -51,7 +51,10 @@ export type ForensicBenchmarkObservation = {
 const reportExtras = ForensicAuditResponseSchema.pick({
   mathBreakdown: true, handoffPayload: true, immediateActions: true, intentSignals: true, entityLicense: true, meta: true,
   complexityTier: true, reasoningFindings: true, personalImpact: true, legalCitations: true,
-}).extend({ qrMetadata: z.record(z.uuid(), ForensicQrMetadataSchema).optional() })
+}).extend({
+  qrMetadata: z.record(z.uuid(), ForensicQrMetadataSchema).optional(),
+  repaymentMethod: z.enum(['FLAT', 'DECLINING_EQUAL_PRINCIPAL', 'DECLINING_ANNUITY']).optional(),
+})
 
 function ownerFilter(session: SessionContext) {
   return session.kind === 'user' ? { userId: session.userId } : { userId: null, guestSessionId: session.guestSessionId }
@@ -388,6 +391,7 @@ export class ForensicService {
           immediateActions: response.immediateActions, intentSignals: response.intentSignals,
           entityLicense: response.entityLicense, meta: response.meta,
           complexityTier: response.complexityTier, reasoningFindings: response.reasoningFindings, personalImpact, legalCitations,
+          repaymentMethod: evidence.conditionalLoan.spec?.repaymentMethod,
           qrMetadata: Object.fromEntries(savedQrs.map(({ id, metadata }) => [id, metadata])),
         }),
         principalNominalVnd: response.mathBreakdown?.principalNominalVnd,
@@ -551,6 +555,6 @@ export class ForensicService {
   }
 }
 
-function reportFields({ qrMetadata: _qrMetadata, ...fields }: z.infer<typeof reportExtras>) {
+function reportFields({ qrMetadata: _qrMetadata, repaymentMethod: _repaymentMethod, ...fields }: z.infer<typeof reportExtras>) {
   return fields
 }

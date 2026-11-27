@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   handoffRoutes, LoanUseCase, ManualCompareRequestSchema, ManualCompareResponseSchema, SurveyInvestResponseSchema, SurveyLoanResponseSchema,
   SurveySessionDetailResponseSchema, SurveyTermMonthsSchema, type ManualCompareRequest, type ManualCompareResponse, type SurveyInvestResponse,
-  type SurveyLoanRequest, type SurveyLoanResponse, type parseSurveyHandoff,
+  type SurveyLoanRequest, type SurveyLoanResponse, type SurveyRefinanceResponse, type parseSurveyHandoff,
 } from '@fincopilot/shared-types'
 import { AlertTriangle, Calculator, Loader2, ShieldCheck } from 'lucide-react'
 import dynamic from 'next/dynamic'
@@ -17,19 +17,21 @@ import { apiClient, ApiError } from '@/lib/api-client'
 import { formatVnd, profileQuery, surveyHistoryQuery } from '@/lib/workspace-data'
 import { decimal, Field, fieldStyle, manualDraft, manualInput, ManualOfferFields, methodLabels, MoneyField } from './SurveyFields'
 
+import { RefinanceWorkspace } from './RefinanceWorkspace'
+
 const InvestmentGrowthChart = dynamic(() => import('@/components/charts/InvestmentGrowthChart').then(module => module.InvestmentGrowthChart), { ssr: false })
 const LoanAmortizationChart = dynamic(() => import('@/components/charts/LoanAmortizationChart').then(module => module.LoanAmortizationChart), { ssr: false })
 const LoanAprDtiChart = dynamic(() => import('@/components/charts/LoanAprDtiChart').then(module => module.LoanAprDtiChart), { ssr: false })
 
 type Handoff = ReturnType<typeof parseSurveyHandoff>
-type Tab = 'loan' | 'invest' | 'manual'
+type Tab = NonNullable<Handoff['mode']>
 type Result =
   | { tab: 'loan'; data: SurveyLoanResponse; amount: string; term: number }
   | { tab: 'invest'; data: SurveyInvestResponse; queriedFilter: InvestmentFilter; initial: string; term: number }
   | { tab: 'manual'; data: ManualCompareResponse; inputs: ManualCompareRequest['offers'] }
 
 const tabs = [
-  ['loan', 'Khảo sát vay'], ['invest', 'Đầu tư / tích lũy'], ['manual', 'Tự nhập so sánh'],
+  ['loan', 'Khảo sát vay'], ['invest', 'Đầu tư / tích lũy'], ['manual', 'Tự nhập so sánh'], ['refinance', 'Đổi khoản vay / Đảo nợ'],
 ] as const
 const priorities: Record<SurveyLoanRequest['priority'], string> = {
   LOWEST_APR: 'APR thấp nhất',
@@ -61,6 +63,7 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
   const [restoring, setRestoring] = useState(Boolean(handoff.sessionId))
   const [error, setError] = useState('')
   const [result, setResult] = useState<Result | null>(null)
+  const [refinanceResult, setRefinanceResult] = useState<SurveyRefinanceResponse>()
   const request = useRef<AbortController | null>(null)
   const queryClient = useQueryClient()
   const profile = useQuery(profileQuery).data?.profile
@@ -73,7 +76,7 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
   })
   const [loanUseCase, setLoanUseCase] = useState<LoanUseCase | ''>(() => (handoff.mode !== 'invest' && handoff.amount) || handoff.auditId ? '' : 'UNSECURED_SALARY')
   const [category, setCategory] = useState<SurveyLoanRequest['productCategory']>('UNSECURED_LOAN')
-  const [source, setSource] = useState({ sourceArticleId: handoff.articleId, sourceAuditId: handoff.auditId })
+  const [source, setSource] = useState({ sourceArticleId: handoff.articleId, sourceAuditId: handoff.mode === 'refinance' ? undefined : handoff.auditId })
   const touched = useRef({ amount: handoff.mode !== 'invest' && Boolean(handoff.amount), term: handoff.mode !== 'invest' && handoff.term != null })
   const [priority, setPriority] = useState<SurveyLoanRequest['priority']>('LOWEST_APR')
   const [investmentFilter, setInvestmentFilter] = useState<InvestmentFilter>('ALL')
@@ -118,6 +121,9 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
         setInvestmentFilter(input.productCategory ?? 'ALL')
         setForm((old) => ({ ...old, initial: input.initialVnd, contribution: input.monthlyContributionVnd, invest: String(input.termMonths) }))
         setResult({ tab: 'invest', queriedFilter: input.productCategory ?? 'ALL', data: saved.result, initial: input.initialVnd, term: input.termMonths })
+      } else if (saved.sessionMode === 'REFINANCE_COMPARE') {
+        setTab('refinance')
+        setRefinanceResult(saved.result)
       } else {
         const inputs = saved.inputParams.offers
         setTab('manual')
@@ -158,7 +164,7 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (request.current || restoring) return
+    if (request.current || restoring || tab === 'refinance') return
     const term = Number(tab === 'invest' ? form.invest : form.loan)
     if (tab !== 'manual' && !SurveyTermMonthsSchema.safeParse(term).success) {
       setError('Nhập kỳ hạn nguyên từ 1 đến 600 tháng.')
@@ -225,12 +231,15 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
     <header><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Mình cùng tìm phương án phù hợp nhé</h1></header>
     <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
       <div className="min-w-0 space-y-4">
-        <div role="group" aria-label="Chế độ khảo sát" className="grid grid-cols-3 rounded-xl border border-border bg-card p-1">
+        <div role="group" aria-label="Chế độ khảo sát" className="grid grid-cols-2 rounded-xl border border-border bg-card p-1 sm:grid-cols-4">
           {tabs.map(([id, label]) => <button type="button" key={id} aria-pressed={tab === id}
             disabled={restoring} onClick={() => changeTab(id)}
             className={`rounded-lg px-2 py-3 text-sm font-semibold ${tab === id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>)}
         </div>
         {restoring ? <p role="status" className="min-h-48 text-sm text-muted-foreground">Đang mở lại phiên khảo sát…</p>
+          : tab === 'refinance' ? <RefinanceWorkspace
+            sourceAuditId={handoff.mode === 'refinance' ? handoff.auditId : undefined}
+            restored={refinanceResult} onResult={setRefinanceResult} />
           : <form onSubmit={submit}>
           <fieldset className="min-w-0 space-y-4">
           <legend className="sr-only">{tabs.find(([id]) => id === tab)?.[1]}</legend>

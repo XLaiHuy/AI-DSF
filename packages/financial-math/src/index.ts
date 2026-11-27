@@ -18,10 +18,11 @@ export function decliningPrincipalLoan(principal: Decimal.Value, annualRatePct: 
 export function amortizeLoan(
   principal: Decimal.Value, annualRatePct: Decimal.Value, termMonths: number,
   method: 'REDUCING_BALANCE' | 'DECLINING_PRINCIPAL' | 'FLAT_RATE',
-  options: { monthlyFeeVnd?: Decimal.Value; laterRate?: { afterMonths: number; annualRatePct: Decimal.Value } } = {},
+  options: { monthlyFeeVnd?: Decimal.Value; flatInterestBaseVnd?: Decimal.Value; laterRate?: { afterMonths: number; annualRatePct: Decimal.Value } } = {},
 ): LoanCalculation {
   const original = new Decimal(money(principal))
   const monthlyFee = new Decimal(money(options.monthlyFeeVnd ?? 0))
+  const flatInterestBase = options.flatInterestBaseVnd == null ? original : new Decimal(money(options.flatInterestBaseVnd))
   const principalPart = new Decimal(money(original.div(termMonths)))
   let balance = original
   let monthlyRate = new Decimal(annualRatePct).div(1200)
@@ -34,7 +35,7 @@ export function amortizeLoan(
       monthlyRate = new Decimal(options.laterRate.annualRatePct).div(1200)
       regularPayment = scheduledPayment(balance, monthlyRate, termMonths - month + 1)
     }
-    const interestBase = method === 'FLAT_RATE' && balance.gt(0) ? original : balance
+    const interestBase = method === 'FLAT_RATE' && balance.gt(0) ? flatInterestBase : balance
     const interest = new Decimal(money(interestBase.mul(monthlyRate)))
     const scheduledPrincipal = method === 'REDUCING_BALANCE' ? regularPayment.sub(interest) : principalPart
     const principalPaid = month === termMonths ? balance : Decimal.min(Decimal.max(scheduledPrincipal, 0), balance)
@@ -47,6 +48,69 @@ export function amortizeLoan(
       remainingBalanceVnd: money(balance), ...(fee.gt(0) ? { feeVnd: money(fee) } : {}) })
   }
   return { monthlyPaymentVnd: schedule[0]?.paymentVnd ?? '0', totalInterestVnd: money(totalInterest), totalPayableVnd: money(totalPayable), schedule }
+}
+
+export type RefinanceInput = {
+  remainingPrincipalVnd: Decimal.Value
+  remainingTermMonths: number
+  currentAnnualRatePct: Decimal.Value
+  currentCalcMethod?: Parameters<typeof amortizeLoan>[3]
+  currentMonthlyFeeVnd?: Decimal.Value
+  currentFlatInterestBaseVnd?: Decimal.Value
+  earlySettlementFeePct: Decimal.Value
+  newAnnualRatePct: Decimal.Value
+  newCalcMethod?: Exclude<Parameters<typeof amortizeLoan>[3], 'FLAT_RATE'>
+  newUpfrontFeeRatePct?: Decimal.Value
+  newMonthlyFeeVnd?: Decimal.Value
+  newTermMonths?: number
+  newLaterRate?: NonNullable<Parameters<typeof amortizeLoan>[4]>['laterRate']
+}
+
+export function simulateRefinanceBreakEven(input: RefinanceInput) {
+  const { remainingTermMonths, earlySettlementFeePct, newUpfrontFeeRatePct = '0', newTermMonths = remainingTermMonths } = input
+  const principal = new Decimal(money(input.remainingPrincipalVnd))
+  const decimals = [input.currentAnnualRatePct, input.newAnnualRatePct, earlySettlementFeePct, newUpfrontFeeRatePct,
+    input.currentMonthlyFeeVnd ?? '0', input.newMonthlyFeeVnd ?? '0', input.newLaterRate?.annualRatePct ?? '0'].map((value) => new Decimal(value))
+  const flatBase = new Decimal(money(input.currentFlatInterestBaseVnd ?? principal))
+  const horizon = Math.max(remainingTermMonths, newTermMonths)
+  if (!principal.isFinite() || !principal.gt(0) || !flatBase.isFinite() || flatBase.lt(principal) || decimals.some((value) => !value.isFinite() || value.lt(0))
+    || [remainingTermMonths, newTermMonths].some((term) => !Number.isInteger(term) || term < 1 || term > 600)) {
+    throw new RangeError('Thông số khoản vay ngoài phạm vi tính toán.')
+  }
+
+  const current = amortizeLoan(principal, input.currentAnnualRatePct, remainingTermMonths, input.currentCalcMethod ?? 'REDUCING_BALANCE', {
+    monthlyFeeVnd: input.currentMonthlyFeeVnd, flatInterestBaseVnd: flatBase,
+  })
+  const next = amortizeLoan(principal, input.newAnnualRatePct, newTermMonths, input.newCalcMethod ?? 'REDUCING_BALANCE', {
+    monthlyFeeVnd: input.newMonthlyFeeVnd, laterRate: input.newLaterRate,
+  })
+  const earlyPenalty = new Decimal(money(principal.mul(earlySettlementFeePct).div(100)))
+  const newUpfrontFee = new Decimal(money(principal.mul(newUpfrontFeeRatePct).div(100)))
+  const switchCost = earlyPenalty.add(newUpfrontFee)
+  const netSavings = new Decimal(current.totalPayableVnd).sub(next.totalPayableVnd).sub(switchCost)
+  const interval = horizon <= 35 ? 1 : 12 * Math.ceil(horizon / (12 * 33))
+  const comparisonPoints = [{ month: 0, currentCumulativeVnd: '0', refinanceCumulativeVnd: money(switchCost) }]
+  let currentPaid = new Decimal(0)
+  let refinancePaid = switchCost
+  let breakEvenMonth: number | null = null
+  for (let month = 1; month <= horizon; month += 1) {
+    currentPaid = currentPaid.add(current.schedule[month - 1]?.paymentVnd ?? '0')
+    refinancePaid = refinancePaid.add(next.schedule[month - 1]?.paymentVnd ?? '0')
+    const crosses = netSavings.gt(0) && breakEvenMonth === null && currentPaid.gte(refinancePaid)
+    if (crosses) breakEvenMonth = month
+    if (month % interval === 0 || month === horizon || crosses) {
+      comparisonPoints.push({ month, currentCumulativeVnd: money(currentPaid), refinanceCumulativeVnd: money(refinancePaid) })
+    }
+  }
+
+  const recommendation = netSavings.lte(0) ? 'KEEP_CURRENT' : netSavings.lt(principal.div(100)) ? 'MARGINAL' : 'WORTH_REFINANCING'
+  return {
+    currentMonthlyPaymentVnd: current.monthlyPaymentVnd, currentTotalRemainingPayableVnd: current.totalPayableVnd,
+    earlySettlementPenaltyVnd: money(earlyPenalty), newUpfrontFeeVnd: money(newUpfrontFee), totalSwitchCostVnd: money(switchCost),
+    newMonthlyPaymentVnd: next.monthlyPaymentVnd, newTotalPayableVnd: next.totalPayableVnd,
+    monthlySavingsVnd: money(new Decimal(current.monthlyPaymentVnd).sub(next.monthlyPaymentVnd)),
+    breakEvenMonth, netSavingsVnd: money(netSavings), recommendation, comparisonPoints,
+  } as const
 }
 
 function scheduledPayment(balance: Decimal, monthlyRate: Decimal, months: number) {

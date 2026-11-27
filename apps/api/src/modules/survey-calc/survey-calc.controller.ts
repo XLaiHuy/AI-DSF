@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common'
 import {
   ManualCompareRequestSchema, SurveyInvestRequestSchema, SurveyLoanRequestSchema,
-  type ManualCompareRequest, type SurveyInvestRequest, type SurveyLoanRequest,
+  SurveyRefinanceRequestSchema, type ManualCompareRequest, type SurveyInvestRequest, type SurveyLoanRequest, type SurveyRefinanceRequest,
 } from '@fincopilot/shared-types'
 import type { FastifyRequest } from 'fastify'
 import { GuestSessionGuard } from '../../common/guest-session.guard'
@@ -26,6 +26,16 @@ export class SurveyCalcController {
   @Post('calculator/manual-compare')
   compareManual(@Body(new ZodValidationPipe(ManualCompareRequestSchema)) body: ManualCompareRequest, @Req() request: FastifyRequest) {
     return this.service.manualCompare(body, request.session)
+  }
+
+  @Get('survey/refinance/from-audit/:auditId')
+  refinanceFromAudit(@Req() request: FastifyRequest, @Param('auditId') auditId: string) {
+    return this.service.refinanceFromAudit(auditId, request.session)
+  }
+
+  @Post('survey/refinance')
+  refinance(@Body(new ZodValidationPipe(SurveyRefinanceRequestSchema)) body: SurveyRefinanceRequest, @Req() request: FastifyRequest) {
+    return this.service.refinance(body, request.session)
   }
 
   @Get('survey/history')

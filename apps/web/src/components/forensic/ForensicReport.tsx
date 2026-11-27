@@ -49,6 +49,14 @@ function VerdictHero({ audit, inline }: { audit: ForensicAuditResponse; inline: 
       </div>
       <FersRiskScale tier={risk.riskTier} />
       {risk.abstention && <p className="rounded-lg border border-current/25 bg-card p-3 text-sm font-medium text-foreground">{risk.abstentionPrompt}</p>}
+      {audit.mathBreakdown?.termMonths && audit.mathBreakdown.effectiveAprPct != null && (
+        <div className="print-hidden">
+          <Link className={cn(buttonVariants(), 'h-auto min-h-11 max-w-full whitespace-normal text-left')}
+            href={handoffRoutes.forensicToRefinance({ auditId: audit.auditId })}>
+            So sánh hợp đồng này với ngân hàng <ArrowRight aria-hidden="true" size={16} />
+          </Link>
+        </div>
+      )}
       {(audit.deterministicOverride || audit.meta.degradedMode) && (
         <div className="flex flex-wrap gap-2 lg:col-start-1">
           {audit.deterministicOverride && <Badge variant="danger" className="whitespace-normal">Có dấu hiệu nghiêm trọng</Badge>}

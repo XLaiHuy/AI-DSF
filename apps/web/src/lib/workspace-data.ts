@@ -47,12 +47,14 @@ export function surveySessionLabel(mode: string) {
     case 'LOAN_SURVEY': return 'Khảo sát khoản vay'
     case 'INVESTMENT_SURVEY': return 'Khảo sát đầu tư'
     case 'MANUAL_COMPARE': return 'So sánh phương án'
+    case 'REFINANCE_COMPARE': return 'Đổi khoản vay / Đảo nợ'
     default: return 'Khảo sát tài chính'
   }
 }
 
 export function surveySessionHref(mode: string, sessionId?: string) {
-  const tab = mode === 'INVESTMENT_SURVEY' ? 'invest' : mode === 'MANUAL_COMPARE' ? 'manual' : 'loan'
+  const modes = { INVESTMENT_SURVEY: 'invest', MANUAL_COMPARE: 'manual', REFINANCE_COMPARE: 'refinance' } as const
+  const tab = modes[mode as keyof typeof modes] ?? 'loan'
   const query = new URLSearchParams({ mode: tab })
   if (sessionId) query.set('sessionId', sessionId)
   return `${ROUTES.survey}?${query}`
