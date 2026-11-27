@@ -15,6 +15,7 @@ import { LegalReferencesCard } from './LegalReferencesCard'
 import { PersonalImpactCard } from './PersonalImpactCard'
 import { plainAuditText } from './report-copy'
 import { RevealBlock, StreamingTextReveal, useReducedMotion } from './StreamingContentReveal'
+import { FersEvidenceLedger, FersRiskScale, reportRisk } from './FersAssessment'
 import { verdictLabels } from './verdict'
 
 const verdictTone = {
@@ -30,27 +31,24 @@ function VerdictHero({ audit, inline }: { audit: ForensicAuditResponse; inline: 
     if (!inline) heading.current?.focus({ preventScroll: true })
   }, [inline])
 
-  const Icon = audit.verdictLevel === 'SAFE' ? ShieldCheck : AlertTriangle
+  const risk = reportRisk(audit)
+  const tone = risk.riskTier === 'T0' ? 'SAFE' : risk.riskTier === 'T1' ? 'CAUTION' : 'HIGH_RISK'
+  const Icon = tone === 'SAFE' ? ShieldCheck : AlertTriangle
   const Heading = inline ? 'h2' : 'h1'
 
   return (
-    <header className={cn('report-print-card grid items-start gap-5 rounded-xl border p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_12rem]', verdictTone[audit.verdictLevel])}>
-      <div className="flex items-start gap-3">
+    <header className={cn('report-print-card grid min-w-0 gap-4 rounded-xl border p-5 sm:p-7', verdictTone[tone])}>
+      <div className="flex min-w-0 items-start gap-3">
         <Icon size={28} className="mt-1 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-        <Heading ref={heading} data-verdict-heading tabIndex={-1} className="scroll-mt-24 text-balance text-3xl font-bold tracking-tight sm:text-4xl">
-          {verdictLabels[audit.verdictLevel]}
-        </Heading>
-      </div>
-      <div className="space-y-2 lg:row-span-2 lg:border-s lg:border-current/20 lg:ps-5">
-        <p id="risk-score-label" className="text-sm font-medium">Điểm rủi ro</p>
-        <p aria-hidden="true" className="font-numeric text-3xl font-bold tracking-tight">
-          {audit.riskScore}<span className="text-base font-medium"> / 100</span>
-        </p>
-        <meter min={0} max={100} value={audit.riskScore} aria-labelledby="risk-score-label" className="sr-only" />
-        <div aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-current/20">
-          <div className="h-full rounded-full bg-current" style={{ width: audit.riskScore + '%' }} />
+        <div className="min-w-0">
+          <Heading ref={heading} data-verdict-heading tabIndex={-1} className="scroll-mt-24 text-balance text-3xl font-bold tracking-tight sm:text-4xl">
+            {risk.actionLabelVi}
+          </Heading>
+          <p className="mt-1 text-sm font-medium">{risk.confidenceLabelVi}</p>
         </div>
       </div>
+      <FersRiskScale tier={risk.riskTier} />
+      {risk.abstention && <p className="rounded-lg border border-current/25 bg-card p-3 text-sm font-medium text-foreground">{risk.abstentionPrompt}</p>}
       {(audit.deterministicOverride || audit.meta.degradedMode) && (
         <div className="flex flex-wrap gap-2 lg:col-start-1">
           {audit.deterministicOverride && <Badge variant="danger" className="whitespace-normal">Có dấu hiệu nghiêm trọng</Badge>}
@@ -320,6 +318,7 @@ export function ForensicReport({ audit, inline = false, animate = false, opening
             {' '}(giờ Việt Nam). Báo cáo đã che thông tin định danh nhạy cảm.
           </p>
         </section>
+        <FersEvidenceLedger audit={audit} />
         <div className="print-hidden flex flex-wrap gap-2 border-t border-border pt-4">
           <Button variant="outline" className="min-h-11" onClick={() => window.print()}>
             <Printer size={17} aria-hidden="true" /> In / Lưu PDF trình báo

@@ -119,7 +119,7 @@ for (const [name, viewport] of Object.entries(viewports)) {
     expect(JSON.stringify(report)).not.toContain('NGUYEN VAN HUNG')
     await expect(page).toHaveURL(/\/forensic\?claimedEntity=/)
     await expect(page.getByText('QRIBFTTA', { exact: false }).first()).toBeVisible()
-    await expect(page.getByText('Nguy hiểm cao', { exact: true }).first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Dừng giao dịch ngay', exact: true })).toBeVisible()
     const question = 'Mình đã chuyển rồi, giờ nên làm gì?'
     await page.getByRole('textbox', { name: 'Câu hỏi tiếp theo' }).fill(question)
     const followUp = page.waitForResponse((response) => response.url().endsWith('/' + report.auditId + '/chat/stream'))
@@ -172,7 +172,7 @@ for (const [name, viewport] of Object.entries(viewports)) {
     expect((await page.request.get(reportApi)).status()).toBe(200)
     await savedReport.click()
     await expect(page).toHaveURL(new RegExp('/forensic/' + report.auditId + '$'))
-    await expect(page.getByRole('heading', { name: 'Nguy hiểm cao' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Dừng giao dịch ngay' })).toBeVisible()
     await page.goto('/profile')
 
     await page.getByRole('button', { name: 'Đăng xuất' }).click()

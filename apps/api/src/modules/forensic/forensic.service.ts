@@ -31,6 +31,7 @@ import { extractThreatIocs } from './threat-iocs'
 import { communityProposalQueue } from './community-proposal.processor'
 import { ConversationSessionStore } from './conversation-session.store'
 import type { PreAuditTurn } from './context-compressor'
+import { buildForensicRiskAssessment } from './risk-assessment.engine'
 import { routeForensicConversation } from './forensic-conversation'
 import { type CommunityProposal, ThreatMemoryService } from './threat-memory.service'
 
@@ -201,7 +202,7 @@ export class ForensicService {
       this.loadInstitutions(),
       this.loadFinancialProfile(session),
       fields.sourceAlertId ? this.prisma.threatAlert.findFirst({
-        where: { id: fields.sourceAlertId, verificationStatus: 'VERIFIED', publishedAt: { not: null } }, select: { id: true },
+        where: { id: fields.sourceAlertId, verificationStatus: 'VERIFIED', publishedAt: { not: null } }, select: { id: true, threatCategory: true },
       }) : null,
     ])
     const memory = learning?.memory
@@ -411,7 +412,9 @@ export class ForensicService {
       }
     }
     stage('NARRATIVE', 'done')
-    return response
+    return { ...response, riskAssessment: buildForensicRiskAssessment(response, {
+      sourceAlertVerified: Boolean(sourceAlert), threatCategory: sourceAlert?.threatCategory,
+    }) }
   }
 
   private async loadFinancialProfile(session: SessionContext) {
@@ -504,6 +507,7 @@ export class ForensicService {
       where: { id, ...ownerFilter(session) },
       include: {
         qrPayloads: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+        sourceAlert: { select: { verificationStatus: true, publishedAt: true, threatCategory: true } },
         findings: { orderBy: [{ ruleCode: 'asc' }, { id: 'asc' }] },
         feedbackExamples: { where: { reporterSessionHash: feedbackReporter(session), sourceChannel: 'USER_REPORT' },
           select: { assessment: true, reviewStatus: true, createdAt: true }, take: 1, orderBy: { createdAt: 'desc' } },
@@ -537,7 +541,11 @@ export class ForensicService {
       }),
     })
     const currentCitations = selectLegalCitations(audit)
-    return { ...audit, legalCitations: audit.legalCitations?.map((item) => ({
+    const verifiedAlert = row.sourceAlert?.verificationStatus === 'VERIFIED' && row.sourceAlert.publishedAt
+    const riskAssessment = buildForensicRiskAssessment(audit, {
+      sourceAlertVerified: Boolean(verifiedAlert), threatCategory: verifiedAlert ? row.sourceAlert?.threatCategory : null,
+    })
+    return { ...audit, riskAssessment, legalCitations: audit.legalCitations?.map((item) => ({
       ...item, caseRelevance: item.caseRelevance ?? currentCitations.find(({ code }) => code === item.code)?.caseRelevance,
     })) ?? currentCitations }
   }

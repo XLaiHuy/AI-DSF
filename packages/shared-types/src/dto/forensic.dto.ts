@@ -121,11 +121,42 @@ export const ForensicPersonalImpactSchema = z.strictObject({
 })
 export type ForensicPersonalImpact = z.infer<typeof ForensicPersonalImpactSchema>
 
+export const RiskTierSchema = z.enum(['T0', 'T1', 'T2', 'T3'])
+export const EvidenceConfidenceSchema = z.enum(['A1', 'B2', 'C3', 'D4'])
+export const EvidenceGradeSchema = z.enum(['A', 'B', 'C'])
+export const ThreatAudienceSchema = z.enum(['STUDENT', 'WORKER', 'BUSINESS_OWNER', 'ELDERLY', 'GENERAL'])
+export const ForensicTaxonomyMatchSchema = z.strictObject({
+  vnAisCode: z.string().regex(/^VN-AIS-(?:0[1-9]|1\d|2[0-4])$/),
+  vnAisGroup: z.enum(['BRAND_IMPERSONATION', 'ACCOUNT_HIJACK', 'COMBINED_SCAM']),
+  vnAisLabel: z.string(), gasaCategory: z.string(), targetAudience: ThreatAudienceSchema,
+})
+export const ForensicEvidenceChainItemSchema = z.strictObject({
+  grade: EvidenceGradeSchema, gradeLabel: z.string(), sourceType: z.string(),
+  quoteOrDecoded: z.string(), ruleOrLawRef: z.string(), financialImpact: z.string().nullable(),
+})
+export const ForensicRiskAssessmentSchema = z.strictObject({
+  standardVersion: z.literal('FERS-v1'), riskTier: RiskTierSchema, actionLabelVi: z.string(),
+  abstention: z.boolean(), abstentionPrompt: z.string().nullable(),
+  evidenceConfidence: EvidenceConfidenceSchema, confidenceLabelVi: z.string(),
+  taxonomy: z.array(ForensicTaxonomyMatchSchema), evidenceChain: z.array(ForensicEvidenceChainItemSchema), standardsCited: z.array(z.string()),
+}).refine(item => item.evidenceConfidence === 'D4'
+  ? item.abstention && item.riskTier === 'T1' && Boolean(item.abstentionPrompt)
+  : !item.abstention && item.abstentionPrompt === null,
+{ message: 'Không đủ bằng chứng thì phải hoãn kết luận.' })
+
+export type RiskTier = z.infer<typeof RiskTierSchema>
+export type EvidenceConfidence = z.infer<typeof EvidenceConfidenceSchema>
+export type EvidenceGrade = z.infer<typeof EvidenceGradeSchema>
+export type ForensicTaxonomyMatch = z.infer<typeof ForensicTaxonomyMatchSchema>
+export type ForensicEvidenceChainItem = z.infer<typeof ForensicEvidenceChainItemSchema>
+export type ForensicRiskAssessment = z.infer<typeof ForensicRiskAssessmentSchema>
+
 export const ForensicAuditResponseSchema = z.strictObject({
   userFeedback: z.strictObject({ assessment, reviewStatus: z.enum(['PENDING', 'APPROVED', 'REJECTED']), createdAt: z.iso.datetime() }).optional(),
   auditId: z.guid(),
   createdAt: z.iso.datetime().optional(),
   verdictLevel: VerdictLevel,
+  riskAssessment: ForensicRiskAssessmentSchema.optional(),
   riskScore: z.number().int().min(0).max(100),
   deterministicOverride: z.boolean(),
   claimedEntityName: z.string().nullable(),

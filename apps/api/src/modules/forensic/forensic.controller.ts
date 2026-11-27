@@ -1,7 +1,7 @@
 import { PassThrough, Readable } from 'node:stream'
 import {
   BadRequestException, Body, Controller, Delete, Get, HttpCode, HttpException, Param, PayloadTooLargeException,
-  Post, Req, Res, UseGuards,
+  Post, Query, Req, Res, UseGuards,
 } from '@nestjs/common'
 import {
   ApiErrorCode, ForensicAuditFieldsSchema, ForensicFollowUpRequestSchema, UserAuditFeedbackSchema, type UserAuditFeedback,
@@ -13,6 +13,7 @@ import { RateLimit } from '../../common/rate-limit.guard'
 import { GuestSessionGuard } from '../../common/guest-session.guard'
 import { ZodValidationPipe } from '../../common/zod-validation.pipe'
 import { ForensicService, validateAuditInput } from './forensic.service'
+import { buildStix21Bundle } from './stix-exporter'
 
 const fieldsPipe = new ZodValidationPipe(ForensicAuditFieldsSchema)
 const fieldNames = new Set(Object.keys(ForensicAuditFieldsSchema.shape))
@@ -144,10 +145,16 @@ export class ForensicController {
   @Get('audits/:id/export')
   async exportAudit(
     @Req() request: FastifyRequest, @Param('id') id: string, @Res({ passthrough: true }) reply: FastifyReply,
+    @Query('format') format?: string,
   ) {
     const audit = await this.service.read(request.session, id)
-    reply.header('Content-Disposition', `attachment; filename="fincopilot-${audit.auditId}.json"`)
     reply.header('Cache-Control', 'private, no-store')
+    if (format === 'stix') {
+      reply.header('Content-Disposition', `attachment; filename="fincopilot-${audit.auditId}-stix21.json"`)
+      reply.type('application/stix+json; version=2.1')
+      return buildStix21Bundle(audit)
+    }
+    reply.header('Content-Disposition', `attachment; filename="fincopilot-${audit.auditId}.json"`)
     return audit
   }
 
