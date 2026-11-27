@@ -13,6 +13,7 @@ for (const width of [1280, 390, 320]) {
     const composer = page.locator('#forensic-text')
     const submit = async (text: string) => {
       await composer.fill(text)
+      await expect(page.getByRole('button', { name: 'Gửi giám định' })).toBeEnabled()
       const request = page.waitForResponse(response => response.url().endsWith('/forensic/audit/stream'))
       await composer.press('Enter')
       expect((await request).ok()).toBe(true)

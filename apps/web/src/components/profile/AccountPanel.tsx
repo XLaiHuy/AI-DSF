@@ -158,7 +158,7 @@ export function AccountStatus({ session }: { session: AuthSessionResponse }) {
 
   const user = session.kind === 'user' ? session.user : undefined
   const name = user?.displayName || user?.email || ''
-  const initials = name.trim().split(/\s+/).map(word => Array.from(word)[0] ?? '').filter(Boolean)
+  const initials = name.replace(/<[^>]*>/gu, '').trim().split(/\s+/u).flatMap(word => word.match(/\p{L}/u)?.[0] ?? [])
   const avatarAction = user?.avatarUrl ? 'Đổi ảnh' : 'Tải ảnh chân dung'
   const selectAvatar = () => avatarInput.current?.click()
 

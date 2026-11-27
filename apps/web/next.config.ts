@@ -35,7 +35,8 @@ const config: NextConfig = {
     }]
   },
   devIndicators: false,
-  experimental: { optimizePackageImports: ['lucide-react'] },
+  experimental: { optimizePackageImports: ['lucide-react', 'recharts'] },
+  onDemandEntries: { maxInactiveAge: 15 * 60_000, pagesBufferLength: 10 },
   async rewrites() {
     return [{
       source: '/api/v1/:path*',

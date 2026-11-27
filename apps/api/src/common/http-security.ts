@@ -18,7 +18,10 @@ export function registerHttpSecurity(server: FastifyInstance, allowedOrigins: Re
       })
     }
   })
-  server.addHook('onSend', async (_request, reply) => {
+  server.addHook('onSend', async (request, reply) => {
+    if (!reply.hasHeader('cache-control') && /^\/api\/v1\/admin(?:[/?]|$)/.test(request.url)) {
+      reply.header('Cache-Control', 'no-store')
+    }
     for (const [key, value] of Object.entries(securityHeaders)) {
       if (!reply.hasHeader(key)) reply.header(key, value)
     }

@@ -81,7 +81,12 @@ export function MarketRateBenchmarkChart({ className }: { className?: string }) 
           </div>
         })}
         <div className="relative mx-2 mt-3 h-7 border-t text-xs tabular-nums text-muted-foreground" aria-label="Thang tỷ lệ theo năm" data-testid="benchmark-rate-axis">
-          {ticks.map(tick => <span className="absolute flex -translate-x-1/2 flex-col items-center" key={tick} style={{ left: `${percent(tick)}%` }}><span className="mb-1 h-1.5 w-px bg-current" aria-hidden="true" />{fmt.format(tick)}%</span>)}
+          {ticks.map((tick, index) => {
+            const align = index === 0 ? 'items-start' : index === ticks.length - 1 ? '-translate-x-full items-end' : '-translate-x-1/2 items-center'
+            return <span className={`absolute flex flex-col ${align}`} key={tick} style={{ left: `${percent(tick)}%` }}>
+              <span className="mb-1 h-1.5 w-px bg-current" aria-hidden="true" />{fmt.format(tick)}%
+            </span>
+          })}
         </div>
       </section>
     })}

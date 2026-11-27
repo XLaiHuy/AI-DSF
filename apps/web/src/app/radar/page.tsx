@@ -5,11 +5,11 @@ import { ArrowDown, ArrowUpRight, ExternalLink, RefreshCw, Search, Bell, Calenda
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { handoffRoutes } from '@fincopilot/shared-types'
 import { Button } from '@/components/ui'
 import { MarketRateBenchmarkChart } from '@/components/charts/MarketRateBenchmarkChart'
-import { DeskNavigation, type DeskPanel } from '@/components/radar/DeskNavigation'
+import { useRadarDesk, type DeskPanel, type RadarTab } from '@/components/layout/RadarDeskContext'
 import { DeskDialog } from '@/components/radar/DeskDialog'
 import { EditorialImage } from '@/components/radar/EditorialImage'
 import { getReadingHistory, getSavedArticles, readingStoreEvent, toggleSavedArticle, type ReadingEntry } from '@/components/radar/ReadingStore'
@@ -142,52 +142,94 @@ function sourceState(status: string | null) {
   return { label: status ? 'Chưa rõ trạng thái' : 'Chưa có lần quét', className: 'is-idle' }
 }
 
+function readRadarTab(params: Pick<URLSearchParams, 'get'>): RadarTab {
+  const feed = params.get('feed')
+  const view = params.get('tab')
+  return feed === 'saved' || feed === 'history' ? feed : view === 'alerts' || view === 'personal' ? view : 'articles'
+}
+
 function RadarWorkspace() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const [tab, setTab] = useState<'articles' | 'alerts' | 'personal' | 'saved' | 'history'>('articles')
+  const [tab, setTab] = useState<RadarTab>(() => readRadarTab(searchParams))
+  const { register } = useRadarDesk()
   const [panel, setPanel] = useState<DeskPanel | null>(null)
   const [quickCheck, setQuickCheck] = useState('')
   const [savedEntries, setSavedEntries] = useState<ReadingEntry[]>([])
   const [historyEntries, setHistoryEntries] = useState<ReadingEntry[]>([])
   const feed = useRef<HTMLElement>(null)
-  function selectView(view: typeof tab) {
+  const scrollPositions = useRef<Partial<Record<RadarTab, number>>>({})
+  const restoreScroll = useRef(false)
+
+  const changeTab = useCallback((view: RadarTab) => {
+    if (view === tab) return
+    scrollPositions.current[tab] = window.innerWidth <= 900 ? window.scrollY : feed.current?.scrollTop ?? 0
+    restoreScroll.current = true
     setTab(view)
-    const query = new URLSearchParams(searchParams.toString())
-    query.delete('feed'); query.delete('tab')
+  }, [tab])
+
+  useLayoutEffect(() => {
+    if (!restoreScroll.current) return
+    restoreScroll.current = false
+    const top = scrollPositions.current[tab] ?? 0
+    if (window.innerWidth <= 900) window.scrollTo({ top, behavior: 'instant' })
+    else feed.current?.scrollTo({ top, behavior: 'instant' })
+  }, [tab])
+
+  const replaceQuery = useCallback((query: URLSearchParams) => {
+    startTransition(() => window.history.replaceState(null, '', pathname + (query.size ? '?' + query : '')))
+  }, [pathname])
+
+  const selectView = useCallback((view: RadarTab) => {
+    changeTab(view)
+    const query = new URLSearchParams(window.location.search)
+    query.delete('feed')
+    query.delete('tab')
     if (view === 'saved' || view === 'history') query.set('feed', view)
     else if (view === 'alerts' || view === 'personal') query.set('tab', view)
-    router.replace(`${pathname}${query.size ? `?${query}` : ''}`, { scroll: false })
-    feed.current?.scrollTo({ top: 0 })
-    if (window.innerWidth <= 900) feed.current?.scrollIntoView({block: 'start'})
-  }
+    replaceQuery(query)
+  }, [changeTab, replaceQuery])
+
+  useLayoutEffect(() => {
+    register({ openPanel: setPanel, selectView, isAlertsTab: tab === 'alerts' })
+    return () => register(undefined)
+  }, [register, selectView, tab])
+
   function chooseTopic(code: string) {
     const next = category === code ? '' : code
-    setCategory(next); setTab('articles')
-    const query = new URLSearchParams(searchParams.toString())
-    query.delete('feed'); query.delete('tab')
-    if (next) query.set('category', next); else query.delete('category')
-    router.replace(`${pathname}${query.size ? `?${query}` : ''}`, { scroll: false })
+    setCategory(next)
+    changeTab('articles')
+    const query = new URLSearchParams(window.location.search)
+    query.delete('feed')
+    query.delete('tab')
+    if (next) query.set('category', next)
+    else query.delete('category')
+    replaceQuery(query)
   }
+
   function clearFilters() {
     setCategory(''); setSearch(''); setPeriod('all'); setDateFrom(''); setDateTo('')
-    const query = new URLSearchParams(searchParams.toString())
+    const query = new URLSearchParams(window.location.search)
     query.delete('category')
-    router.replace(`${pathname}${query.size ? `?${query}` : ''}`, { scroll: false })
+    replaceQuery(query)
   }
-  const [category, setCategory] = useState('')
+  const [category, setCategory] = useState(() => searchParams.get('category') ?? '')
   const [search, setSearch] = useState('')
   const [period, setPeriod] = useState<'all' | 'today' | '7d' | 'month' | 'year' | 'custom'>('all')
   const [year, setYear] = useState(String(new Date().getFullYear()))
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   useEffect(() => {
-    const feedParam = searchParams.get('feed')
-    const tabParam = searchParams.get('tab')
-    setTab(feedParam === 'saved' || feedParam === 'history' ? feedParam : tabParam === 'alerts' || tabParam === 'personal' ? tabParam : 'articles')
-    setCategory(searchParams.get('category') ?? '')
-  }, [searchParams])
+    const sync = () => {
+      const params = new URLSearchParams(window.location.search)
+      changeTab(readRadarTab(params))
+      setCategory(params.get('category') ?? '')
+    }
+    sync()
+    window.addEventListener('popstate', sync)
+    return () => window.removeEventListener('popstate', sync)
+  }, [searchParams, changeTab])
   useEffect(() => {
     const refresh = () => { setSavedEntries(getSavedArticles()); setHistoryEntries(getReadingHistory()) }
     refresh()
@@ -237,6 +279,7 @@ function RadarWorkspace() {
   const articlesQuery = useInfiniteQuery({
     queryKey: ['radar-articles', category, search, period, year, dateFrom, dateTo],
     initialPageParam: null as string | null,
+    staleTime: 3 * 60_000,
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({ limit: '10', ...(category ? { category } : {}), ...(search ? { search } : {}), ...(period !== 'all' && period !== 'year' && period !== 'custom' ? { period } : {}), ...(period === 'year' ? { year } : {}), ...(period === 'custom' && dateFrom ? { from: dateFrom } : {}), ...(period === 'custom' && dateTo ? { to: dateTo } : {}) })
       if (pageParam) params.set('cursor', pageParam)
@@ -246,9 +289,9 @@ function RadarWorkspace() {
   })
   const market = useQuery(marketOverviewQuery)
   const session = useQuery(sessionQuery)
-  const alertsQuery = useQuery({ queryKey: ['radar-alerts'], queryFn: () => apiClient.get<{ items: AlertItem[] }>('/radar/alerts') })
-  const fraudArticlesQuery = useQuery({ queryKey: ['radar-fraud-articles'], queryFn: () => apiClient.get<ArticlePage>('/radar/articles?category=FINANCIAL_FRAUD&limit=5') })
-  const highlightsQuery = useQuery({ queryKey: ['radar-highlights'], queryFn: () => apiClient.get<{ items: Highlight[]; ranking: string }>('/radar/articles/highlights') })
+  const alertsQuery = useQuery({ queryKey: ['radar-alerts'], enabled: tab === 'alerts', staleTime: 3 * 60_000, queryFn: () => apiClient.get<{ items: AlertItem[] }>('/radar/alerts') })
+  const fraudArticlesQuery = useQuery({ queryKey: ['radar-fraud-articles'], enabled: tab === 'alerts', staleTime: 3 * 60_000, queryFn: () => apiClient.get<ArticlePage>('/radar/articles?category=FINANCIAL_FRAUD&limit=5') })
+  const highlightsQuery = useQuery({ queryKey: ['radar-highlights'], enabled: tab === 'personal' || (!market.isPending && !market.data?.scamFinanceRail?.length), staleTime: 3 * 60_000, queryFn: () => apiClient.get<{ items: Highlight[]; ranking: string }>('/radar/articles/highlights') })
   const dailyBriefQuery = useQuery({
     queryKey: ['radar-daily-brief', dailyBriefDay, personalizationEnabled, interests, includeProfileGoal, includeSurveyTopics, includeForensicHistory],
     queryFn: () => apiClient.post<DailyBriefResponse>('/radar/daily-brief', {
@@ -257,8 +300,8 @@ function RadarWorkspace() {
       includeSurveyTopics: personalizationEnabled && includeSurveyTopics,
       includeForensicHistory: personalizationEnabled && includeForensicHistory,
     }),
-    staleTime: 5 * 60_000,
-    refetchOnWindowFocus: true,
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
   })
   const signalsQuery = useQuery({
     queryKey: ['radar-recommendation-signals', includeProfileGoal, includeSurveyTopics, includeForensicHistory],
@@ -375,10 +418,8 @@ function RadarWorkspace() {
         </details>
       </section>
     </section>
-  return <div className={`desk-shell ${tab === 'alerts' ? 'desk-shell--alerts' : ''}`}>
-    <a href="#main-content" className="skip-link">Đến nội dung chính</a>
-    <DeskNavigation openPanel={setPanel} selectView={selectView} />
-    <main id="main-content" tabIndex={-1} className="desk-main"><div className="desk-body">
+  return <>
+    <main className="desk-main"><div className="desk-body">
       <section ref={feed} className="desk-feed" aria-label="Tin tức và cảnh báo">
         <header className="desk-banner desk-quick-check"><span className="desk-icon"><ScanLine size={24} /></span>
           <div className="desk-banner-copy"><h1>Kiểm tra trước khi chuyển tiền</h1><p>Nhập nội dung đáng ngờ để chuyển sang Giám định.</p></div>
@@ -532,7 +573,7 @@ function RadarWorkspace() {
           </div>
         <button className="desk-small-button" onClick={()=>{setPanel(null);selectView('articles')}}>Xem kết quả</button></>}
     </DeskDialog>}
-  </div>
+  </>
 }
 
 export default function RadarPage() {

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common'
+import { BadRequestException, Injectable, Optional, Logger, NotFoundException, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common'
 import { Prisma, type FinancialProduct } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
 import {
@@ -9,6 +9,8 @@ import {
 import { amortizeLoan, assessDti, compoundDca, effectiveLoanApr, openFundScenarioBands, simulateEarlySettlement } from '@fincopilot/financial-math'
 import { z } from 'zod'
 import { PrismaService } from '../../common/prisma.service'
+import { homeMarketCacheKey } from '../../common/public-cache-keys'
+import { RedisService } from '../../common/redis.service'
 import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { normalizeVietnamese } from '../forensic/data/trusted-institutions'
 import { redemptionFeeTiers, syncProductCatalog } from './product-catalog'
@@ -72,10 +74,14 @@ function dtiAssessment(input: SurveyLoanRequest['dtiOverride'], payment: string)
 export class SurveyCalcService {
   private readonly logger = new Logger(SurveyCalcService.name)
 
-  constructor(private readonly prisma: PrismaService, private readonly ai: AiGatewayService) {}
+  constructor(private readonly prisma: PrismaService, private readonly ai: AiGatewayService, @Optional() private readonly redis?: RedisService) {}
 
-  syncTrustedProducts() {
-    return syncProductCatalog(this.prisma)
+  async syncTrustedProducts() {
+    try {
+      return await syncProductCatalog(this.prisma)
+    } finally {
+      await this.redis?.del(homeMarketCacheKey)
+    }
   }
 
   private async catalog(selection: Pick<Prisma.FinancialProductWhereInput, 'productCategory' | 'loanUseCase'>, input: {

@@ -4,13 +4,20 @@ import { ROUTES } from '@fincopilot/shared-types'
 import { usePathname } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { DeskNavigation } from '@/components/radar/DeskNavigation'
+import { RadarDeskProvider, useRadarDesk } from './RadarDeskContext'
 
 export function AppShell({ children }: { children: ReactNode }) {
+  return <RadarDeskProvider><DeskFrame>{children}</DeskFrame></RadarDeskProvider>
+}
+
+function DeskFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  if (pathname === ROUTES.home || pathname === ROUTES.radar) return <>{children}</>
-  return <div className="desk-shell desk-shell--workspace">
+  const { controls } = useRadarDesk()
+  const radar = pathname === ROUTES.home || pathname === ROUTES.radar
+  const className = radar ? controls?.isAlertsTab ? 'desk-shell desk-shell--alerts' : 'desk-shell' : 'desk-shell desk-shell--workspace'
+  return <div className={className}>
     <a className="skip-link" href="#main-content">Chuyển đến nội dung chính</a>
-    <DeskNavigation key={pathname} />
-    <div id="main-content" tabIndex={-1} className="desk-workspace-content">{children}</div>
+    <DeskNavigation />
+    <div id="main-content" tabIndex={-1} className={radar ? 'desk-route-content' : 'desk-workspace-content'}>{children}</div>
   </div>
 }

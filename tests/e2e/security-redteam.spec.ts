@@ -95,6 +95,7 @@ test('Ảnh chân dung, tên hiển thị và lời khuyên Copilot tại ba kí
   const photo = account.getByTestId('account-avatar')
   await expect(account.getByText(displayName, { exact: true })).toBeVisible()
   await expect(account.locator('em')).toHaveCount(0)
+  await expect(photo).toHaveText('CP')
   await expect(photo).toHaveCSS('width', '56px')
   await expect(photo).toHaveCSS('height', '56px')
   await expect(account.getByRole('button', { name: 'Tải ảnh chân dung', exact: true })).toBeVisible()

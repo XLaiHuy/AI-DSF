@@ -60,6 +60,35 @@ export class RedisService implements OnModuleDestroy {
     return typeof value === 'string' ? value : null
   }
 
+  async getJson<T>(key: string): Promise<T | null> {
+    try {
+      const value = await this.get(key)
+      return value === null ? null : JSON.parse(value) as T
+    } catch {
+      return null
+    }
+  }
+
+  async setJson(key: string, value: unknown, ttlSeconds: number) {
+    try {
+      const raw = JSON.stringify(value)
+      if (raw === undefined) return
+      if (this.client) await this.client.set(key, raw, 'EX', ttlSeconds)
+      else this.setLocal(key, raw, ttlSeconds * 1_000)
+    } catch {
+      // Public reads remain available when the cache is down.
+    }
+  }
+
+  async del(key: string) {
+    try {
+      if (this.client) await this.client.del(key)
+      else this.local.delete(key)
+    } catch {
+      // Public entries also expire by TTL.
+    }
+  }
+
   async saveOpenSession(key: string, expected: string | null, value: string, ttl: number) {
     const closed = key + ':closed'
     if (this.client) {

@@ -1,8 +1,10 @@
 import { relevantArticleWhere } from '../radar/legal-feed'
-import { Controller, Get } from '@nestjs/common'
+import { Controller, Get, Header, Optional } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { handoffRoutes, ROUTES } from '@fincopilot/shared-types'
 import { PrismaService } from '../../common/prisma.service'
+import { homeMarketCacheKey, publicRadarCacheControl } from '../../common/public-cache-keys'
+import { RedisService } from '../../common/redis.service'
 
 const categoryBenchmarkLabels: Record<string, string> = {
   UNSECURED_LOAN: 'Vay tín chấp',
@@ -36,10 +38,19 @@ function medianOf(values: Prisma.Decimal[]) {
 
 @Controller('home')
 export class HomeController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, @Optional() private readonly redis?: RedisService) {}
 
   @Get('market')
+  @Header('Cache-Control', publicRadarCacheControl)
   async market() {
+    const cached = await this.redis?.getJson<Awaited<ReturnType<HomeController['loadMarket']>>>(homeMarketCacheKey)
+    if (cached) return cached
+    const market = await this.loadMarket()
+    await this.redis?.setJson(homeMarketCacheKey, market, 60)
+    return market
+  }
+
+  private async loadMarket() {
     const select = {
       id: true,
       title: true,

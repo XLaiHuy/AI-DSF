@@ -1,11 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq'
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import type { ArticleImpactAnalysis, Prisma } from '@prisma/client'
 import type { Job, Queue } from 'bullmq'
 import { z } from 'zod'
 import { PrismaService } from '../../common/prisma.service'
+import { homeMarketCacheKey, radarHighlightsCacheKey } from '../../common/public-cache-keys'
+import { RedisService } from '../../common/redis.service'
+import { RadarImageCache } from './radar-image-cache'
 import { ProfileAuthService } from '../profile-auth/profile-auth.service'
 import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { AI_TASK_SCHEMAS, RadarDailyBriefRequestSchema } from '@fincopilot/shared-types'
@@ -208,6 +211,7 @@ export function categoriesFor(text: string): string[] {
 @Injectable()
 export class RadarService extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(RadarService.name)
+  private readonly imageCache = new RadarImageCache()
   private readonly dailyBriefCache = new Map<string, { expiresAt: number; value: BriefBase }>()
   private readonly dailyBriefInFlight = new Map<string, Promise<BriefBase>>()
   private readonly impactInFlight = new Map<string, Promise<ArticleImpactAnalysis>>()
@@ -219,6 +223,7 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     private readonly ai: AiGatewayService,
     private readonly profiles: ProfileAuthService,
     private readonly threatMemory: ThreatMemoryService,
+    @Optional() private readonly redis?: RedisService,
   ) { super() }
 
   scheduler() { return this.queue.getJobScheduler('radar-periodic-scan') }
@@ -237,6 +242,7 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     for (let index = 0; index < sources.length; index += 3) {
       results.push(...await Promise.all(sources.slice(index, index + 3).map(source => this.fetchSource(source))))
     }
+    await Promise.all([this.redis?.del(homeMarketCacheKey), this.redis?.del(radarHighlightsCacheKey)])
     return { results }
   }
 
@@ -302,6 +308,14 @@ export class RadarService extends WorkerHost implements OnModuleInit {
   }
 
   async articleHighlights() {
+    const cached = await this.redis?.getJson<Awaited<ReturnType<RadarService['loadHighlights']>>>(radarHighlightsCacheKey)
+    if (cached) return cached
+    const result = await this.loadHighlights()
+    await this.redis?.setJson(radarHighlightsCacheKey, result, 120)
+    return result
+  }
+
+  private async loadHighlights() {
     const rows = await this.prisma.marketArticle.findMany({
       where: { ...relevantArticleWhere, feedStatus: 'ACTIVE', publishedAt: { not: null } }, take: 80,
       orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
@@ -716,8 +730,12 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     }
   }
 
-  proxyArticleImage(rawUrl: string) {
-    return fetchPublicImage(rawUrl, { timeoutMs: 6_000 })
+  async proxyArticleImage(rawUrl: string) {
+    const cached = this.imageCache.get(rawUrl)
+    if (cached) return cached
+    const image = await fetchPublicImage(rawUrl, { timeoutMs: 6_000 })
+    this.imageCache.set(rawUrl, image)
+    return image
   }
 
   private articleDto(row: { id: string; title: string; canonicalUrl: string; publishedAt: Date | null; imageUrl: string | null; categories: Array<{ categoryCode: string }>; sources: Array<{ sourceId: string; sourceUrl: string; firstSeenAt: Date; lastSeenAt: Date; source: { id: string; name: string; sourceKey: string } }> }) {

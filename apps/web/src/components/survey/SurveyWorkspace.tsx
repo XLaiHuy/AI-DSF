@@ -7,17 +7,19 @@ import {
   type SurveyLoanRequest, type SurveyLoanResponse, type parseSurveyHandoff,
 } from '@fincopilot/shared-types'
 import { AlertTriangle, Calculator, Loader2, ShieldCheck } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { InvestmentGrowthChart } from '@/components/charts/InvestmentGrowthChart'
-import { LoanAmortizationChart } from '@/components/charts/LoanAmortizationChart'
-import { LoanAprDtiChart } from '@/components/charts/LoanAprDtiChart'
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, TermInfo } from '@/components/ui'
 import { stripSpacedAmount } from '@/components/ui/money-input'
 import { validChartAmount } from '@/components/charts/chart-math'
 import { apiClient, ApiError } from '@/lib/api-client'
 import { formatVnd, profileQuery, surveyHistoryQuery } from '@/lib/workspace-data'
 import { decimal, Field, fieldStyle, manualDraft, manualInput, ManualOfferFields, methodLabels, MoneyField } from './SurveyFields'
+
+const InvestmentGrowthChart = dynamic(() => import('@/components/charts/InvestmentGrowthChart').then(module => module.InvestmentGrowthChart), { ssr: false })
+const LoanAmortizationChart = dynamic(() => import('@/components/charts/LoanAmortizationChart').then(module => module.LoanAmortizationChart), { ssr: false })
+const LoanAprDtiChart = dynamic(() => import('@/components/charts/LoanAprDtiChart').then(module => module.LoanAprDtiChart), { ssr: false })
 
 type Handoff = ReturnType<typeof parseSurveyHandoff>
 type Tab = 'loan' | 'invest' | 'manual'

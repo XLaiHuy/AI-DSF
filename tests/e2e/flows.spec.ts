@@ -182,7 +182,7 @@ for (const viewport of [...viewports, { width: 320, height: 844 }]) {
       document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await page.goto('/survey')
     const purpose = page.getByLabel('Mục đích vay')
-    expect(await purpose.locator('option').count()).toBe(5)
+    await expect(purpose.locator('option')).toHaveCount(5)
     for (const [loanUseCase, amount, term] of useCases) {
       await purpose.selectOption(loanUseCase)
       await expect(page.getByLabel('Số tiền cần vay (VNĐ)')).toHaveValue(amount)

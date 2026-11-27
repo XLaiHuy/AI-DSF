@@ -10,6 +10,7 @@ export const profileResponseSchema = FinancialProfileResponseSchema
 
 export const sessionQuery = queryOptions({
   queryKey: ['session'],
+  staleTime: 2 * 60_000,
   queryFn: ({ signal }) => apiClient.get('/auth/session', { schema: AuthSessionResponseSchema, signal, cache: 'no-store' }),
   retry: false,
 })
@@ -59,12 +60,14 @@ export function surveySessionHref(mode: string, sessionId?: string) {
 
 export const marketOverviewQuery = queryOptions({
   queryKey: ['home', 'market'],
+  staleTime: 3 * 60_000,
   queryFn: ({ signal }) => apiClient.get('/home/market', { schema: HomeMarketResponseSchema, signal }),
   retry: false,
 })
 
 export const dailyBriefQuery = queryOptions({
   queryKey: ['home', 'daily-brief'],
+  refetchOnWindowFocus: false,
   queryFn: async ({ signal }) => {
     try {
       return await apiClient.post('/radar/daily-brief', {}, { schema: RadarDailyBriefResponseSchema, signal })
