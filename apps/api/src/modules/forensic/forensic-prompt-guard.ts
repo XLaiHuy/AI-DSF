@@ -40,7 +40,7 @@ const amountWithUnit = /\b\d+\s?(?:trieu|nghin|ngan|dong|ty|ti|dollars?)\b/
 const concreteTerm = /\b(?:vay|loan|ky han|lai suat|lai vay|annual rate|hop dong)\b.{0,45}\b\d+(?:[.,]\d+)?\s*(?:%|thang\b|nam\b|months?\b|years?\b)/
 const filler = '(?:(?:cho|giup|ho|dum|toi|minh|em|anh|chi|mot|1|nghe|vai|bai|doan|cau) ){0,4}'
 const offTopic = new RegExp(
-  `\\b(?:viet ${filler}(?:tho|truyen|ma|chuong trinh|code|ham|thuat toan)|lam ${filler}tho|doc ${filler}tho|ke ${filler}chuyen|giai ${filler}(?:toan|phuong trinh|pt)|dich ${filler}(?:cau|tieng|sang|van ban|doan)|phuong trinh|pt bac [0-9]|toan lop|bai tap toan|thoi tiet|du bao mua|thu do|cau do|lap trinh|thuat toan|cong thuc nau|nau an|phim hay|giai tri|bong da|lich thi dau|html|css|js|javascript|typescript|react|vue|nextjs|python|sql|java|php|script|source code|game|tro choi|ran san moi|snake|caro|tetris|flappy|trang web|website|landing page|thuc don|giam can|tap gym|kich ban|bai van|viet cv|soan email xin nghi|choi game|write (?:a |me a )?(?:poem|story|python|javascript|function|code)|solve (?:this |the )?(?:equation|math)|weather|forecast|trivia|capital of|translate)\\b`,
+  `\\b(?:viet ${filler}(?:tho|truyen|ma|chuong trinh|code|ham|thuat toan)|lam ${filler}tho|doc ${filler}tho|ke ${filler}chuyen|giai ${filler}(?:toan|phuong trinh|pt)|dich ${filler}(?:cau|tieng|sang|van ban|doan)|phuong trinh|pt bac [0-9]|toan lop|bai tap toan|thoi tiet|du bao mua|thu do|cau do|lap trinh|thuat toan|cong thuc nau|nau an|an gi ngon|phim hay|giai tri|bong da|lich thi dau|html|css|js|javascript|typescript|react|vue|nextjs|python|sql|java|php|script|source code|game|tro choi|ran san moi|snake|caro|tetris|flappy|trang web|website|landing page|thuc don|giam can|tap gym|kich ban|bai van|viet cv|soan email xin nghi|choi game|write (?:a |me a )?(?:poem|story|python|javascript|function|code)|solve (?:this |the )?(?:equation|math)|weather|forecast|trivia|capital of|translate)\\b`,
 )
 const command = /\b(?:(?:ignore|disregard|override)\s+(?:(?:all|the|earlier|previous|prior|above|system|developer|safety|your|any|existing|original)\s+)*(?:instructions?|rules?|prompts?)|you are now|pretend you are|act as (?:a |an |the )?(?:system|developer|unrestricted)|(?:reveal|show|print|repeat|return|display|extract)\s+(?:(?:the|your|original|full|hidden)\s+)*(?:system|developer)\s+prompt|bo qua (?:moi |tat ca |cac )?(?:chi dan|huong dan|quy tac)|dong vai (?:he thong|nha phat trien)|(?:tiet lo|in|hien thi|cho xem|lap lai|trich xuat) (?:loi nhac|chi dan|prompt) (?:cua )?he thong|(?:ai\s+(?:hay\s+)?)?(?:ket luan|danh gia|bao|xac nhan|gan)\s+(?:(?:giao dich|ho so|khoan vay)(?:\s+nay)?\s+)?(?:la\s+)?an toan|(?:output|return|mark|declare|classify as)\s*[:=]?\s*["']?safe\b|(?:risk[_\s-]*score|diem rui ro)\s*[:=]\s*0)\b/
 const spoofedRole = /<\s*\/?\s*(?:system|developer)(?=[\s>])|<\s*\/?\s*untrusted_data\b|<\s*\/?\s*untrusted_data_|\[\s*(?:system|developer)\s*\]|#{3,}[ \t]*(?:system|developer)\b/
@@ -116,6 +116,19 @@ export function inspectForensicInput(raw: string, aliases: readonly TeencodeAlia
       ? segments.map((segment, index) => segment === preserved[index] ? segment : preserved[index] + isolatedControlText).join('')
       : raw,
   }
+}
+
+export function stripVietnameseParticles(text: string) {
+  const clean = stripZeroWidthAndBidi(text).normalize('NFKC')
+    .replace(/(?<!\p{L})vậy(?=(?:\W|$))/giu, ' ')
+  return normalizeVietnamese(clean)
+    .replace(/^(?:(?:cho|giup) (?:minh|toi|em) )+/, '')
+    .replace(/(?: (?:the|a|nhe|nha|oi|nhi|di|voi|giup minh|cho minh))+$/, '')
+}
+
+export function assistantIntro(raw: string) {
+  return /^(?:(?:ban|fincopilot) (?:la ai|lam (?:duoc (?:nhung )?)?gi)|(?:xin )?chao(?: ban)?|hello|hi|a ?lo|gioi thieu ve ban|huong dan (?:su )?dung(?: fincopilot)?)(?: vay)?$/
+    .test(stripVietnameseParticles(raw))
 }
 
 export const forensicRefusal = {

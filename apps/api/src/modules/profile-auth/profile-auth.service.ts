@@ -1,3 +1,4 @@
+import sharp from 'sharp'
 import { randomUUID } from 'node:crypto'
 import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common'
 import { Prisma, type FinancialProfile } from '@prisma/client'
@@ -9,7 +10,7 @@ import { PrismaService } from '../../common/prisma.service'
 import type { OAuthIdentity } from './oauth.service'
 import { hashPassword, verifyPassword } from './password'
 
-const publicUser = { id: true, email: true, fullName: true, authProvider: true, role: true } satisfies Prisma.UserSelect
+const publicUser = { id: true, email: true, fullName: true, authProvider: true, role: true, avatarUpdatedAt: true } satisfies Prisma.UserSelect
 type UserDetails = Prisma.UserGetPayload<{ select: typeof publicUser }>
 type SessionUser = Extract<AuthSessionResponse, { kind: 'user' }>['user']
 
@@ -22,6 +23,7 @@ function profileOwner(session: SessionContext) {
 function serializeUser(user: UserDetails): SessionUser {
   return {
     id: user.id, email: user.email, displayName: user.fullName,
+    avatarUrl: user.avatarUpdatedAt ? '/api/v1/profile/avatar/' + user.id + '?v=' + user.avatarUpdatedAt.getTime() : null,
     authProvider: AuthProvider.parse(user.authProvider), role: UserRole.parse(user.role),
   }
 }
@@ -70,6 +72,31 @@ export class ProfileAuthService {
       update: { ...data, updatedAt: new Date() },
     })
     return serializeProfile(profile)
+  }
+
+  async saveAvatar(id: string, input: Buffer) {
+    let image: Buffer | undefined
+    try {
+      const jpeg = input.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
+      const png = input.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
+      const webp = input.toString('ascii', 0, 4) === 'RIFF' && input.toString('ascii', 8, 12) === 'WEBP'
+      if (!jpeg && !png && !webp) throw new BadRequestException('Ảnh phải là JPEG, PNG hoặc WebP.')
+      try {
+        image = await sharp(input, { limitInputPixels: 40000000 }).rotate().resize(256, 256, { fit: 'cover', position: 'attention' }).webp({ quality: 80 }).toBuffer()
+      } catch { throw new BadRequestException('Không thể đọc ảnh chân dung.') }
+      return await this.setAvatar(id, image.toString('base64'))
+    } finally { input.fill(0); image?.fill(0) }
+  }
+
+  async setAvatar(id: string, avatarData: string | null) {
+    const now = new Date()
+    const user = await this.prisma.user.update({ where: { id }, data: { avatarData, avatarUpdatedAt: avatarData ? now : null, updatedAt: now }, select: publicUser })
+    return { avatarUrl: serializeUser(user).avatarUrl }
+  }
+
+  async avatar(id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id }, select: { avatarData: true } })
+    return user?.avatarData ? Buffer.from(user.avatarData, 'base64') : null
   }
 
   async getUser(id: string) {

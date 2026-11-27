@@ -1,5 +1,51 @@
 import { describe, expect, it } from 'vitest'
-import { amortizeLoan, assessDti, compoundDca, decliningPrincipalLoan, effectiveLoanApr, flatRateLoan, openFundScenarioBands, reducingBalanceLoan, simulateEarlySettlement, summarizeAmortizationForChart } from './index'
+import { amortizeLoan, assessDti, compoundDca, decliningPrincipalLoan, effectiveLoanApr, flatRateLoan, openFundScenarioBands, reducingBalanceLoan, simulateEarlySettlement, simulateRefinanceBreakEven, summarizeAmortizationForChart } from './index'
+
+describe('Refinance with Decimal cash flows', () => {
+  const contract = {
+    remainingPrincipalVnd: '12000000', remainingTermMonths: 12, currentAnnualRatePct: '24', currentCalcMethod: 'FLAT_RATE',
+    earlySettlementFeePct: '0', newAnnualRatePct: '12', newCalcMethod: 'DECLINING_PRINCIPAL',
+  } as const
+
+  it('compares a flat loan with declining principal and counts the terminal cash flows', () => {
+    const result = simulateRefinanceBreakEven({ ...contract, newMonthlyFeeVnd: '10000' })
+    expect(result).toMatchObject({
+      currentMonthlyPaymentVnd: '1240000', currentTotalRemainingPayableVnd: '14880000',
+      earlySettlementPenaltyVnd: '0', newMonthlyPaymentVnd: '1130000', newTotalPayableVnd: '12900000',
+      monthlySavingsVnd: '110000', netSavingsVnd: '1980000', breakEvenMonth: 1, recommendation: 'WORTH_REFINANCING',
+    })
+    expect(result.comparisonPoints.at(-1)).toEqual({ month: 12, currentCumulativeVnd: '14880000', refinanceCumulativeVnd: '12900000' })
+  })
+
+  it('keeps flat interest on the original principal after some principal has been repaid', () => {
+    const result = simulateRefinanceBreakEven({ ...contract, remainingPrincipalVnd: '6000000',
+      remainingTermMonths: 6, currentFlatInterestBaseVnd: '12000000' })
+    expect(result).toMatchObject({ currentMonthlyPaymentVnd: '1240000', currentTotalRemainingPayableVnd: '7440000' })
+  })
+
+  it('keeps an expensive current exit even when the advertised new rate is lower', () => {
+    expect(simulateRefinanceBreakEven({ ...contract, earlySettlementFeePct: '25', newUpfrontFeeRatePct: '0.2' })).toMatchObject({
+      earlySettlementPenaltyVnd: '3000000', newUpfrontFeeVnd: '24000', totalSwitchCostVnd: '3024000',
+      breakEvenMonth: null, netSavingsVnd: '-924000', recommendation: 'KEEP_CURRENT',
+    })
+  })
+
+  it('finds the first improving month from actual variable payments and retains it when sampling', () => {
+    const result = simulateRefinanceBreakEven({ ...contract, remainingTermMonths: 60, earlySettlementFeePct: '2', newUpfrontFeeRatePct: '1' })
+    expect(result.breakEvenMonth).toBe(3)
+    const crossing = result.comparisonPoints.find((point) => point.month === 3)
+    expect(crossing).toEqual({ month: 3, currentCumulativeVnd: '1320000', refinanceCumulativeVnd: '1314000' })
+    const long = simulateRefinanceBreakEven({ ...contract, remainingTermMonths: 600, newTermMonths: 480 })
+    expect(long.comparisonPoints.length).toBeLessThanOrEqual(36)
+    expect(long.comparisonPoints.at(-1)?.month).toBe(600)
+  })
+
+  it('handles exactly equal zero-rate contracts and changes in term length', () => {
+    const zero = { ...contract, currentAnnualRatePct: '0', newAnnualRatePct: '0' }
+    expect(simulateRefinanceBreakEven(zero)).toMatchObject({ breakEvenMonth: null, netSavingsVnd: '0', recommendation: 'KEEP_CURRENT' })
+    expect(simulateRefinanceBreakEven({ ...zero, newTermMonths: 18 })).toMatchObject({ breakEvenMonth: null, netSavingsVnd: '0' })
+  })
+})
 
 describe('Survey cash flows', () => {
   it('adds principal and penalty to the last payment of the shortened schedule', () => {

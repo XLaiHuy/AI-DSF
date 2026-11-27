@@ -86,6 +86,7 @@ export const AuthSessionResponseSchema = z.discriminatedUnion('kind', [
       id: z.uuid(),
       email: z.email(),
       displayName: z.string().nullable(),
+      avatarUrl: z.string().nullable().optional(),
       authProvider: AuthProvider,
       role: UserRole,
     }),

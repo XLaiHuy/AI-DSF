@@ -1,7 +1,7 @@
-import { parseSurveyHandoff, type RouteSearchParams } from '@fincopilot/shared-types'
-import SurveyWorkspace from '@/components/survey/SurveyWorkspace'
+import { Suspense } from 'react'
+import { SurveyRouteWorkspace } from '@/components/survey/SurveyRouteWorkspace'
+import SurveySkeleton from './loading'
 
-export default async function SurveyPage({ searchParams }: { searchParams: Promise<RouteSearchParams> }) {
-  const handoff = parseSurveyHandoff(await searchParams)
-  return <SurveyWorkspace key={JSON.stringify(handoff)} handoff={handoff} />
+export default function SurveyPage() {
+  return <Suspense fallback={<SurveySkeleton />}><SurveyRouteWorkspace /></Suspense>
 }

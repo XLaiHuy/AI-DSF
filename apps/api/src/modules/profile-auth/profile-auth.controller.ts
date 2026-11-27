@@ -1,5 +1,5 @@
 import {
-  Body, ConflictException, Controller, Get, HttpCode, Param, Post, Put, Query,
+  BadRequestException, Delete, NotFoundException, PayloadTooLargeException, Body, ConflictException, Controller, Get, HttpCode, Param, Post, Put, Query,
   Req, Res, UnauthorizedException, UseGuards,
 } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
@@ -10,6 +10,7 @@ import {
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { authCookie, guestCookie, GuestSessionGuard, sessionCookieOptions } from '../../common/guest-session.guard'
+import { RateLimit } from '../../common/rate-limit.guard'
 import { ZodValidationPipe } from '../../common/zod-validation.pipe'
 import { calculateFinancialHealth } from './financial-health.engine'
 import { oauthCallbackPath, oauthLifetimeSeconds, OAuthProviderSchema, OAuthService, type OAuthProvider } from './oauth.service'
@@ -53,6 +54,7 @@ export class ProfileAuthController {
   }
 
   @Post('auth/register')
+  @RateLimit('register')
   async register(
     @Body(new ZodValidationPipe(AuthRegisterSchema)) input: AuthRegister,
     @Req() request: FastifyRequest,
@@ -64,6 +66,7 @@ export class ProfileAuthController {
   }
 
   @Post('auth/login')
+  @RateLimit('login')
   @HttpCode(200)
   async login(
     @Body(new ZodValidationPipe(AuthLoginSchema)) input: AuthLogin,
@@ -128,6 +131,28 @@ export class ProfileAuthController {
     }
   }
 
+  @Post('profile/avatar')
+  @RateLimit('avatar')
+  @HttpCode(200)
+  async uploadAvatar(@Req() request: FastifyRequest) {
+    if (request.session.kind !== 'user') throw new UnauthorizedException()
+    if (!request.isMultipart()) throw new BadRequestException('Cần tải lên một ảnh.')
+    const limit = 5 * 1024 * 1024
+    const file = await request.file({ limits: { fileSize: limit + 1, files: 1 } })
+    if (!file) throw new BadRequestException('Thiếu ảnh chân dung.')
+    const input = await file.toBuffer()
+    try {
+      if (file.file.truncated || input.length > limit) throw new PayloadTooLargeException()
+      return await this.profiles.saveAvatar(request.session.userId, input)
+    } finally { input.fill(0) }
+  }
+
+  @Delete('profile/avatar')
+  deleteAvatar(@Req() request: FastifyRequest) {
+    if (request.session.kind !== 'user') throw new UnauthorizedException()
+    return this.profiles.setAvatar(request.session.userId, null)
+  }
+
   @Get('profile')
   async getProfile(@Req() request: FastifyRequest) {
     const profile = await this.profiles.getActiveProfile(request.session)
@@ -153,5 +178,19 @@ export class ProfileAuthController {
     const token = await this.jwt.signAsync({}, { subject: user.id, algorithm: 'HS256', expiresIn: authLifetimeSeconds })
     reply.setCookie(authCookie, token, { ...sessionCookieOptions, maxAge: authLifetimeSeconds })
     reply.clearCookie(guestCookie, sessionCookieOptions)
+  }
+}
+
+@Controller()
+export class PublicAvatarController {
+  constructor(private readonly profiles: ProfileAuthService) {}
+
+  @Get('profile/avatar/:userId')
+  async avatar(@Param('userId', new ZodValidationPipe(z.uuid())) id: string, @Res() reply: FastifyReply) {
+    const image = await this.profiles.avatar(id)
+    if (!image) throw new NotFoundException()
+    return reply.header('Cache-Control', 'private, max-age=86400')
+      .header('Cross-Origin-Resource-Policy', 'same-site')
+      .header('X-Content-Type-Options', 'nosniff').type('image/webp').send(image)
   }
 }

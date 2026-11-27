@@ -1,10 +1,12 @@
 import type { ForensicAuditResponse } from '@fincopilot/shared-types'
 import { ChevronDown, Landmark } from 'lucide-react'
 import { validChartAmount } from '@/components/charts/chart-math'
-import { ForensicCostTrapChart } from '@/components/charts/ForensicCostTrapChart'
+import dynamic from 'next/dynamic'
 import { formatSpacedAmount } from '@/components/ui/money-input'
 import { TermInfo } from '@/components/ui'
 import { cn } from '@/lib/utils'
+
+const ForensicCostTrapChart = dynamic(() => import('@/components/charts/ForensicCostTrapChart').then(module => module.ForensicCostTrapChart), { ssr: false })
 
 type Breakdown = NonNullable<ForensicAuditResponse['mathBreakdown']>
 

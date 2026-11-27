@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
-import { type ThreatDraft, type ThreatFeedback, type ThreatIndicatorInput, type ThreatPatch, type ThreatStatus,
-  ThreatIndicatorInputSchema, ThreatRndEvalResultSchema, type ThreatRndEvalResult, VerdictLevel } from '@fincopilot/shared-types'
+import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common'
+import { type ThreatDraft, type ThreatFeedback, type ThreatFeedbackPatch, type ThreatIndicatorInput, type ThreatPatch, type ThreatStatus,
+  ContinualLearningOverviewSchema, ThreatIndicatorInputSchema, ThreatRndEvalResultSchema, type ThreatRndEvalResult, VerdictLevel } from '@fincopilot/shared-types'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../common/prisma.service'
+import { RedisService } from '../../common/redis.service'
+import { threatTaxonomyFields } from '../forensic/threat-taxonomy'
+import { invalidateThreatTrends } from '../radar/threat-trends'
 import type { BenchmarkCase } from '../forensic/eval/benchmark-cases'
 import { normalizeVietnamese } from '../forensic/data/trusted-institutions'
 import { maskForensicText } from '../forensic/qr-evidence'
@@ -39,7 +42,8 @@ function excerptFields(draft: Partial<Omit<ThreatDraft, 'indicators'>>) {
 
 @Injectable()
 export class ThreatReviewService {
-  constructor(private readonly prisma: PrismaService, private readonly memory: ThreatMemoryService) {}
+  constructor(private readonly prisma: PrismaService, private readonly memory: ThreatMemoryService,
+    @Optional() private readonly redis?: RedisService) {}
 
   async list(status?: ThreatStatus) {
     const [rows, snapshot] = await Promise.all([
@@ -92,7 +96,7 @@ export class ThreatReviewService {
   async create(draft: ThreatDraft) {
     const indicators = this.validate(draft.indicators, new Set())
     const row = await this.prisma.threatAlert.create({ data: {
-      ...excerptFields(draft), id: randomUUID(), originSource: 'ADMIN_INGEST', threatCategory: draft.threatCategory,
+      ...excerptFields(draft), ...threatTaxonomyFields(draft), id: randomUUID(), originSource: 'ADMIN_INGEST', threatCategory: draft.threatCategory,
       tacticSummary: maskForensicText(draft.tacticSummary),
       preventionGuidance: maskForensicText(draft.preventionGuidance),
       indicators: { create: indicators.map((indicator) => ({ id: randomUUID(), ...indicator })) },
@@ -140,13 +144,16 @@ export class ThreatReviewService {
       const reembed = published && (current.verificationStatus !== 'VERIFIED' || summary !== current.tacticSummary || excerpt !== current.sourceExcerpt)
       const embedding = reembed ? await this.memory.computeEmbedding([summary, excerpt].filter(Boolean).join('\n'), publication?.aliases) : null
       return tx.threatAlert.update({ where: { id }, data: {
-        ...fields, verificationStatus, updatedAt: now,
+        ...fields, ...threatTaxonomyFields({ tacticSummary: summary, sourceExcerpt: excerpt,
+          threatCategory: fields.threatCategory ?? current.threatCategory }),
+        verificationStatus, updatedAt: now,
         ...(reembed && { embeddingJson: embedding?.vector ?? Prisma.DbNull, embeddingModel: embedding?.model ?? null }),
         ...(patch.verificationStatus && { publishedAt: published ? current.publishedAt ?? now : null,
           verifiedAt: published ? current.verifiedAt ?? now : null }),
       }, select: { id: true } })
     })
     this.memory.invalidate()
+    await invalidateThreatTrends(this.redis)
     return row
   }
 
@@ -164,8 +171,14 @@ export class ThreatReviewService {
     return rows.map((row) => ({ ...row, rawTextMasked: maskForensicText(row.rawTextMasked ?? '').slice(0, 800) }))
   }
 
-  listFeedback() {
-    return this.prisma.threatFeedbackExample.findMany({ orderBy: { createdAt: 'desc' }, take: 150 })
+  listFeedback(status?: 'PENDING') {
+    return this.prisma.threatFeedbackExample.findMany({
+      where: status ? { reviewStatus: status, sourceChannel: 'USER_REPORT' } : undefined,
+      orderBy: [{ createdAt: status ? 'asc' : 'desc' }, { id: 'asc' }], take: 150,
+      select: { id: true, feedbackType: true, highlightedSpan: true, sampleTextMasked: true,
+        expectedVerdict: true, adminNote: true, rndCategory: true, isActive: true, createdAt: true,
+        sourceChannel: true, reviewStatus: true },
+    })
   }
 
   async saveFeedback(input: ThreatFeedback) {
@@ -201,11 +214,79 @@ export class ThreatReviewService {
     return row
   }
 
-  async setFeedback(id: string, isActive: boolean) {
-    const result = await this.prisma.threatFeedbackExample.updateMany({ where: { id }, data: { isActive } })
-    if (!result.count) throw new NotFoundException('Không tìm thấy phản hồi.')
+  async setFeedback(id: string, patch: ThreatFeedbackPatch) {
+    const row = await this.prisma.threatFeedbackExample.findUnique({ where: { id } })
+    if (!row) throw new NotFoundException('Không tìm thấy phản hồi.')
+    const reviewStatus = patch.reviewStatus ?? row.reviewStatus
+    if (patch.isActive && !patch.reviewStatus && reviewStatus !== 'APPROVED') {
+      throw invalid('Cần duyệt phản hồi trước khi bật.')
+    }
+    const isActive = reviewStatus === 'APPROVED' && (patch.isActive ?? (patch.reviewStatus === 'APPROVED' || row.isActive))
+    const feedbackType = patch.feedbackType ?? row.feedbackType
+    const adminNote = patch.adminNote === undefined ? row.adminNote : maskForensicText(patch.adminNote)
+    if (feedbackType === 'TEENCODE_ALIAS' && (!row.highlightedSpan || !adminNote || adminNote.length > 120)) {
+      throw invalid('Từ viết tắt cần đoạn được chọn và cách viết đầy đủ tối đa 120 ký tự.')
+    }
+    if (feedbackType === 'SAFE_IGNORE_IOC' && !row.highlightedSpan) {
+      throw invalid('Cần chỉ dấu cụ thể để tạo quy tắc bỏ qua.')
+    }
+    const embeddable = feedbackType === 'CONFIRMED_SCAM' || feedbackType === 'FALSE_POSITIVE'
+    const shouldEmbed = (patch.reviewStatus === 'APPROVED' || isActive) && embeddable && !readThreatEmbedding(row.embeddingJson)
+    const embedding = shouldEmbed ? await this.memory.computeEmbedding(row.sampleTextMasked) : null
+    const result = await this.prisma.threatFeedbackExample.updateMany({
+      where: { id, reviewStatus: row.reviewStatus, feedbackType: row.feedbackType, isActive: row.isActive },
+      data: { reviewStatus, isActive, feedbackType, expectedVerdict: patch.expectedVerdict,
+        adminNote: patch.adminNote === undefined ? undefined : adminNote,
+        ...(embedding ? { embeddingJson: embedding.vector, embeddingModel: embedding.model }
+          : patch.reviewStatus === 'REJECTED' || !embeddable ? { embeddingJson: Prisma.DbNull, embeddingModel: null } : {}),
+      },
+    })
+    if (!result.count) throw new ConflictException('Phản hồi đã được cập nhật. Tải lại rồi thử lại.')
     this.memory.invalidate()
-    return { id, isActive }
+    return { id, isActive, reviewStatus }
+  }
+
+  async learningOverview() {
+    const verified = { verificationStatus: 'VERIFIED' }
+    const active = { isActive: true, reviewStatus: 'APPROVED' }
+    const hasEmbedding = { not: Prisma.AnyNull }
+    const windowSize = 200
+    const thresholdPct = 5
+    const [verifiedAlertsTotal, verifiedAlertsWithEmbedding, activeTypes, pendingCommunityProposals,
+      pendingUserFeedback, alertsWithModel, feedbackWithModel, sample] = await Promise.all([
+      this.prisma.threatAlert.count({ where: verified }),
+      this.prisma.threatAlert.count({ where: { ...verified, embeddingJson: hasEmbedding } }),
+      this.prisma.threatFeedbackExample.groupBy({ by: ['feedbackType'], where: active, _count: true }),
+      this.prisma.threatAlert.count({ where: { verificationStatus: 'UNVERIFIED', originSource: 'FORENSIC_COMMUNITY' } }),
+      this.prisma.threatFeedbackExample.count({ where: { reviewStatus: 'PENDING', sourceChannel: 'USER_REPORT' } }),
+      this.prisma.threatAlert.groupBy({ by: ['embeddingModel'],
+        where: { ...verified, embeddingJson: hasEmbedding, embeddingModel: { not: null } } }),
+      this.prisma.threatFeedbackExample.groupBy({ by: ['embeddingModel'],
+        where: { ...active, embeddingJson: hasEmbedding, embeddingModel: { not: null } } }),
+      this.prisma.threatFeedbackExample.findMany({
+        where: { OR: [
+          { sourceChannel: 'USER_REPORT' },
+          { sourceChannel: 'ADMIN', auditId: { not: null }, feedbackType: { in: ['FALSE_POSITIVE', 'CONFIRMED_SCAM'] } },
+        ] },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: windowSize,
+        select: { assessment: true, sourceChannel: true, feedbackType: true },
+      }),
+    ])
+    const types = new Map(activeTypes.map(({ feedbackType, _count }) => [feedbackType, _count]))
+    const sampledCount = sample.length
+    const incorrectCount = sample.filter(row =>
+      row.sourceChannel === 'USER_REPORT' ? row.assessment === 'INCORRECT' : row.feedbackType === 'FALSE_POSITIVE').length
+    const errorRatePct = sampledCount ? 100 * incorrectCount / sampledCount : 0
+    return ContinualLearningOverviewSchema.parse({
+      verifiedAlertsTotal, verifiedAlertsWithEmbedding,
+      embeddingCoveragePct: verifiedAlertsTotal ? 100 * verifiedAlertsWithEmbedding / verifiedAlertsTotal : 0,
+      activeFewShotScam: types.get('CONFIRMED_SCAM') ?? 0, activeFewShotSafe: types.get('FALSE_POSITIVE') ?? 0,
+      activeTeencodeAliases: types.get('TEENCODE_ALIAS') ?? 0, activeIgnoreRules: types.get('SAFE_IGNORE_IOC') ?? 0,
+      pendingCommunityProposals, pendingUserFeedback,
+      embeddingModels: [...new Set([...alertsWithModel, ...feedbackWithModel].flatMap(row => row.embeddingModel ?? []))].sort(),
+      drift: { windowSize, sampledCount, incorrectCount, errorRatePct, thresholdPct,
+        warning: sampledCount >= 10 && errorRatePct > thresholdPct },
+    })
   }
 
   async summary() {
@@ -226,7 +307,7 @@ export class ThreatReviewService {
     const [snapshot, feedback] = await Promise.all([
       this.memory.get(),
       this.prisma.threatFeedbackExample.findMany({
-        where: { isActive: true, feedbackType: { in: ['CONFIRMED_SCAM', 'FALSE_POSITIVE', 'TEENCODE_ALIAS'] } },
+          where: { isActive: true, reviewStatus: 'APPROVED', feedbackType: { in: ['CONFIRMED_SCAM', 'FALSE_POSITIVE', 'TEENCODE_ALIAS'] } },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       }),
     ])
@@ -270,7 +351,7 @@ export class ThreatReviewService {
   }
 
   async exportCases(): Promise<BenchmarkCase[]> {
-    const rows = await this.prisma.threatFeedbackExample.findMany({ where: { isActive: true }, orderBy: { createdAt: 'asc' } })
+    const rows = await this.prisma.threatFeedbackExample.findMany({ where: { isActive: true, reviewStatus: 'APPROVED' }, orderBy: { createdAt: 'asc' } })
     return rows.flatMap(({ id, feedbackType, sampleTextMasked, expectedVerdict }) => {
       const verdict = VerdictLevel.safeParse(expectedVerdict)
       return verdict.success ? [{

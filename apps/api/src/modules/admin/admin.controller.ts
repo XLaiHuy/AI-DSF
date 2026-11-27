@@ -7,6 +7,8 @@ import { ZodValidationPipe } from '../../common/zod-validation.pipe'
 import { AdminService } from './admin.service'
 import { ThreatIntakeService } from './threat-intake.service'
 import { ThreatReviewService } from './threat-review.service'
+import { ProductScheduler } from './product-scheduler'
+import { MaintenanceScheduler } from './maintenance-scheduler'
 
 const uuid = new ZodValidationPipe(z.uuid())
 
@@ -14,7 +16,43 @@ const uuid = new ZodValidationPipe(z.uuid())
 @UseGuards(AdminGuard)
 export class AdminController {
   constructor(private readonly service: AdminService, private readonly intake: ThreatIntakeService,
-    private readonly review: ThreatReviewService) {}
+    private readonly review: ThreatReviewService, private readonly productsScheduler: ProductScheduler,
+    private readonly maintenance: MaintenanceScheduler) {}
+
+  @Get('schedulers')
+  async schedulers() {
+    const streams = [
+      { name: 'Tin thị trường', intervalLabel: '15 phút', schedule: this.service.scheduler() },
+      { name: 'Cảnh báo lừa đảo', intervalLabel: '24 giờ', schedule: this.intake.scheduler() },
+      { name: 'Lãi suất & sản phẩm', intervalLabel: '24 giờ', schedule: this.productsScheduler.scheduler() },
+      { name: 'Bảo trì dữ liệu', intervalLabel: '24 giờ', schedule: this.maintenance.scheduler() },
+    ]
+    return Promise.all(streams.map(async ({ name, intervalLabel, schedule }) => {
+      const job = await schedule
+      return { name, intervalLabel, scheduled: Boolean(job), nextAt: job?.next ? new Date(job.next).toISOString() : null }
+    }))
+  }
+
+  @Post('hot-crawl-all')
+  async hotCrawlAll() {
+    const streams = [
+      { name: 'Tin thị trường', run: async () => {
+        const job = await this.service.fetch()
+        return 'Đã xếp hàng · ' + job.jobId
+      } },
+      { name: 'Cảnh báo lừa đảo', run: async () => {
+        const result = await this.intake.hotCrawlNow()
+        return result.newArticles + ' tin mới · ' + result.newProposals + ' đề xuất'
+      } },
+      { name: 'Lãi suất & sản phẩm', run: async () => {
+        const result = await this.service.syncProducts()
+        return result.productsUpserted + ' sản phẩm cập nhật · ' + result.sourcesReachable + '/' + result.sourcesChecked + ' nguồn truy cập được'
+      } },
+    ]
+    const results = await Promise.allSettled(streams.map(async stream => stream.run()))
+    return results.map((item, index) => ({ name: streams[index].name, summary: item.status === 'fulfilled' ? item.value : null, status: item.status === 'rejected' ? 'ERROR' :
+      index === 0 ? 'QUEUED' : 'SUCCESS' }))
+  }
 
   @Get('alerts')
   listAlerts(@Query('status', new ZodValidationPipe(ThreatStatusSchema.optional())) status?: ThreatStatus) {
@@ -53,14 +91,19 @@ export class AdminController {
   recentAudits() { return this.review.recentAudits() }
 
   @Get('feedback')
-  feedback() { return this.review.listFeedback() }
+  feedback(@Query('reviewStatus', new ZodValidationPipe(z.enum(['PENDING']).optional())) status?: 'PENDING') {
+    return this.review.listFeedback(status)
+  }
+
+  @Get('learning/overview')
+  learningOverview() { return this.review.learningOverview() }
 
   @Post('feedback')
   saveFeedback(@Body(new ZodValidationPipe(ThreatFeedbackSchema)) input: ThreatFeedback) { return this.review.saveFeedback(input) }
 
   @Patch('feedback/:id')
   toggleFeedback(@Param('id', uuid) id: string, @Body(new ZodValidationPipe(ThreatFeedbackPatchSchema)) input: z.infer<typeof ThreatFeedbackPatchSchema>) {
-    return this.review.setFeedback(id, input.isActive)
+    return this.review.setFeedback(id, input)
   }
 
   @Get('rnd/summary')

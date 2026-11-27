@@ -185,12 +185,65 @@ export const ManualCompareResponseSchema = z.strictObject({
 })
 export type ManualCompareResponse = z.infer<typeof ManualCompareResponseSchema>
 
+const refinanceTerms = {
+  remainingPrincipalVnd: positiveDecimal.max(18).regex(/^\d+$/u),
+  remainingTermMonths: SurveyTermMonthsSchema,
+  currentAnnualRatePct: nonnegativeDecimal.max(16),
+  currentCalcMethod: loanCalcMethod,
+  currentFlatInterestBaseVnd: positiveDecimal.max(18).regex(/^\d+$/u).optional(),
+  currentMonthlyFeeVnd: nonnegativeDecimal.max(18),
+  earlySettlementFeePct: nonnegativeDecimal.max(16),
+  productCategory: LoanCategory,
+  newTermMonths: SurveyTermMonthsSchema.optional(),
+}
+export const SurveyRefinanceTermsSchema = z.strictObject(refinanceTerms)
+export const SurveyRefinanceRequestSchema = SurveyRefinanceTermsSchema.partial()
+  .extend({ sourceAuditId: z.uuid().optional() })
+  .refine((value) => value.sourceAuditId || SurveyRefinanceTermsSchema.safeParse(value).success, {
+    message: 'Nhập đủ thông tin khoản vay hoặc chọn một báo cáo giám định.',
+  })
+export type SurveyRefinanceRequest = z.infer<typeof SurveyRefinanceRequestSchema>
+
+export const SurveyRefinanceContractSchema = SurveyRefinanceTermsSchema.extend({
+  sourceAuditId: z.uuid().optional(),
+  claimedEntityName: z.string().nullable(),
+  referenceAprPct: nonnegativeDecimal.nullable(),
+  rateIsEstimate: z.boolean(),
+})
+export type SurveyRefinanceContract = z.infer<typeof SurveyRefinanceContractSchema>
+
+const refinanceResult = z.strictObject({
+  currentMonthlyPaymentVnd: nonnegativeDecimal, currentTotalRemainingPayableVnd: nonnegativeDecimal,
+  earlySettlementPenaltyVnd: nonnegativeDecimal, newUpfrontFeeVnd: nonnegativeDecimal, totalSwitchCostVnd: nonnegativeDecimal,
+  newMonthlyPaymentVnd: nonnegativeDecimal, newTotalPayableVnd: nonnegativeDecimal, monthlySavingsVnd: decimalString,
+  breakEvenMonth: SurveyTermMonthsSchema.nullable(), netSavingsVnd: decimalString,
+  recommendation: z.enum(['WORTH_REFINANCING', 'MARGINAL', 'KEEP_CURRENT']),
+  comparisonPoints: z.array(z.strictObject({
+    month: z.number().int().min(0).max(600), currentCumulativeVnd: nonnegativeDecimal, refinanceCumulativeVnd: nonnegativeDecimal,
+  })).max(36),
+})
+export const SurveyRefinanceResponseSchema = z.strictObject({
+  sessionId: z.guid(),
+  currentContract: SurveyRefinanceContractSchema,
+  offers: z.array(z.strictObject({
+    ...offerSource, sourceLabel: z.string(), rateType: RateType, calcMethod: loanCalcMethod.exclude(['FLAT_RATE']),
+    newAnnualRatePct: nonnegativeDecimal, newTermMonths: SurveyTermMonthsSchema,
+    newLaterRate: z.strictObject({ afterMonths: SurveyTermMonthsSchema, annualRatePct: nonnegativeDecimal }).optional(),
+    result: refinanceResult,
+  })).max(3),
+  bestOptionSummary: z.string(),
+  meta: z.strictObject({ catalogStatus, ...savedMetadata }),
+})
+export type SurveyRefinanceResponse = z.infer<typeof SurveyRefinanceResponseSchema>
+
 const sessionIdentity = { id: z.guid(), createdAt: z.iso.datetime() }
 export const SurveySessionDetailResponseSchema = z.discriminatedUnion('sessionMode', [
   z.strictObject({ ...sessionIdentity, sessionMode: z.literal('LOAN_SURVEY'),
     inputParams: SurveyLoanRequestSchema, result: SurveyLoanResponseSchema }),
   z.strictObject({ ...sessionIdentity, sessionMode: z.literal('INVESTMENT_SURVEY'),
     inputParams: SurveyInvestRequestSchema, result: SurveyInvestResponseSchema }),
+  z.strictObject({ ...sessionIdentity, sessionMode: z.literal('REFINANCE_COMPARE'),
+    inputParams: SurveyRefinanceRequestSchema, result: SurveyRefinanceResponseSchema }),
   z.strictObject({ ...sessionIdentity, sessionMode: z.literal('MANUAL_COMPARE'),
     inputParams: z.strictObject({ offers: z.array(manualOffer).min(2).max(10) }), result: ManualCompareResponseSchema }),
 ])

@@ -38,7 +38,7 @@ export async function streamAudit(
           const event = ForensicAuditStreamEventSchema.parse(JSON.parse(data))
           if (event.type === 'stage') onStage(event.stage)
           if (event.type === 'result') audit = event.audit
-          if (event.type === 'refusal') return event
+          if (event.type === 'refusal' || event.type === 'guidance') return event
           if (event.type === 'error') {
             const code = ApiErrorCode.safeParse(event.errorCode)
             throw new ApiError(200, code.success ? code.data : 'ERR_INTERNAL_SERVER', event.message)

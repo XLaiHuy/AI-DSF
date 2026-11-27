@@ -1,10 +1,12 @@
-import { randomUUID } from 'node:crypto'
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { InjectQueue } from '@nestjs/bullmq'
+import type { Queue } from 'bullmq'
+import { createHash, randomUUID } from 'node:crypto'
+import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import type { Prisma } from '@prisma/client'
 import {
   AI_TASK_SCHEMAS, ForensicAuditListResponseSchema, ForensicAuditResponseSchema,
-  ForensicFollowUpResponseSchema, ForensicQrMetadataSchema,
+  ForensicFollowUpResponseSchema, ForensicQrMetadataSchema, UserAuditFeedbackResponseSchema, type UserAuditFeedback,
   type ForensicAuditFields, type ForensicAuditResponse, type ForensicAuditStage, type ForensicFollowUpRequest, type SessionContext,
 } from '@fincopilot/shared-types'
 import { z } from 'zod'
@@ -24,9 +26,14 @@ import { classifyFollowUpIntent, prepareFollowUp, statedTransferAmount } from '.
 import { evaluatePersonalImpact } from './personal-impact.engine'
 import { selectLegalCitations } from './data/vn-legal-registry'
 import { ChannelIntelligenceService } from './channel-intelligence.service'
-import { expandTeencode, forensicRefusal, hasConcreteFinancialEvidence, hasFinancialDomain, inspectForensicInput, stripZeroWidthAndBidi } from './forensic-prompt-guard'
+import { expandTeencode, stripZeroWidthAndBidi } from './forensic-prompt-guard'
 import { extractThreatIocs } from './threat-iocs'
-import { ThreatMemoryService } from './threat-memory.service'
+import { communityProposalQueue } from './community-proposal.processor'
+import { ConversationSessionStore } from './conversation-session.store'
+import type { PreAuditTurn } from './context-compressor'
+import { buildForensicRiskAssessment } from './risk-assessment.engine'
+import { routeForensicConversation } from './forensic-conversation'
+import { type CommunityProposal, ThreatMemoryService } from './threat-memory.service'
 
 const institutionCacheTtlMs = 5 * 60_000
 
@@ -44,10 +51,18 @@ export type ForensicBenchmarkObservation = {
 const reportExtras = ForensicAuditResponseSchema.pick({
   mathBreakdown: true, handoffPayload: true, immediateActions: true, intentSignals: true, entityLicense: true, meta: true,
   complexityTier: true, reasoningFindings: true, personalImpact: true, legalCitations: true,
-}).extend({ qrMetadata: z.record(z.uuid(), ForensicQrMetadataSchema).optional() })
+}).extend({
+  qrMetadata: z.record(z.uuid(), ForensicQrMetadataSchema).optional(),
+  repaymentMethod: z.enum(['FLAT', 'DECLINING_EQUAL_PRINCIPAL', 'DECLINING_ANNUITY']).optional(),
+})
 
 function ownerFilter(session: SessionContext) {
   return session.kind === 'user' ? { userId: session.userId } : { userId: null, guestSessionId: session.guestSessionId }
+}
+
+function feedbackReporter(session: SessionContext) {
+  const ownerId = session.kind === 'user' ? session.userId : session.guestSessionId
+  return createHash('sha256').update(session.kind + ':' + ownerId).digest('hex')
 }
 
 export function validateAuditInput(fields: ForensicAuditFields, files: readonly Upload[]) {
@@ -83,6 +98,7 @@ function beneficiaryLabel(name: string | null) {
 @Injectable()
 export class ForensicService {
   private readonly channelIntelligence = new ChannelIntelligenceService()
+  private readonly logger = new Logger(ForensicService.name)
   private institutionCache?: { rows: CatalogInstitution[]; expiresAt: number }
   private institutionRefresh?: Promise<CatalogInstitution[]>
 
@@ -91,15 +107,42 @@ export class ForensicService {
     private readonly ai: AiGatewayService,
     private readonly config: ConfigService,
     private readonly threatMemory?: ThreatMemoryService,
+    @Optional() @InjectQueue(communityProposalQueue) private readonly communityQueue?: Queue<CommunityProposal>,
+    @Optional() private readonly conversations?: ConversationSessionStore,
   ) {}
 
-  async screenAudit(fields: ForensicAuditFields, files: readonly Upload[]) {
-    if (files.length || fields.rawQrString || !fields.rawText) return null
+  async screenAudit(fields: ForensicAuditFields, files: readonly Upload[], session?: SessionContext) {
+    const { conversationId, rawText } = fields
+    const store = this.conversations
     const aliases = this.threatMemory?.cachedAliases()
-    if (!fields.claimedEntityName && !hasFinancialDomain(fields.rawText, aliases) && !hasConcreteFinancialEvidence(fields.rawText, aliases)) return forensicRefusal
-    const inspection = inspectForensicInput(fields.rawText, aliases)
-    if (!inspection.refuseDirect) return null
-    return forensicRefusal
+    if (!session || !conversationId || !store) return routeForensicConversation(fields, files.length > 0, this.ai, aliases)
+
+    let pending: ReturnType<ConversationSessionStore['load']> | undefined
+    const load = () => (pending ??= store.load(session, conversationId)).catch(() => undefined)
+    const result = await routeForensicConversation(fields, files.length > 0, this.ai, aliases, async () => (await load())?.state)
+    if (result?.type !== 'guidance' || !rawText) return result
+
+    const snapshot = await load()
+    if (!snapshot) return result
+    const previous = snapshot.state
+    const { domain, ...slots } = result.extractedSlots ?? {}
+    const turns: PreAuditTurn[] = [
+      { role: 'user', content: maskForensicText(rawText) },
+      { role: 'assistant', content: result.message, intent: result.intent },
+    ]
+    await store.save(session, conversationId, snapshot.raw, {
+      domain: domain ?? previous?.domain,
+      slots: { ...(domain && domain !== previous?.domain ? {} : previous?.slots), ...slots },
+      rollingSummary: previous?.rollingSummary ?? '',
+      recentTurns: [...(previous?.recentTurns ?? []), ...turns.filter(turn => turn.content.length > 0 && turn.content.length <= 800)],
+      lastIntent: result.intent,
+      updatedAt: new Date().toISOString(),
+    }).catch(() => undefined)
+    return result
+  }
+
+  async deleteConversation(session: SessionContext, id: string) {
+    await this.conversations?.remove(session, id)
   }
 
   private async loadInstitutions() {
@@ -162,7 +205,7 @@ export class ForensicService {
       this.loadInstitutions(),
       this.loadFinancialProfile(session),
       fields.sourceAlertId ? this.prisma.threatAlert.findFirst({
-        where: { id: fields.sourceAlertId, verificationStatus: 'VERIFIED', publishedAt: { not: null } }, select: { id: true },
+        where: { id: fields.sourceAlertId, verificationStatus: 'VERIFIED', publishedAt: { not: null } }, select: { id: true, threatCategory: true },
       }) : null,
     ])
     const memory = learning?.memory
@@ -348,6 +391,7 @@ export class ForensicService {
           immediateActions: response.immediateActions, intentSignals: response.intentSignals,
           entityLicense: response.entityLicense, meta: response.meta,
           complexityTier: response.complexityTier, reasoningFindings: response.reasoningFindings, personalImpact, legalCitations,
+          repaymentMethod: evidence.conditionalLoan.spec?.repaymentMethod,
           qrMetadata: Object.fromEntries(savedQrs.map(({ id, metadata }) => [id, metadata])),
         }),
         principalNominalVnd: response.mathBreakdown?.principalNominalVnd,
@@ -361,13 +405,20 @@ export class ForensicService {
         findings: { createMany: { data: findings.map((finding) => ({ id: randomUUID(), ...finding })) } },
       },
     })
-    if (verdictLevel === 'HIGH_RISK' && iocs.length && this.threatMemory) {
-      setImmediate(() => {
-        void this.threatMemory?.propose(session, iocs, redact(evidenceText)).catch(() => undefined)
-      })
+    if (verdictLevel === 'HIGH_RISK' && !degradedMode && iocs.length && this.threatMemory && this.communityQueue) {
+      try {
+        const proposal = await this.threatMemory.prepareProposal(session, iocs, redact(evidenceText))
+        if (proposal.candidates.length) await this.communityQueue.add('propose', proposal, {
+          jobId: response.auditId, attempts: 3, backoff: { type: 'exponential', delay: 1000 },
+        })
+      } catch {
+        this.logger.warn({ event: 'forensic_community_enqueue_failed', auditId: response.auditId })
+      }
     }
     stage('NARRATIVE', 'done')
-    return response
+    return { ...response, riskAssessment: buildForensicRiskAssessment(response, {
+      sourceAlertVerified: Boolean(sourceAlert), threatCategory: sourceAlert?.threatCategory,
+    }) }
   }
 
   private async loadFinancialProfile(session: SessionContext) {
@@ -420,19 +471,58 @@ export class ForensicService {
     })) })
   }
 
+  async recordFeedback(session: SessionContext, id: string, input: UserAuditFeedback) {
+    if (!z.uuid().safeParse(id).success) throw new NotFoundException()
+    const reporterSessionHash = feedbackReporter(session)
+    const row = await this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtextextended(${'audit-feedback:' + reporterSessionHash}, 0))`
+      const audit = await tx.forensicAudit.findFirst({
+        where: { id, ...ownerFilter(session) },
+        select: { rawTextMasked: true, verdictLevel: true, findings: { take: 8, select: { title: true, description: true } } },
+      })
+      if (!audit) throw new NotFoundException()
+      const feedback = tx.threatFeedbackExample
+      if (await feedback.findFirst({ where: { auditId: id, reporterSessionHash }, select: { id: true } })) {
+        throw new ConflictException({ errorCode: 'ERR_CONFLICT', message: 'Bạn đã gửi góp ý cho báo cáo này.' })
+      }
+      if (await feedback.count({ where: { reporterSessionHash, createdAt: { gte: new Date(Date.now() - 86400000) } } }) >= 10) {
+        throw new HttpException({ errorCode: 'ERR_RATE_LIMITED', message: 'Bạn đã đạt giới hạn 10 góp ý trong 24 giờ.' }, 429)
+      }
+      const expectedVerdict = input.assessment === 'INCORRECT' ? input.suggestedVerdict ?? audit.verdictLevel : audit.verdictLevel
+      let feedbackType = 'RND_PROPOSAL'
+      if (input.assessment === 'INCORRECT' && input.suggestedVerdict === 'SAFE') feedbackType = 'FALSE_POSITIVE'
+      if (input.assessment === 'INCORRECT' ? input.suggestedVerdict === 'HIGH_RISK' : audit.verdictLevel === 'HIGH_RISK') feedbackType = 'CONFIRMED_SCAM'
+      const sample = audit.rawTextMasked?.trim() || audit.findings.map(item => item.title + '. ' + item.description).join('\n')
+      return feedback.create({
+        data: { id: randomUUID(), auditId: id, reporterSessionHash, assessment: input.assessment,
+          sourceChannel: 'USER_REPORT', reviewStatus: 'PENDING', isActive: false, feedbackType, expectedVerdict,
+          rndCategory: feedbackType === 'RND_PROPOSAL' ? 'RULE_GAP' : null,
+          sampleTextMasked: maskForensicText(sample).slice(0, 4000), adminNote: maskForensicText(input.note ?? '') },
+      })
+    })
+    return UserAuditFeedbackResponseSchema.parse({
+      id: row.id, assessment: row.assessment, reviewStatus: row.reviewStatus, createdAt: row.createdAt.toISOString(),
+    })
+  }
+
   async read(session: SessionContext, id: string): Promise<ForensicAuditResponse> {
     if (!z.uuid().safeParse(id).success) throw new NotFoundException()
     const row = await this.prisma.forensicAudit.findFirst({
       where: { id, ...ownerFilter(session) },
       include: {
         qrPayloads: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+        sourceAlert: { select: { verificationStatus: true, publishedAt: true, threatCategory: true } },
         findings: { orderBy: [{ ruleCode: 'asc' }, { id: 'asc' }] },
+        feedbackExamples: { where: { reporterSessionHash: feedbackReporter(session), sourceChannel: 'USER_REPORT' },
+          select: { assessment: true, reviewStatus: true, createdAt: true }, take: 1, orderBy: { createdAt: 'desc' } },
       },
     })
     if (!row) throw new NotFoundException()
     const extras = reportExtras.safeParse(row.extractedClaimsJson)
     const defaults = deterministicNarrative({ verdictLevel: ForensicAuditResponseSchema.shape.verdictLevel.parse(row.verdictLevel), findingCount: row.findings.length })
+    const feedback = row.feedbackExamples?.[0]
     const audit = ForensicAuditResponseSchema.parse({
+      ...(feedback && { userFeedback: { ...feedback, createdAt: feedback.createdAt.toISOString() } }),
       auditId: row.id, createdAt: row.createdAt.toISOString(), verdictLevel: row.verdictLevel, riskScore: row.riskScore,
       deterministicOverride: row.deterministicOverride, claimedEntityName: row.claimedEntityName,
       qrPayloads: row.qrPayloads.map(({
@@ -455,12 +545,16 @@ export class ForensicService {
       }),
     })
     const currentCitations = selectLegalCitations(audit)
-    return { ...audit, legalCitations: audit.legalCitations?.map((item) => ({
+    const verifiedAlert = row.sourceAlert?.verificationStatus === 'VERIFIED' && row.sourceAlert.publishedAt
+    const riskAssessment = buildForensicRiskAssessment(audit, {
+      sourceAlertVerified: Boolean(verifiedAlert), threatCategory: verifiedAlert ? row.sourceAlert?.threatCategory : null,
+    })
+    return { ...audit, riskAssessment, legalCitations: audit.legalCitations?.map((item) => ({
       ...item, caseRelevance: item.caseRelevance ?? currentCitations.find(({ code }) => code === item.code)?.caseRelevance,
     })) ?? currentCitations }
   }
 }
 
-function reportFields({ qrMetadata: _qrMetadata, ...fields }: z.infer<typeof reportExtras>) {
+function reportFields({ qrMetadata: _qrMetadata, repaymentMethod: _repaymentMethod, ...fields }: z.infer<typeof reportExtras>) {
   return fields
 }

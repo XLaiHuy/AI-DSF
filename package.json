@@ -13,13 +13,16 @@
     "db:migrate": "pnpm --filter api db:migrate",
     "db:seed": "pnpm --filter api db:seed",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
+    "test:ai-e2e": "node -e \"process.exitCode=require('node:child_process').spawnSync(process.execPath,['node_modules/e2e/dist/cli/bin.js','run','--strict-cache'],{stdio:'inherit',env:{...process.env,E2E_TELEMETRY_DISABLED:'1'}}).status??1\"",
     "crawl:loan-rates": "node scripts/crawl-loan-rates.mjs"
   },
   "devDependencies": {
+    "@e2e-dev/web": "0.17.0",
     "@next/eslint-plugin-next": "~15.5.0",
     "@playwright/test": "^1.58.0",
-    "@typescript-eslint/parser": "^8.50.0",
     "@typescript-eslint/eslint-plugin": "^8.50.0",
+    "@typescript-eslint/parser": "^8.50.0",
+    "e2e": "0.25.0",
     "eslint": "^9.39.0",
     "turbo": "^2.7.0",
     "typescript": "~5.9.3"

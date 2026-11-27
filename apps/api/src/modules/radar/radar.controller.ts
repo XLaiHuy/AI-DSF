@@ -1,6 +1,9 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Get, Header, NotFoundException, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common'
+import { ThreatTrendsQuerySchema, type ThreatTrendsQuery } from '@fincopilot/shared-types'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { GuestSessionGuard } from '../../common/guest-session.guard'
+import { publicRadarCacheControl } from '../../common/public-cache-keys'
+import { ZodValidationPipe } from '../../common/zod-validation.pipe'
 import { RadarService } from './radar.service'
 
 @Controller('radar')
@@ -33,46 +36,59 @@ export class RadarMediaController {
 }
 
 @Controller('radar')
-@UseGuards(GuestSessionGuard)
 export class RadarController {
   constructor(private readonly service: RadarService) {}
 
   @Get('articles')
+  @Header('Cache-Control', publicRadarCacheControl)
   listArticles(@Query() query: { category?: string; search?: string; cursor?: string; limit?: string; period?: string; year?: string; from?: string; to?: string }) {
     return this.service.listArticles({ ...query, limit: query.limit ? Number(query.limit) : undefined })
   }
 
   @Get('articles/highlights')
+  @Header('Cache-Control', publicRadarCacheControl)
   articleHighlights() {
     return this.service.articleHighlights()
   }
 
   @Post('daily-brief')
+  @UseGuards(GuestSessionGuard)
   dailyBrief(@Body() body: unknown, @Req() request: FastifyRequest) {
     return this.service.dailyBrief(request.session, body)
   }
 
   @Post('recommendation-signals')
+  @UseGuards(GuestSessionGuard)
   recommendationSignals(@Body() body: unknown, @Req() request: FastifyRequest) {
     return this.service.recommendationSignals(request.session, body)
   }
 
   @Get('articles/:id')
+  @Header('Cache-Control', publicRadarCacheControl)
   readArticle(@Param('id') id: string) {
     return this.service.articleDetail(id)
   }
 
   @Post('articles/:id/analyze')
+  @UseGuards(GuestSessionGuard)
   analyzeArticle(@Param('id') id: string, @Body() body: { mode?: 'GENERAL' | 'PERSONALIZED' } | undefined, @Req() request: FastifyRequest) {
     return this.service.analyzeArticle(id, request.session, body?.mode)
   }
 
   @Get('alerts')
+  @Header('Cache-Control', publicRadarCacheControl)
   listAlerts() {
     return this.service.listAlerts()
   }
 
+  @Get('alerts/trends')
+  @Header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
+  alertTrends(@Query(new ZodValidationPipe(ThreatTrendsQuerySchema)) query: ThreatTrendsQuery) {
+    return this.service.alertTrends(query)
+  }
+
   @Get('alerts/:id')
+  @Header('Cache-Control', publicRadarCacheControl)
   readAlert(@Param('id') id: string) {
     return this.service.alertDetail(id)
   }

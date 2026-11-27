@@ -39,6 +39,7 @@ const termQuery = z.string().regex(/^[1-9]\d*$/).transform((term) => Number(term
 const loanFields = { amount: positiveDecimal, term: SurveyTermMonthsSchema }
 const radarHandoff = z.strictObject({ shockDelta: decimalString, articleId: z.string().min(1) })
 const auditHandoff = z.strictObject({ ...loanFields, auditId: z.string().min(1) })
+const refinanceHandoff = z.strictObject({ auditId: z.uuid() })
 const trustFilterHandoff = z.strictObject({ claimedEntity: z.string().trim().min(1).max(200) })
 const quickSurveyHandoff = z.strictObject(loanFields)
 const radarAlertHandoff = z.strictObject({
@@ -56,12 +57,13 @@ const homeQuickForensicHandoff = z.strictObject({
 })
 const surveySessionHandoff = z.strictObject({
   sessionId: z.uuid(),
-  mode: z.enum(['loan', 'invest', 'manual']).optional(),
+  mode: z.enum(['loan', 'invest', 'manual', 'refinance']).optional(),
 })
 
 export type RouteHandoffParams = {
   radarToSurvey: z.infer<typeof radarHandoff>
   forensicToSurvey: z.infer<typeof auditHandoff>
+  forensicToRefinance: z.infer<typeof refinanceHandoff>
   trustFilterToForensic: z.infer<typeof trustFilterHandoff>
   radarAlertToForensic: z.infer<typeof radarAlertHandoff>
   surveyHighAprToForensic: z.infer<typeof highAprHandoff>
@@ -83,6 +85,8 @@ export const handoffRoutes = {
     withQuery(ROUTES.survey, { mode: 'loan', ...radarHandoff.parse(params), from: 'radar' }),
   forensicToSurvey: (params: RouteHandoffParams['forensicToSurvey']) =>
     withQuery(ROUTES.survey, { mode: 'loan', ...auditHandoff.parse(params), from: 'forensic' }),
+  forensicToRefinance: (params: RouteHandoffParams['forensicToRefinance']) =>
+    withQuery(ROUTES.survey, { mode: 'refinance', ...refinanceHandoff.parse(params), from: 'forensic' }),
   trustFilterToForensic: (params: RouteHandoffParams['trustFilterToForensic']) =>
     withQuery(ROUTES.forensic, { ...trustFilterHandoff.parse(params), from: 'trust-filter' }),
   radarAlertToForensic: (params: RouteHandoffParams['radarAlertToForensic']) =>
@@ -102,7 +106,7 @@ export const handoffRoutes = {
 export type RouteSearchParams = Record<string, string | string[] | undefined>
 
 const surveyQuerySchema = z.object({
-  mode: z.enum(['loan', 'invest', 'manual']).optional().catch(undefined),
+  mode: z.enum(['loan', 'invest', 'manual', 'refinance']).optional().catch(undefined),
   amount: positiveDecimal.optional().catch(undefined),
   term: termQuery.optional().catch(undefined),
   shockDelta: decimalString.optional().catch(undefined),

@@ -29,6 +29,7 @@ export const AI_TASK_SCHEMAS = {
   RADAR_DAILY_BRIEF: z.strictObject({
     items: z.array(z.strictObject({
       referenceId: z.uuid(),
+      sourceTitle: z.string().min(1),
       summary: z.string().trim().min(1).max(240),
       interpretation: z.string().trim().max(280).nullable(),
     })).max(10),
@@ -89,6 +90,16 @@ export const AI_TASK_SCHEMAS = {
     immediateActions: z.array(z.string().trim().min(1).max(250)).max(5),
   }),
   FORENSIC_DEEP_REASONING: z.strictObject({ findings: z.array(ReasoningFindingSchema).max(3), summary: z.string() }),
+  FORENSIC_CONVERSATION_GUIDE: z.strictObject({
+    route: z.enum(['FINANCIAL_EDUCATION', 'NEEDS_DETAILS', 'SCAM_CHECK_INCOMPLETE', 'ASSISTANT_INFO', 'ACK_SMALLTALK', 'EMERGENCY_SCAM_RECOVERY', 'PROFILE_HEALTH_NAV', 'OFF_TOPIC', 'FULL_AUDIT']),
+    answer: z.string().trim().min(1).max(900), suggestedPrompts: z.array(z.string().trim().min(1).max(140)).max(3),
+    domain: z.enum(['LOAN', 'INVEST', 'SAVINGS', 'PROFILE', 'SCAM']).optional(),
+    slots: z.strictObject({
+      amountVnd: z.string().regex(/^\d{1,20}(?:\.\d{1,4})?$/).optional(),
+      termMonths: z.number().int().min(1).max(600).optional(),
+      goalNote: z.string().trim().min(1).max(160).optional(),
+    }).optional(),
+  }),
   PROFILE_PARSE_NATURAL: FinancialHealthRequestSchema,
   PROFILE_HEALTH_COACH: ProfileCoachAdviceSchema,
 } as const

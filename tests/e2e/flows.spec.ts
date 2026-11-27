@@ -108,8 +108,8 @@ const source = {
   rateType: 'FIXED',
 } as const
 
-for (const viewport of viewports) {
-  test('Survey offers, charts and history at ' + viewport.width + 'px', async ({ page }) => {
+for (const viewport of [...viewports, { width: 320, height: 844 }]) {
+  test('Survey offers, charts and history at ' + viewport.width + 'px', async ({ page }, info) => {
     await page.setViewportSize(viewport)
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
@@ -182,7 +182,7 @@ for (const viewport of viewports) {
       document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await page.goto('/survey')
     const purpose = page.getByLabel('Mục đích vay')
-    expect(await purpose.locator('option').count()).toBe(5)
+    await expect(purpose.locator('option')).toHaveCount(5)
     for (const [loanUseCase, amount, term] of useCases) {
       await purpose.selectOption(loanUseCase)
       await expect(page.getByLabel('Số tiền cần vay (VNĐ)')).toHaveValue(amount)
@@ -195,7 +195,14 @@ for (const viewport of viewports) {
     expect(casesSeen.map(({ loanUseCase }) => loanUseCase)).toEqual(useCases.map(([loanUseCase]) => loanUseCase))
     await expect(chart('Lãi công bố và APR thực tế').locator('svg.recharts-surface')).toBeVisible()
     await expect(chart('Tỷ lệ trả nợ (DTI)').locator('svg.recharts-surface')).toBeVisible()
-    await page.getByText('Xem bảng trả nợ tháng', { exact: true }).click()
+    const offer = page.getByRole('button', { name: /Khoản vay thử nghiệm/ }).first()
+    await offer.scrollIntoViewIfNeeded()
+    await page.screenshot({ path: info.outputPath('loan-offer.png') })
+    const progress = page.getByRole('progressbar', { name: 'Tỷ lệ thu nhập dùng trả nợ' })
+    await expect(progress).toHaveAttribute('value', '38.5')
+    await progress.scrollIntoViewIfNeeded()
+    await page.screenshot({ path: info.outputPath('loan-dti.png') })
+    await expect(page.getByText('Xem bảng trả nợ tháng', { exact: true })).toBeVisible()
     await expect(page.getByRole('table', { name: /Lịch trả nợ theo tháng/ })).toBeVisible()
     await noOverflow()
 
@@ -215,6 +222,8 @@ for (const viewport of viewports) {
     await page.getByLabel('Gói A · Phí tất toán (% dư nợ)').fill('2')
     await submit.click()
     await expect(page.getByRole('heading', { name: 'Tất toán vào tháng 6' })).toBeVisible()
+    await page.getByRole('heading', { name: 'Tất toán vào tháng 6' }).scrollIntoViewIfNeeded()
+    await page.screenshot({ path: info.outputPath('manual.png') })
     expect(savedManual?.inputParams.offers).toHaveLength(3)
     expect(savedManual?.inputParams.offers[0]).toMatchObject({
       calcMethod: 'FLAT_RATE', monthlyFeeVnd: '25000', promoMonths: 3, floatingRatePct: '18',
@@ -240,6 +249,8 @@ for (const viewport of viewports) {
     for (const label of ['Thận trọng', 'Cơ sở', 'Tích cực']) await expect(fund.getByText(new RegExp('^' + label))).toBeVisible()
     await expect(chart('Dự phóng tăng trưởng tài sản').locator('svg.recharts-surface')).toBeVisible()
     await noOverflow()
+    await fund.scrollIntoViewIfNeeded()
+    await page.screenshot({ path: info.outputPath('investment.png') })
     const submitted = page.waitForRequest((request) => request.method() === 'POST' && request.url().endsWith('/survey/investment'))
     await submit.click()
     expect((await submitted).postDataJSON()).toMatchObject({ productCategory: 'OPEN_FUND' })

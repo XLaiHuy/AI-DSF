@@ -18,7 +18,7 @@ type EditorialImageProps = {
 }
 
 export function EditorialImage({ imageUrl, proxyUrl, alt, categories, credit, sourceUrl, fallbackIllustration, priority = false, className = '' }: EditorialImageProps) {
-  const validOriginal = imageUrl?.startsWith('https://') ? imageUrl : null
+  const validOriginal = imageUrl && /^\/(?![\\/])/.test(imageUrl) ? imageUrl : null
   const proxy = proxyUrl?.startsWith('/api/v1/radar/image-proxy?') ? proxyUrl : null
   const [failedSources, setFailedSources] = useState<string[]>([])
   const [loaded, setLoaded] = useState(false)

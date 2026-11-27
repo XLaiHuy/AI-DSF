@@ -38,6 +38,10 @@ export function DataCatalogPanel({ credentials }: { credentials: AdminCredential
   const stem = ['admin', credentials.revision] as const
   const [editing, setEditing] = useState<Product | 'new' | null>(null)
   const editor = useRef<HTMLDivElement>(null)
+  const schedulers = useQuery({ queryKey: [...stem, 'schedulers'], retry: false,
+    queryFn: client.schedulers })
+  const all = useMutation({ mutationFn: client.hotCrawlAll,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: stem }) })
   const sources = useQuery({ queryKey: [...stem, 'sources'], queryFn: () => client.get<Source[]>('/radar/sources'), retry: false, gcTime: 0 })
   const products = useQuery({ queryKey: [...stem, 'products'], queryFn: () => client.get<Product[]>('/products'), retry: false, gcTime: 0 })
   const institutions = useQuery({ queryKey: [...stem, 'institutions'], queryFn: () => client.get<Institution[]>('/institutions'), enabled: editing !== null, retry: false, gcTime: 0 })
@@ -56,6 +60,17 @@ export function DataCatalogPanel({ credentials }: { credentials: AdminCredential
     requestAnimationFrame(() => editor.current?.querySelector('input')?.focus())
   }
   return <div className="space-y-7">
+    <section className="space-y-3" aria-labelledby="catalog-schedulers">
+      <div className="flex flex-wrap items-center justify-between gap-2"><h2 id="catalog-schedulers" className="text-lg font-semibold">Lịch cập nhật dữ liệu</h2>
+        <Button type="button" disabled={all.isPending} onClick={() => all.mutate()}>{all.isPending ? 'Đang cập nhật…' : 'Thu thập ngay từ mọi nguồn'}</Button></div>
+      {schedulers.isError && <p role="alert">Chưa tải được lịch cập nhật.</p>}
+      {schedulers.data && <CatalogTable title="Lịch tự động" headers={['Luồng dữ liệu', 'Chu kỳ', 'Trạng thái', 'Lần tới']}>
+        {schedulers.data.map(row => <tr key={row.name}><th className={cell} scope="row">{row.name}</th><td className={cell}>{row.intervalLabel}</td>
+          <td className={cell}>{row.scheduled ? 'Đã lên lịch' : 'Chưa lên lịch'}</td><td className={cell}>{row.nextAt ? formatVietnamTime(row.nextAt) : '—'}</td></tr>)}
+      </CatalogTable>}
+      {all.isError && <p role="alert">Không thể bắt đầu cập nhật.</p>}
+      {all.data && <ul role="status">{all.data.map(row => <li key={row.name}>{row.name} · {row.summary ?? 'Lỗi'}</li>)}</ul>}
+    </section>
     <section aria-labelledby="catalog-sources" className="space-y-3">
       <h2 id="catalog-sources" className="text-lg font-semibold">Nguồn Radar</h2>
       {sources.isError && <p role="alert" className="text-sm text-destructive">{requestError(sources.error, 'Không đọc được nguồn Radar.')}</p>}

@@ -48,6 +48,8 @@ function validateProductBounds(product: {
 export class AdminService {
   constructor(private readonly prisma: PrismaService, private readonly radar: RadarService, private readonly survey: SurveyCalcService) {}
 
+  scheduler() { return this.radar.scheduler() }
+
   syncProducts() {
     return this.survey.syncTrustedProducts()
   }

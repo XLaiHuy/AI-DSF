@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomUUID } from 'node:crypto'
+import { threatTaxonomyFields } from './threat-taxonomy'
 import { Injectable, Optional } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Prisma } from '@prisma/client'
@@ -83,6 +84,7 @@ function bestMatches<T>(query: Set<string>, { rows, postings }: ReturnType<typeo
 export class ThreatMemoryService {
   private snapshot?: { expiresAt: number; data: Awaited<ReturnType<ThreatMemoryService['load']>> }
   private refresh?: ReturnType<ThreatMemoryService['load']>
+  private retryBackfillAt = 0
   private backfill?: Promise<void>
 
   constructor(private readonly prisma: PrismaService, private readonly config: ConfigService,
@@ -109,11 +111,11 @@ export class ThreatMemoryService {
     const [alerts, examples, trusted] = await Promise.all([
       this.prisma.threatAlert.findMany({
         where: { verificationStatus: 'VERIFIED' },
-        orderBy: { updatedAt: 'desc' },
+        orderBy: { updatedAt: 'desc' }, take: 500,
         select: { id: true, updatedAt: true, tacticSummary: true, sourceExcerpt: true, embeddingJson: true, embeddingModel: true,
           indicators: { select: { id: true, indicatorType: true, indicatorText: true } } },
       }),
-      this.prisma.threatFeedbackExample.findMany({ where: { isActive: true }, orderBy: { createdAt: 'desc' } }),
+      this.prisma.threatFeedbackExample.findMany({ where: { isActive: true, reviewStatus: 'APPROVED' }, take: 500, orderBy: { createdAt: 'desc' } }),
       this.prisma.financialInstitution.findMany({
         where: { trustStatus: 'LICENSED' },
         select: { name: true, code: true, vietqrBin: true, officialWebsite: true },
@@ -151,23 +153,25 @@ export class ThreatMemoryService {
       .slice(0, 5).map(({ feedbackType, adminNote }) => ({
         feedbackType: feedbackType === 'SAFE_IGNORE_IOC' ? feedbackType : 'EXTRACTION_FIX', note: maskForensicText(adminNote),
       }))
-    if (this.ai && !this.backfill) {
+    if (this.ai && !this.backfill && Date.now() >= this.retryBackfillAt) {
       const jobs = [
         ...alerts.filter((row) => row.id && !readThreatEmbedding(row.embeddingJson)).map((row) => async () => {
           const embedding = await this.computeEmbedding([row.tacticSummary, row.sourceExcerpt].filter(Boolean).join('\n'), aliases)
-          if (embedding) await this.prisma.threatAlert.updateMany({
+          if (embedding) return this.prisma.threatAlert.updateMany({
             where: { id: row.id, updatedAt: row.updatedAt, verificationStatus: 'VERIFIED' },
             data: { embeddingJson: embedding.vector, embeddingModel: embedding.model },
           })
         }),
         ...labeled.filter((row) => row.id && !readThreatEmbedding(row.embeddingJson)).map((row) => async () => {
           const embedding = await this.computeEmbedding(row.sampleTextMasked, aliases)
-          if (embedding) await this.prisma.threatFeedbackExample.updateMany({
-            where: { id: row.id, isActive: true }, data: { embeddingJson: embedding.vector, embeddingModel: embedding.model },
+          if (embedding) return this.prisma.threatFeedbackExample.updateMany({
+            where: { id: row.id, isActive: true, reviewStatus: 'APPROVED' }, data: { embeddingJson: embedding.vector, embeddingModel: embedding.model },
           })
         }),
       ].slice(0, 10)
-      if (jobs.length) this.backfill = Promise.allSettled(jobs.map((job) => job())).then(() => {
+      if (jobs.length) this.backfill = Promise.allSettled(jobs.map((job) => job())).then(results => {
+        if (results.some(result => result.status === 'rejected' || !result.value)) this.retryBackfillAt = Date.now() + 600000
+        if (results.some(result => result.status === 'fulfilled' && result.value?.count)) this.invalidate()
         this.backfill = undefined
       })
     }
@@ -233,22 +237,38 @@ export class ThreatMemoryService {
       topSimilarityScore: Math.max(tactics[0]?.score ?? 0, ...examples.map(({ score }) => score)) }
   }
 
-  async propose(session: SessionContext, iocs: readonly ThreatIoc[], sourceExcerpt: string) {
+  async prepareProposal(session: SessionContext, iocs: readonly ThreatIoc[], sourceExcerpt: string) {
     const owner = session.kind === 'guest' ? session.guestSessionId : session.userId
     const sessionHash = createHash('sha256').update(`${session.kind}:${owner}`).digest('hex')
     const memory = await this.get()
-    for (const ioc of iocs.slice(0, 5)) {
-      const { indicatorType, indicatorText } = ioc
+    const candidates = iocs.slice(0, 5).flatMap(({ indicatorType, indicatorText }) => {
       const fingerprint = this.fingerprint(indicatorType, indicatorText)
       if (memory.verified.has(`${indicatorType}:${indicatorText}`) ||
-        indicatorType === 'CRYPTO_WALLET' && memory.verified.has(`WALLET_ADDRESS:${indicatorText}`)) continue
+        indicatorType === 'CRYPTO_WALLET' && memory.verified.has(`WALLET_ADDRESS:${indicatorText}`)) return []
       if (memory.exclusions.has(fingerprint) || memory.exclusions.has(indicatorText) ||
-          memory.exclusions.has(normalizeVietnamese(indicatorText)) || matchesTrustedIdentity(indicatorText, memory.trusted)) continue
+          memory.exclusions.has(normalizeVietnamese(indicatorText)) || matchesTrustedIdentity(indicatorText, memory.trusted)) return []
+      return [{ indicatorType, fingerprint,
+        publicValue: indicatorType === 'DOMAIN' || indicatorType === 'CRYPTO_WALLET' ? indicatorText : undefined }]
+    })
+    return { sessionHash, candidates, sourceExcerpt: maskForensicText(sourceExcerpt).slice(0, 2000) }
+  }
+
+  async propose(session: SessionContext, iocs: readonly ThreatIoc[], sourceExcerpt: string) {
+    return this.applyProposal(await this.prepareProposal(session, iocs, sourceExcerpt))
+  }
+
+  async applyProposal({ sessionHash, candidates, sourceExcerpt }: CommunityProposal) {
+    const tacticSummary = 'Dấu hiệu trong một báo cáo giám định rủi ro cao'
+    const taxonomy = threatTaxonomyFields({ threatCategory: 'PHISHING', tacticSummary, sourceExcerpt })
+    const memory = await this.get()
+    for (const { indicatorType, publicValue, fingerprint } of candidates) {
+      if (memory.exclusions.has(fingerprint) || publicValue && (
+        memory.exclusions.has(publicValue) || matchesTrustedIdentity(publicValue, memory.trusted))) continue
       for (let attempt = 0; ; attempt += 1) {
         try {
           await this.prisma.$transaction(async (tx) => {
             const existing = await tx.threatAlert.findFirst({
-              where: { indicators: { some: { indicatorType, indicatorText: { in: [indicatorText, fingerprint], mode: 'insensitive' } } } },
+              where: { indicators: { some: { indicatorType, indicatorText: { in: publicValue ? [publicValue, fingerprint] : [fingerprint], mode: 'insensitive' } } } },
               orderBy: [{ verificationStatus: 'desc' }, { createdAt: 'asc' }],
               select: { id: true, verificationStatus: true, originSource: true, distinctSessionHashes: true },
             })
@@ -270,7 +290,7 @@ export class ThreatMemoryService {
             if (recent >= 10) return
             await tx.threatAlert.create({ data: {
               id: randomUUID(), originSource: 'FORENSIC_COMMUNITY', threatCategory: 'PHISHING',
-              tacticSummary: `Dấu hiệu ${indicatorType} từ một lượt giám định rủi ro cao`,
+              tacticSummary, ...taxonomy,
               preventionGuidance: 'Đối chiếu bằng chứng và xác minh qua kênh chính thức trước khi công bố.',
               distinctSessionHashes: [sessionHash], sourceExcerpt: maskForensicText(sourceExcerpt).slice(0, 2_000),
               indicators: { create: { id: randomUUID(), indicatorType, indicatorText: fingerprint } },
@@ -284,3 +304,5 @@ export class ThreatMemoryService {
     }
   }
 }
+
+export type CommunityProposal = Awaited<ReturnType<ThreatMemoryService['prepareProposal']>>

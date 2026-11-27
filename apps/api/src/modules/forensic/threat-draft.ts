@@ -5,6 +5,7 @@ import { normalizeThreatIndicator } from '../admin/threat-safety'
 import { normalizeVietnamese } from './data/trusted-institutions'
 import { maskForensicText } from './qr-evidence'
 import { matchesTrustedIdentity } from './threat-iocs'
+import { threatTaxonomyFields } from './threat-taxonomy'
 import { embeddingCosine, readThreatEmbedding, type ThreatMemoryService } from './threat-memory.service'
 
 export const publicThreatAlertWhere = {
@@ -44,7 +45,7 @@ export async function attachThreatDraft(tx: Prisma.TransactionClient, memory: Th
     ] },
     orderBy: [{ verificationStatus: 'desc' }, { createdAt: 'asc' }], select: { id: true },
   }) ?? (await tx.threatAlert.findMany({
-    orderBy: [{ verificationStatus: 'desc' }, { createdAt: 'asc' }],
+    take: 300, orderBy: [{ verificationStatus: 'desc' }, { updatedAt: 'desc' }],
     select: { id: true, embeddingJson: true, embeddingModel: true,
       evidence: { select: { articleSource: { select: { article: { select: { title: true } } } } } } },
   })).find((row) => {
@@ -62,7 +63,7 @@ export async function attachThreatDraft(tx: Prisma.TransactionClient, memory: Th
   }
   if (origin === 'RADAR_AUTO' && usable.length === 0) return { proposal: 0, attached: 0 }
   await tx.threatAlert.create({ data: {
-    ...draftFields, id: randomUUID(), originSource: origin, issuedAt: source.publishedAt,
+    ...draftFields, ...threatTaxonomyFields(draftFields), id: randomUUID(), originSource: origin, issuedAt: source.publishedAt,
     tacticSummary: maskForensicText(draftFields.tacticSummary),
     preventionGuidance: maskForensicText(draftFields.preventionGuidance),
     verificationStatus: 'UNVERIFIED', publishedAt: null,

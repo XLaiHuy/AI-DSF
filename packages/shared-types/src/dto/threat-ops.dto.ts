@@ -38,7 +38,19 @@ export const ThreatFeedbackSchema = z.strictObject({
   if (value.feedbackType === 'RND_PROPOSAL' && !value.rndCategory)
     ctx.addIssue({ code: 'custom', path: ['rndCategory'], message: 'Chọn nhóm đề xuất R&D.' })
 })
-export const ThreatFeedbackPatchSchema = z.strictObject({ isActive: z.boolean() })
+export const ThreatFeedbackPatchSchema = z.strictObject({
+  isActive: z.boolean().optional(), reviewStatus: z.enum(['APPROVED', 'REJECTED']).optional(),
+  feedbackType: ThreatFeedbackType.optional(), expectedVerdict: z.enum(['SAFE', 'CAUTION', 'HIGH_RISK']).optional(),
+  adminNote: z.string().trim().max(2000).optional(),
+}).refine(patch => Object.values(patch).some(value => value !== undefined))
+export type ThreatFeedbackPatch = z.infer<typeof ThreatFeedbackPatchSchema>
+export const ContinualLearningOverviewSchema = z.strictObject({
+  verifiedAlertsTotal: z.number(), verifiedAlertsWithEmbedding: z.number(), embeddingCoveragePct: z.number(),
+  activeFewShotScam: z.number(), activeFewShotSafe: z.number(), activeTeencodeAliases: z.number(), activeIgnoreRules: z.number(),
+  pendingCommunityProposals: z.number(), pendingUserFeedback: z.number(), embeddingModels: z.array(z.string()),
+  drift: z.strictObject({ windowSize: z.number().int(), sampledCount: z.number().int(), incorrectCount: z.number().int(),
+    errorRatePct: z.number(), thresholdPct: z.number(), warning: z.boolean() }),
+})
 
 export type ThreatIndicatorInput = z.infer<typeof ThreatIndicatorInputSchema>
 export type ThreatDraft = z.infer<typeof ThreatDraftSchema>
@@ -62,6 +74,7 @@ export const ThreatShadowResultSchema = z.object({
   custom: z.object({ text: z.string(), indicators: z.array(z.string()) }).nullable(),
 })
 export const ThreatFeedbackRecordSchema = z.object({
+  sourceChannel: z.enum(['ADMIN', 'USER_REPORT']), reviewStatus: z.enum(['PENDING', 'APPROVED', 'REJECTED']),
   id: z.uuid(), feedbackType: ThreatFeedbackType, highlightedSpan: z.string().nullable(), sampleTextMasked: z.string(),
   expectedVerdict: z.string(), adminNote: z.string(), rndCategory: z.string().nullable(), isActive: z.boolean(),
   threatAlertId: z.uuid().nullable(), auditId: z.uuid().nullable(), createdAt: z.string(),

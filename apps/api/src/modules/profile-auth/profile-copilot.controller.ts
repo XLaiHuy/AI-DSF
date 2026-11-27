@@ -6,11 +6,12 @@ import {
 } from '@fincopilot/shared-types'
 import Decimal from 'decimal.js'
 import { GuestSessionGuard } from '../../common/guest-session.guard'
+import { hasInternalIdentifierLeak } from '../../common/untrusted-text'
 import { maskPii } from '../../common/pii-masker'
 import { ZodValidationPipe } from '../../common/zod-validation.pipe'
 import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { calculateFinancialHealth } from './financial-health.engine'
-import { coachContext, fallbackAdvice, hasGroundedNumbers } from './coach-guidance'
+import { coachContext, fallbackAdvice, formatCoachAdviceNumbers, hasGroundedNumbers } from './coach-guidance'
 import { parseNaturalProfile, statedProfileAmounts } from './profile-natural'
 
 @Controller('profile')
@@ -48,10 +49,12 @@ export class ProfileCopilotController {
     const context = coachContext(amounts, health)
     const task = 'PROFILE_HEALTH_COACH'
     const advice = health.score === null ? null : await this.ai.generateStructured(task, AI_TASK_SCHEMAS[task], context).catch(() => null)
-    const supported = advice && hasGroundedNumbers([advice.summary, ...advice.actions], context) &&
+    const texts = advice ? [advice.summary, ...advice.actions] : []
+    const supported = advice && !hasInternalIdentifierLeak(texts) && hasGroundedNumbers(texts, context) &&
       new Set(advice.actions).size === 3
+    const result = supported ? advice : fallbackAdvice(context)
     return ProfileCoachResponseSchema.parse({
-      ...(supported ? advice : fallbackAdvice(context)), health, source: supported ? 'AI' : 'DETERMINISTIC',
+      summary: formatCoachAdviceNumbers(result.summary), actions: result.actions.map(formatCoachAdviceNumbers), health, source: supported ? 'AI' : 'DETERMINISTIC',
     })
   }
 }

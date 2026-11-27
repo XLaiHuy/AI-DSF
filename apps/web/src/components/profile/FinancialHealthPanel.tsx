@@ -22,7 +22,7 @@ export function FinancialHealthPanel({ health, coach, coachRevision, goalLabel, 
     ['Quỹ dự phòng', decimalText(health.emergencyMonths, ' tháng')],
     ['Tỷ lệ tiết kiệm ước tính', decimalText(health.savingsRatePct, '%')],
     ['Trả nợ / thu nhập thực nhận (DTI)', decimalText(health.dtiPct, '%')],
-    ['Có thể trả góp thêm mỗi tháng', formatVnd(health.maxSafeEmiVnd)],
+    ['Mức trả góp thêm an toàn', formatVnd(health.maxSafeEmiVnd)],
   ] : []
 
   return (
@@ -88,7 +88,7 @@ export function FinancialHealthPanel({ health, coach, coachRevision, goalLabel, 
             ))}
           </ol>
           <Link className={cn(buttonVariants({ variant: 'outline' }), 'min-h-11 max-w-full justify-start whitespace-normal')} href={ROUTES.survey}>
-            Mô phỏng phương án tài chính <ArrowRight size={16} aria-hidden="true" className="shrink-0" />
+            Tính thử khoản vay &amp; tích lũy <ArrowRight size={16} aria-hidden="true" className="shrink-0" />
           </Link>
         </section>
       )}

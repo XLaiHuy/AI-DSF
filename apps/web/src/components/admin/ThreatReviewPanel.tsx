@@ -1,10 +1,11 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, ExternalLink, FlaskConical, RefreshCw } from 'lucide-react'
+import { Download, ExternalLink, FlaskConical, RefreshCw, TriangleAlert } from 'lucide-react'
 import { Fragment, useId, useRef, useState } from 'react'
 import { z } from 'zod'
 import {
+  ContinualLearningOverviewSchema,
   ThreatAlertReviewSchema, ThreatCrawlStatsSchema, ThreatDraftSchema, ThreatFeedbackRecordSchema, ThreatIndicatorInputSchema,
   ThreatRecentAuditSchema, ThreatRndEvalResultSchema, ThreatRndSummarySchema, ThreatShadowResultSchema,
   type ThreatAlertReview, type ThreatDraft, type ThreatFeedback, type ThreatIndicatorInput, type ThreatPatch, type ThreatRndEvalResult,
@@ -27,6 +28,7 @@ export function ThreatReviewPanel({ credentials }: { credentials: AdminCredentia
     z.object({ scheduled: z.boolean(), nextAt: z.string().nullable() })), retry: false, gcTime: 0 })
   const crawl = useMutation({ mutationFn: () => client.post('/crawl-now', {}, ThreatCrawlStatsSchema), onSettled: refresh })
   return <div className="space-y-5">
+    <ContinualLearning credentials={credentials} client={client} refresh={refresh} />
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
       <p className="text-sm"><Badge variant={schedule.data?.scheduled ? 'safe' : 'secondary'}>
         {schedule.isPending ? 'Đang đọc lịch quét' : schedule.data?.scheduled ? 'Tự động quét hằng ngày' : 'Chưa đọc được lịch quét'}
@@ -52,6 +54,110 @@ export function ThreatReviewPanel({ credentials }: { credentials: AdminCredentia
     })}
     <FeedbackDrawer credentials={credentials} client={client} refresh={refresh} />
   </div>
+}
+
+const reviewLabel = { PENDING: 'Chờ duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Đã bỏ qua' }
+const formatPercent = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1, style: 'percent' })
+
+function FeedbackBadges({ item }: { item: z.infer<typeof ThreatFeedbackRecordSchema> }) {
+  return <span className="flex flex-wrap gap-1.5">
+    <Badge variant="secondary">{item.sourceChannel === 'USER_REPORT' ? 'Người dùng' : 'Quản trị'}</Badge>
+    <Badge variant={item.reviewStatus === 'APPROVED' ? 'safe' : item.reviewStatus === 'PENDING' ? 'warning' : 'outline'}>
+      {reviewLabel[item.reviewStatus]}
+    </Badge>
+  </span>
+}
+
+function ContinualLearning({ credentials, client, refresh }: { credentials: AdminCredentials; client: Client; refresh: () => void }) {
+  const stem = ['admin', credentials.revision] as const
+  const options = { retry: false, gcTime: 0 } as const
+  const overview = useQuery({ ...options, queryKey: [...stem, 'learning-overview'],
+    queryFn: () => client.get('/learning/overview', ContinualLearningOverviewSchema) })
+  const waiting = useQuery({ ...options, queryKey: [...stem, 'pending-feedback'],
+    queryFn: () => client.get('/feedback?reviewStatus=PENDING', z.array(ThreatFeedbackRecordSchema)) })
+  const queueHeading = useRef<HTMLHeadingElement>(null)
+  const review = useMutation({
+    mutationFn: ({ id, reviewStatus }: { id: string; reviewStatus: 'APPROVED' | 'REJECTED' }) =>
+      client.patch(`/feedback/${id}`, { reviewStatus }),
+    onSuccess: () => {
+      queueHeading.current?.focus()
+      refresh()
+    },
+  })
+  const evaluate = useMutation({ mutationFn: () => client.post('/rnd/run-eval', {}, ThreatRndEvalResultSchema) })
+  const data = overview.data
+  const pending = waiting.data ?? []
+
+  return <section className="min-w-0 space-y-4 border-b border-border pb-5" aria-labelledby="learning-heading">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h2 id="learning-heading" className="text-xl font-semibold">Tổng quan Continual Learning</h2>
+      <Button type="button" size="sm" variant="outline" disabled={evaluate.isPending} onClick={() => evaluate.mutate()}>
+        <FlaskConical size={15} aria-hidden="true" /> {evaluate.isPending ? 'Đang kiểm thử…' : 'Kiểm thử R&D'}
+      </Button>
+    </div>
+    {overview.isPending && <p role="status" className="text-sm text-muted-foreground">Đang tải số liệu học…</p>}
+    {overview.isError && <p role="alert" className="text-sm text-destructive">Không tải được tổng quan học.</p>}
+    {data && <>
+      <dl className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="min-w-0 rounded-xl border border-border bg-card p-3.5">
+          <dt className="text-sm text-muted-foreground">Độ phủ Embedding</dt>
+          <dd className="mt-1 text-2xl font-semibold tabular-nums">{formatPercent.format(data.embeddingCoveragePct / 100)}</dd>
+          <dd className="mt-1 text-xs text-muted-foreground">{data.verifiedAlertsWithEmbedding}/{data.verifiedAlertsTotal} cảnh báo đã xác minh</dd>
+        </div>
+        <div className="min-w-0 rounded-xl border border-border bg-card p-3.5">
+          <dt className="text-sm text-muted-foreground">Few-shot &amp; Teencode đang bật</dt>
+          <dd className="mt-1 text-2xl font-semibold tabular-nums">{data.activeFewShotScam + data.activeFewShotSafe + data.activeTeencodeAliases}</dd>
+          <dd className="mt-1 text-xs text-muted-foreground">
+            {data.activeFewShotScam} lừa đảo · {data.activeFewShotSafe} an toàn · {data.activeTeencodeAliases} bí danh · {data.activeIgnoreRules} quy tắc bỏ qua
+          </dd>
+        </div>
+        <div className="min-w-0 rounded-xl border border-border bg-card p-3.5">
+          <dt className="text-sm text-muted-foreground">Đề xuất cộng đồng chờ duyệt</dt>
+          <dd className="mt-1 text-2xl font-semibold tabular-nums">{data.pendingCommunityProposals}</dd>
+        </div>
+        <div className="min-w-0 rounded-xl border border-border bg-card p-3.5">
+          <dt className="text-sm text-muted-foreground">Góp ý người dùng chờ duyệt</dt>
+          <dd className="mt-1 text-2xl font-semibold tabular-nums">{data.pendingUserFeedback}</dd>
+        </div>
+      </dl>
+      {data.drift.warning && <div className="flex items-start gap-2.5 rounded-xl border border-verdict-warning-border bg-verdict-warning-bg p-3.5 text-sm text-verdict-warning">
+        <TriangleAlert size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+        <div className="min-w-0">
+          <p className="font-semibold">Cảnh báo Rolling Drift</p>
+          <p>{data.drift.incorrectCount}/{data.drift.sampledCount} phản hồi báo sai ({formatPercent.format(data.drift.errorRatePct / 100)}), vượt ngưỡng {data.drift.thresholdPct}%.</p>
+        </div>
+      </div>}
+    </>}
+    {evaluate.isError && <p role="alert" className="text-sm text-destructive">{requestError(evaluate.error, 'Không chạy được kiểm thử R&D.')}</p>}
+    {evaluate.data && <EvalResults result={evaluate.data} />}
+    <section className="min-w-0 space-y-2" aria-labelledby="community-feedback-heading">
+      <h3 id="community-feedback-heading" ref={queueHeading} tabIndex={-1} className="text-lg font-semibold">Góp ý người dùng chờ duyệt</h3>
+      {waiting.isError && <p role="alert" className="text-sm text-destructive">Không tải được hàng chờ góp ý.</p>}
+      {waiting.isPending && <p role="status" className="text-sm text-muted-foreground">Đang tải hàng chờ góp ý…</p>}
+      {waiting.isSuccess && !pending.length && <p className="text-sm text-muted-foreground">Hàng chờ góp ý đã được xử lý.</p>}
+      {review.isError && <p role="alert" className="text-sm text-destructive">{requestError(review.error, mutationsError)}</p>}
+      <p role="status" className={review.isSuccess ? 'text-sm text-verdict-safe' : 'sr-only'}>
+        {review.isSuccess ? review.variables.reviewStatus === 'APPROVED' ? 'Đã duyệt góp ý.' : 'Đã bỏ qua góp ý.' : ''}
+      </p>
+      {pending.length > 0 && <details open className="rounded-xl border border-border bg-card p-3.5">
+        <summary className="cursor-pointer text-sm font-semibold">Hàng chờ ({pending.length})</summary>
+        <ul className="mt-2 divide-y divide-border">
+          {pending.map(item => <li key={item.id} className="min-w-0 space-y-2 py-3 text-sm last:pb-0">
+            <FeedbackBadges item={item} />
+            <p className="font-medium">{item.feedbackType} · Đề xuất {item.expectedVerdict}</p>
+            <p className="[overflow-wrap:anywhere]">{item.sampleTextMasked}</p>
+            {item.adminNote && <p className="text-muted-foreground [overflow-wrap:anywhere]">{item.adminNote}</p>}
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" disabled={review.isPending}
+                onClick={() => review.mutate({ id: item.id, reviewStatus: 'APPROVED' })}>Duyệt &amp; Học ngay</Button>
+              <Button type="button" size="sm" variant="outline" disabled={review.isPending}
+                onClick={() => review.mutate({ id: item.id, reviewStatus: 'REJECTED' })}>Bỏ qua</Button>
+            </div>
+          </li>)}
+        </ul>
+      </details>}
+    </section>
+  </section>
 }
 
 function IntakeDrawer({ client, refresh }: { client: Client; refresh: () => void }) {
@@ -303,7 +409,6 @@ function FeedbackDrawer({ credentials, client, refresh }: { credentials: AdminCr
   const audits = useQuery({ ...options, queryKey: [...stem, 'recent-audits'], queryFn: () => client.get('/audits/recent', z.array(ThreatRecentAuditSchema)) })
   const feedback = useQuery({ ...options, queryKey: [...stem, 'feedback'], queryFn: () => client.get('/feedback', z.array(ThreatFeedbackRecordSchema)) })
   const rnd = useQuery({ ...options, queryKey: [...stem, 'rnd'], queryFn: () => client.get('/rnd/summary', ThreatRndSummarySchema) })
-  const evaluate = useMutation({ mutationFn: () => client.post('/rnd/run-eval', {}, ThreatRndEvalResultSchema) })
   const save = useMutation({ mutationFn: (value: ThreatFeedback) => client.post('/feedback', value), onSuccess: refresh })
   const toggle = useMutation({ mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => client.patch(`/feedback/${id}`, { isActive }), onSuccess: refresh })
   const download = useMutation({ mutationFn: () => client.get<unknown>('/rnd/export-cases'), onSuccess: (data) => {
@@ -341,18 +446,16 @@ function FeedbackDrawer({ credentials, client, refresh }: { credentials: AdminCr
           <ul className="flex flex-wrap gap-2">{Object.entries(rnd.data.byCategory).map(([category, count]) => <li key={category}><Badge variant="secondary">{category} · {count}</Badge></li>)}</ul></>}
         <div className="flex flex-wrap gap-2">
           <Button type="button" size="sm" variant="outline" disabled={download.isPending} onClick={() => download.mutate()}><Download size={15} aria-hidden="true" /> Xuất JSON Test Case</Button>
-          <Button type="button" size="sm" variant="outline" disabled={evaluate.isPending} onClick={() => evaluate.mutate()}>
-            <FlaskConical size={15} aria-hidden="true" /> {evaluate.isPending ? 'Đang kiểm thử…' : 'Chạy kiểm thử R&D'}
-          </Button>
         </div>
-        {evaluate.isError && <p role="alert" className="text-sm text-destructive">{requestError(evaluate.error, 'Không chạy được kiểm thử R&D.')}</p>}
-        {evaluate.data && <EvalResults result={evaluate.data} />}
       </section>
       <section className="grid gap-2">
         <h3 className="font-semibold">Mẫu phản hồi & quy tắc bỏ qua</h3>
         {feedback.data?.map((item) => <label key={item.id} className="flex items-start gap-2 border-b py-2 text-sm">
-          <input className="mt-1 accent-primary" type="checkbox" checked={item.isActive} disabled={toggle.isPending} onChange={(event) => toggle.mutate({ id: item.id, isActive: event.target.checked })} />
-          <span className="min-w-0 break-words"><span className="block font-medium">{item.feedbackType} · {item.expectedVerdict}</span>{item.sampleTextMasked}</span>
+          <input className="mt-1 accent-primary" type="checkbox" checked={item.isActive} disabled={toggle.isPending || item.reviewStatus !== 'APPROVED'}
+            onChange={(event) => toggle.mutate({ id: item.id, isActive: event.target.checked })} />
+          <span className="min-w-0 space-y-1 [overflow-wrap:anywhere]"><FeedbackBadges item={item} />
+            <span className="block font-medium">{item.feedbackType} · {item.expectedVerdict}</span>
+            <span className="block">{item.sampleTextMasked}</span></span>
         </label>)}
       </section>
     </div>

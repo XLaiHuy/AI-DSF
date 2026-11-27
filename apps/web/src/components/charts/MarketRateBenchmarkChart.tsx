@@ -1,18 +1,23 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ROUTES } from '@fincopilot/shared-types'
 import Link from 'next/link'
 import { marketOverviewQuery } from '@/lib/workspace-data'
 import { ChartCard } from './ChartCard'
 
-const barPalette: Record<string, string> = {
-  SECURED_LOAN: '#0f5132',
-  UNSECURED_LOAN: '#b45309',
-  SAVING: '#1e3a5f',
-  ACCUMULATION: '#3b6e5c',
-  OPEN_FUND: '#111827',
+const fmt = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 4 })
+
+function rateAxis(min: number, max: number) {
+  const roughStep = (max - min || 1) / 3
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep))
+  const step = ([1, 1.5, 2, 2.5, 3, 5, 7.5, 10].find(value => value * magnitude >= roughStep) ?? 10) * magnitude
+  const first = Math.floor(min / step)
+  const last = Math.ceil(max / step) || (first === 0 ? 3 : 0)
+  return {
+    ticks: Array.from({ length: last - first + 1 }, (_, index) => (first + index) * step),
+    percent: (rate: number) => (rate / step - first) / (last - first) * 100,
+  }
 }
 
 export function MarketRateBenchmarkChart({ className }: { className?: string }) {
@@ -23,7 +28,7 @@ export function MarketRateBenchmarkChart({ className }: { className?: string }) 
     return (
       <ChartCard
         title="Mặt bằng lãi suất & lợi suất thị trường"
-        kicker="MARKET BENCHMARK"
+        kicker="THỊ TRƯỜNG"
         unit="% / năm"
         className={className}
       >
@@ -34,77 +39,62 @@ export function MarketRateBenchmarkChart({ className }: { className?: string }) 
 
   if (!rates.length) return null
 
-  const chartData = rates.map((item) => ({
-    ...item,
-    spread: Number((item.maxRatePct - item.minRatePct).toFixed(2)),
-    fill: barPalette[item.category] ?? '#1f2937',
-  }))
-
-  return (
-    <ChartCard
-      title="Mặt bằng lãi suất & lợi suất đang niêm yết"
-      subtitle="Tổng hợp theo dữ liệu danh mục đã đối chiếu nguồn chính thức (mức trung vị và biên độ)."
-      kicker="MARKET FEED · BENCHMARK"
-      unit="% / năm"
-      className={className}
-      legend={[
-        { label: 'Mức trung vị (% / năm)', color: '#111827' },
-        { label: 'Vay vốn', color: '#b45309' },
-        { label: 'Tiết kiệm & Quỹ', color: '#1e3a5f' },
-      ]}
-      summaryText={chartData
-        .map((row) => `${row.label}: trung vị ${row.medianRatePct}% (${row.minRatePct}% – ${row.maxRatePct}%)`)
-        .join('; ')}
-    >
-      <div className="h-56 w-full">
-        <ResponsiveContainer width="100%" height={224} minWidth={0} initialDimension={{ width: 520, height: 224 }}>
-          <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 48, left: 8, bottom: 4 }}>
-            <CartesianGrid stroke="#e5e7eb" strokeDasharray="2 2" horizontal={false} />
-            <XAxis
-              type="number"
-              tick={{ fontSize: 11, fill: '#4b5563' }}
-              tickFormatter={(value: number) => `${value}%`}
-              axisLine={{ stroke: '#d1d5db' }}
-              tickLine={false}
-            />
-            <YAxis
-              type="category"
-              dataKey="label"
-              width={96}
-              tick={{ fontSize: 12, fill: '#111827', fontWeight: 500 }}
-              axisLine={false}
-              tickLine={false}
-            />
-            <Tooltip
-              formatter={(value, _name, item) => {
-                const payload = item?.payload as (typeof chartData)[number] | undefined
-                if (!payload) return [`${String(value ?? '')}%`, 'Trung vị']
-                return [
-                  `${payload.medianRatePct}% (từ ${payload.minRatePct}% – ${payload.maxRatePct}%, ${payload.sampleCount} gói)`,
-                  payload.label,
-                ]
-              }}
-              contentStyle={{
-                borderRadius: '6px',
-                border: '1px solid #d1d5db',
-                fontSize: '12px',
-                backgroundColor: '#ffffff',
-              }}
-            />
-            <Bar dataKey="medianRatePct" radius={[0, 3, 3, 0]} barSize={18}>
-              {chartData.map((entry) => (
-                <Cell key={entry.category} fill={entry.fill} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
-        <span>Cập nhật trực tiếp từ danh mục ngân hàng &amp; quỹ được cấp phép.</span>
-        <Link href={ROUTES.survey} className="font-semibold text-foreground underline underline-offset-4 hover:text-primary">
-          Mô phỏng khoản vay / tích lũy
-        </Link>
-      </div>
-    </ChartCard>
-  )
+  const latest = rates.map(row => row.latestEffectiveDate).sort().at(-1)
+  return <ChartCard title="Mặt bằng lãi suất & lợi suất đang niêm yết" kicker="THỊ TRƯỜNG" className={className} unit="% / năm"
+    legend={[{ label: 'Biên độ vay', color: '#c25a46' }, { label: 'Biên độ đầu tư', color: '#397561' }, { label: 'Trung vị', color: '#161719' }]}>
+    {(['LOAN', 'INVESTMENT'] as const).map(group => {
+      const rows = rates.filter(row => row.group === group)
+      if (!rows.length) return null
+      const { ticks, percent } = rateAxis(Math.min(0, ...rows.map(row => row.minRatePct)), Math.max(0, ...rows.map(row => row.maxRatePct)))
+      const color = group === 'LOAN' ? '#c25a46' : '#397561'
+      return <section key={group} className="mb-5" data-testid={`benchmark-group-${group}`}>
+        <h3 className="font-semibold">{group === 'LOAN' ? 'Lãi suất vay niêm yết' : 'Lãi suất tiết kiệm & Quỹ mở'}</h3>
+        <p className="text-sm text-muted-foreground">{group === 'LOAN' ? 'Lãi thấp hơn có lợi khi các điều kiện và phí tương đương.' : 'Lợi suất quỹ mở chỉ để tham khảo và có thể thay đổi.'}</p>
+        {rows.map(row => {
+          const isSingleRate = row.maxRatePct === row.minRatePct
+          const start = percent(row.minRatePct)
+          const end = percent(row.maxRatePct)
+          const median = percent(row.medianRatePct)
+          const width = Math.max(end - start, 1.5)
+          const left = Math.max(0, Math.min(100 - width, (start + end - width) / 2))
+          const sample = `${row.sampleCount} gói`
+          const institutions = row.institutions.join(', ')
+          const details = [sample + ' niêm yết', institutions].filter(Boolean).join(' · ')
+          return <div key={row.category} className="mt-3" title={details}>
+            <div className="flex flex-wrap justify-between gap-1 text-sm tabular-nums">
+              <strong>{row.label}</strong>
+              {isSingleRate
+                ? <span>{fmt.format(row.medianRatePct)}% · {sample} niêm yết</span>
+                : <span>{fmt.format(row.minRatePct)}% – {fmt.format(row.maxRatePct)}% · Trung vị {fmt.format(row.medianRatePct)}% · {sample}</span>}
+            </div>
+            {institutions && <span className="sr-only">{institutions}</span>}
+            <div aria-hidden="true" className="relative mx-2 my-2 h-2 rounded-full bg-muted">
+              {isSingleRate ? <span data-testid="benchmark-rate-dot"
+                className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#161719]"
+                style={{ left: `${median}%`, backgroundColor: color }} />
+                : <>
+                  <span data-testid="benchmark-rate-range" className="absolute inset-y-0 rounded-full"
+                    style={{ left: `${left}%`, width: `${width}%`, backgroundColor: color }} />
+                  <span data-testid="benchmark-rate-median" className="absolute -top-1 h-4 w-0.5 -translate-x-1/2 bg-[#161719]" style={{ left: `${median}%` }} />
+                </>}
+            </div>
+          </div>
+        })}
+        <div className="relative mx-2 mt-3 h-7 border-t text-xs tabular-nums text-muted-foreground" aria-label="Thang tỷ lệ theo năm" data-testid="benchmark-rate-axis">
+          {ticks.map((tick, index) => {
+            const align = index === 0 ? 'items-start' : index === ticks.length - 1 ? '-translate-x-full items-end' : '-translate-x-1/2 items-center'
+            return <span className={`absolute flex flex-col ${align}`} key={tick} style={{ left: `${percent(tick)}%` }}>
+              <span className="mb-1 h-1.5 w-px bg-current" aria-hidden="true" />{fmt.format(tick)}%
+            </span>
+          })}
+        </div>
+      </section>
+    })}
+    <footer className="space-y-1 border-t pt-3 text-sm"><strong>Nguồn số liệu</strong>
+      <p>Trung vị là mức ở giữa các gói niêm yết, ít bị kéo lệch bởi vài gói có tỷ lệ quá cao hoặc quá thấp.</p>
+      <p>{rates.reduce((sum, row) => sum + row.sampleCount, 0)} gói đang hoạt động · Hiệu lực mới nhất {latest?.split('-').reverse().join('/')}</p>
+      <p>{[...new Set(rates.flatMap(row => row.institutions))].join(', ')}</p>
+      <Link className="font-semibold text-primary underline" href={ROUTES.survey}>Tính thử khoản vay &amp; tích lũy</Link>
+    </footer>
+  </ChartCard>
 }

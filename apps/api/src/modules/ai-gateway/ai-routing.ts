@@ -24,6 +24,7 @@ const configSchema = z.object({
   })),
 })
 const overrides: Record<string, string> = {
+  FORENSIC_CONVERSATION_GUIDE: 'AI_FAST_MODEL',
   PROFILE_PARSE_NATURAL: 'AI_FAST_MODEL',
   PROFILE_HEALTH_COACH: 'AI_FAST_MODEL',
   FORENSIC_VISION_EXTRACT: 'AI_VISION_MODEL',

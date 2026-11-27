@@ -1,7 +1,10 @@
-import { Controller, Get } from '@nestjs/common'
+import { relevantArticleWhere } from '../radar/legal-feed'
+import { Controller, Get, Header, Optional } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { handoffRoutes, ROUTES } from '@fincopilot/shared-types'
 import { PrismaService } from '../../common/prisma.service'
+import { homeMarketCacheKey, publicRadarCacheControl } from '../../common/public-cache-keys'
+import { RedisService } from '../../common/redis.service'
 
 const categoryBenchmarkLabels: Record<string, string> = {
   UNSECURED_LOAN: 'Vay tín chấp',
@@ -27,19 +30,27 @@ function estimateReadMinutes(title: string): number {
   return Math.max(2, Math.min(6, Math.round(words / 4)))
 }
 
-function medianOf(values: number[]): number {
-  if (!values.length) return 0
-  const sorted = [...values].sort((a, b) => a - b)
+function medianOf(values: Prisma.Decimal[]) {
+  const sorted = [...values].sort((a, b) => a.comparedTo(b))
   const mid = Math.floor(sorted.length / 2)
-  return sorted.length % 2 ? sorted[mid] : Number(((sorted[mid - 1] + sorted[mid]) / 2).toFixed(2))
+  return (sorted.length % 2 ? sorted[mid] : sorted[mid - 1].plus(sorted[mid]).div(2)).toNumber()
 }
 
 @Controller('home')
 export class HomeController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, @Optional() private readonly redis?: RedisService) {}
 
   @Get('market')
+  @Header('Cache-Control', publicRadarCacheControl)
   async market() {
+    const cached = await this.redis?.getJson<Awaited<ReturnType<HomeController['loadMarket']>>>(homeMarketCacheKey)
+    if (cached) return cached
+    const market = await this.loadMarket()
+    await this.redis?.setJson(homeMarketCacheKey, market, 60)
+    return market
+  }
+
+  private async loadMarket() {
     const select = {
       id: true,
       title: true,
@@ -75,20 +86,20 @@ export class HomeController {
         },
       }),
       this.prisma.marketArticle.findMany({
-        where: { feedStatus: 'ACTIVE', duplicateOfId: null, imageUrl: { not: null } },
+        where: { ...relevantArticleWhere, feedStatus: 'ACTIVE', duplicateOfId: null, imageUrl: { not: null } },
         orderBy: [...orderBy],
         select,
         take: 10,
       }),
       this.prisma.financialProduct.findMany({
         where: { isActive: true, effectiveDate: { lte: new Date() } },
-        select: { productCategory: true, nominalRateMin: true, nominalRateMax: true },
+        select: { effectiveDate: true, institution: { select: { name: true } }, productCategory: true, nominalRateMin: true, nominalRateMax: true },
       }),
     ])
 
     const remaining = Math.max(0, 6 - withImages.length)
     const fallback = remaining > 0 ? await this.prisma.marketArticle.findMany({
-      where: { feedStatus: 'ACTIVE', duplicateOfId: null, imageUrl: null },
+      where: { ...relevantArticleWhere, feedStatus: 'ACTIVE', duplicateOfId: null, imageUrl: null },
       orderBy: [...orderBy],
       select,
       take: remaining,
@@ -177,18 +188,22 @@ export class HomeController {
         }
       })
 
-    const grouped = new Map<string, { mins: Prisma.Decimal[]; maxes: Prisma.Decimal[] }>()
+    const grouped = new Map<string, { mins: Prisma.Decimal[]; maxes: Prisma.Decimal[]; latest: Date; names: Set<string> }>()
     for (const row of activeProducts) {
-      const bucket = grouped.get(row.productCategory) ?? { mins: [], maxes: [] }
+      const bucket = grouped.get(row.productCategory) ?? { mins: [], maxes: [], latest: row.effectiveDate, names: new Set<string>() }
+      bucket.names.add(row.institution.name)
+      if (row.effectiveDate > bucket.latest) bucket.latest = row.effectiveDate
       bucket.mins.push(new Prisma.Decimal(row.nominalRateMin.toString()))
       bucket.maxes.push(new Prisma.Decimal(row.nominalRateMax.toString()))
       grouped.set(row.productCategory, bucket)
     }
-    const marketRates = [...grouped.entries()].map(([category, { mins, maxes }]) => ({
+    const marketRates = [...grouped.entries()].map(([category, { mins, maxes, latest, names }]) => ({
       category,
       label: categoryBenchmarkLabels[category] ?? category,
+      group: category.endsWith('_LOAN') ? 'LOAN' : 'INVESTMENT',
+      latestEffectiveDate: latest.toISOString().slice(0, 10), institutions: [...names].sort(),
       minRatePct: Prisma.Decimal.min(...mins).toNumber(),
-      medianRatePct: medianOf(mins.map((rate) => rate.toNumber())),
+      medianRatePct: medianOf(mins),
       maxRatePct: Prisma.Decimal.max(...maxes).toNumber(),
       sampleCount: mins.length,
     }))

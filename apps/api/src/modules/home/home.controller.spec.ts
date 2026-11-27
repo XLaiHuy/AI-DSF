@@ -8,11 +8,13 @@ describe('HomeController market benchmark', () => {
     const findManyProducts = vi.fn().mockResolvedValue([
       {
         productCategory: 'SECURED_LOAN',
+        effectiveDate: new Date('2026-01-01'), institution: { name: 'A' },
         nominalRateMin: new Prisma.Decimal('5'),
         nominalRateMax: new Prisma.Decimal('9'),
       },
       {
         productCategory: 'SECURED_LOAN',
+        effectiveDate: new Date('2026-01-01'), institution: { name: 'B' },
         nominalRateMin: new Prisma.Decimal('7'),
         nominalRateMax: new Prisma.Decimal('10'),
       },
@@ -34,7 +36,7 @@ describe('HomeController market benchmark', () => {
         minRatePct: 5,
         medianRatePct: 6,
         maxRatePct: 10,
-        sampleCount: 2,
+        group: 'LOAN', latestEffectiveDate: '2026-01-01', institutions: ['A', 'B'], sampleCount: 2,
       }),
     ])
   })

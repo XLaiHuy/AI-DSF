@@ -52,8 +52,9 @@ const sources = [
 const server = createServer(async (request, response) => {
   response.setHeader('content-type', 'application/json; charset=utf-8')
   const liveRequest = /(?:^|;\s*)fincopilot_e2e_mode=phase-two(?:;|$)/.test(request.headers.cookie ?? '')
-  if (liveRequest &&
-      /^\/api\/v1\/(?:auth|profile|forensic|survey)(?:[/?]|$)/.test(request.url ?? '')) {
+  const liveTrends = /^\/api\/v1\/radar\/alerts\/trends(?:\?|$)/.test(request.url ?? '')
+  if (liveTrends || (liveRequest &&
+      /^\/api\/v1\/(?:auth|profile|forensic|survey)(?:[/?]|$)/.test(request.url ?? ''))) {
     const upstream = httpRequest({
       hostname: '127.0.0.1', port: Number(process.env.PLAYWRIGHT_PHASE_TWO_API_PORT), path: request.url,
       method: request.method, headers: proxyHeaders(request.headers), agent: false,
@@ -75,6 +76,10 @@ const server = createServer(async (request, response) => {
   }
   if (request.method === 'GET' && request.url === '/api/v1/auth/session') {
     response.end(JSON.stringify({ kind: 'guest', user: null, oauthProviders: { google: false, github: false } }))
+    return
+  }
+  if (request.method === 'GET' && request.url === '/api/v1/forensic/audits') {
+    response.end(JSON.stringify({ audits: [] }))
     return
   }
   if (request.method === 'GET' && request.url === '/api/v1/profile') {
@@ -143,9 +148,10 @@ const server = createServer(async (request, response) => {
         },
       ],
       marketRates: [
-        { category: 'SECURED_LOAN', label: 'Vay thế chấp', minRatePct: 6.5, medianRatePct: 7.2, maxRatePct: 8.5, sampleCount: 2 },
-        { category: 'UNSECURED_LOAN', label: 'Vay tín chấp', minRatePct: 12.9, medianRatePct: 14.5, maxRatePct: 15.2, sampleCount: 3 },
-        { category: 'SAVING', label: 'Tiết kiệm', minRatePct: 4.7, medianRatePct: 5.3, maxRatePct: 5.8, sampleCount: 5 },
+        { group: 'LOAN', latestEffectiveDate: '2026-01-01', institutions: ['Đơn vị mẫu'], category: 'SECURED_LOAN', label: 'Vay thế chấp', minRatePct: 6.5, medianRatePct: 6.52, maxRatePct: 6.53, sampleCount: 2 },
+        { group: 'LOAN', latestEffectiveDate: '2026-01-01', institutions: ['Đơn vị mẫu'], category: 'UNSECURED_LOAN', label: 'Vay tín chấp', minRatePct: 12.9, medianRatePct: 14.5, maxRatePct: 45, sampleCount: 3 },
+        { group: 'INVESTMENT', latestEffectiveDate: '2026-01-01', institutions: ['Đơn vị mẫu'], category: 'SAVING', label: 'Tiết kiệm', minRatePct: 4.7, medianRatePct: 5.3, maxRatePct: 5.8, sampleCount: 5 },
+        { group: 'INVESTMENT', latestEffectiveDate: '2026-01-01', institutions: ['Đơn vị minh họa'], category: 'ACCUMULATION', label: 'Tích lũy', minRatePct: 4, medianRatePct: 4, maxRatePct: 4, sampleCount: 2 },
       ],
     }))
     return

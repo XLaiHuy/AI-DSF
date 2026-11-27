@@ -1,14 +1,18 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common'
+import { BadRequestException, Injectable, Optional, Logger, NotFoundException, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common'
 import { Prisma, type FinancialProduct } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
 import {
-  AI_TASK_SCHEMAS, DataProvenance, InvestmentCategory, LoanUseCase, RateType, SurveySessionDetailResponseSchema, handoffRoutes,
+  AI_TASK_SCHEMAS, DataProvenance, ForensicAuditResponseSchema, InvestmentCategory, LoanUseCase, RateType,
+  SurveyRefinanceTermsSchema, SurveySessionDetailResponseSchema, handoffRoutes,
   type ManualCompareRequest, type ManualCompareResponse, type SessionContext,
   type SurveyInvestRequest, type SurveyInvestResponse, type SurveyLoanRequest, type SurveyLoanResponse, type SurveySessionDetailResponse,
+  type SurveyRefinanceContract, type SurveyRefinanceRequest, type SurveyRefinanceResponse,
 } from '@fincopilot/shared-types'
-import { amortizeLoan, assessDti, compoundDca, effectiveLoanApr, openFundScenarioBands, simulateEarlySettlement } from '@fincopilot/financial-math'
+import { amortizeLoan, assessDti, compoundDca, effectiveLoanApr, openFundScenarioBands, simulateEarlySettlement, simulateRefinanceBreakEven } from '@fincopilot/financial-math'
 import { z } from 'zod'
 import { PrismaService } from '../../common/prisma.service'
+import { homeMarketCacheKey } from '../../common/public-cache-keys'
+import { RedisService } from '../../common/redis.service'
 import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { normalizeVietnamese } from '../forensic/data/trusted-institutions'
 import { redemptionFeeTiers, syncProductCatalog } from './product-catalog'
@@ -17,12 +21,17 @@ const D = Prisma.Decimal
 const sessionIdSchema = z.guid()
 const investmentCategories = InvestmentCategory.options
 const loanMethods = ['REDUCING_BALANCE', 'DECLINING_PRINCIPAL', 'FLAT_RATE'] as const
+const refinanceMethods = ['REDUCING_BALANCE', 'DECLINING_PRINCIPAL'] as const
+const storedContract = z.object({
+  mathBreakdown: ForensicAuditResponseSchema.shape.mathBreakdown,
+  repaymentMethod: z.enum(['FLAT', 'DECLINING_EQUAL_PRINCIPAL', 'DECLINING_ANNUITY']).optional(),
+})
 const storedRate = z.string().max(64).regex(/^\d+(?:\.\d+)?$/)
 const stressRecipeSchema = z.strictObject({
   annualRatePct: storedRate,
   laterRate: z.strictObject({ afterMonths: z.number().int().min(1).max(600), annualRatePct: storedRate }).optional(),
 })
-const storedLoanSchema = z.strictObject({ result: z.unknown(), stressRecipes: z.array(stressRecipeSchema) })
+const storedLoanSchema = z.strictObject({ result: z.unknown(), stressRecipes: z.array(stressRecipeSchema), baseRecipes: z.array(stressRecipeSchema).optional() })
 const blockedTerms = ['app vay', 'vay nong', 'tin dung den', 'tindungden', 'ponzi', 'lua dao', 'bao loi']
 const fallbackExplanation = {
   summary: 'Kết quả được tính từ dòng tiền của từng phương án.',
@@ -72,17 +81,22 @@ function dtiAssessment(input: SurveyLoanRequest['dtiOverride'], payment: string)
 export class SurveyCalcService {
   private readonly logger = new Logger(SurveyCalcService.name)
 
-  constructor(private readonly prisma: PrismaService, private readonly ai: AiGatewayService) {}
+  constructor(private readonly prisma: PrismaService, private readonly ai: AiGatewayService, @Optional() private readonly redis?: RedisService) {}
 
-  syncTrustedProducts() {
-    return syncProductCatalog(this.prisma)
+  async syncTrustedProducts() {
+    try {
+      return await syncProductCatalog(this.prisma)
+    } finally {
+      await this.redis?.del(homeMarketCacheKey)
+    }
   }
 
   private async catalog(selection: Pick<Prisma.FinancialProductWhereInput, 'productCategory' | 'loanUseCase'>, input: {
-    enableWebFallback?: boolean; termMonths: number; amount: Prisma.Decimal
+    enableWebFallback?: boolean; bankOnly?: boolean; termMonths: number; amount: Prisma.Decimal
   }, calcMethod: Prisma.StringFilter) {
     const base = {
-      isActive: true, ...selection, calcMethod, institution: { trustStatus: 'LICENSED' },
+      isActive: true, ...selection, calcMethod,
+      institution: { trustStatus: 'LICENSED', ...(input.bankOnly ? { licenseIssuer: 'NHNN', institutionType: 'BANK' } : {}) },
       effectiveDate: { lte: new Date() },
       dataProvenance: { in: input.enableWebFallback === false ? ['CATALOG_VERIFIED'] : [...DataProvenance.options] },
     } satisfies Prisma.FinancialProductWhereInput
@@ -184,6 +198,7 @@ export class SurveyCalcService {
         existingDebtPaymentVnd: profile.existingDebtPaymentVnd.toString() }
       : undefined)
     const recipes = new Map<string, z.infer<typeof stressRecipeSchema>>()
+    const baseRecipes = new Map<string, z.infer<typeof stressRecipeSchema>>()
     let rateOutOfRange = false
     const offers = catalog.products.flatMap((product): SurveyLoanResponse['offers'] => {
       const calcMethod = loanMethods.find((method) => method === product.calcMethod)
@@ -222,6 +237,8 @@ export class SurveyCalcService {
         annualRatePct: (laterRate ? initialRate : shockedRate(initialRate)).toFixed(),
         ...(laterRate && { laterRate: { afterMonths: laterRate.afterMonths, annualRatePct: shockedRate(laterRate.annualRatePct).toFixed() } }),
       }
+      baseRecipes.set(product.id, { annualRatePct: initialRate.toFixed(),
+        ...(laterRate && { laterRate: { afterMonths: laterRate.afterMonths, annualRatePct: laterRate.annualRatePct.toFixed() } }) })
       recipes.set(product.id, recipe)
       const stressSchedule = amortizeLoan(principal, recipe.annualRatePct, input.termMonths, calcMethod, {
         monthlyFeeVnd: monthlyFee, laterRate: recipe.laterRate,
@@ -273,7 +290,8 @@ export class SurveyCalcService {
       ...(degradedMode ? { errorCode: 'ERR_AI_DEGRADED_FALLBACK' as const } : {}) }
     const savedToHistory = await this.saveSession(session, 'LOAN_SURVEY', input, { ...result, meta },
       { ...links, profileId: profile?.id }, dti, shock.toString(), {
-        result: { ...result, meta, offers: offers.map(({ stressSchedule: _schedule, ...offer }) => offer) },
+        result: { ...result, meta, offers: offers.map(({ stressSchedule: _schedule, ...offer }) => ({ ...offer, schedule: [] })) },
+        baseRecipes: offers.map(offer => baseRecipes.get(offer.productId)),
         stressRecipes: offers.map((offer) => recipes.get(offer.productId)),
       })
     return { ...result, meta: { ...meta, savedToHistory } }
@@ -355,8 +373,99 @@ export class SurveyCalcService {
     })
     const profile = await this.profile(session)
     const result = { sessionId: randomUUID(), offers, meta: { savedToHistory: true } }
-    const savedToHistory = await this.saveSession(session, 'MANUAL_COMPARE', input, result, { profileId: profile?.id })
+    const savedToHistory = await this.saveSession(session, 'MANUAL_COMPARE', input, result, { profileId: profile?.id }, undefined, undefined,
+      { ...result, offers: offers.map(offer => ({ ...offer, schedule: [] })) })
     return { ...result, meta: { savedToHistory } }
+  }
+
+  async refinanceFromAudit(id: string, session: SessionContext): Promise<SurveyRefinanceContract> {
+    const notFound = () => new NotFoundException('Không tìm thấy báo cáo giám định trong phiên này.')
+    if (!sessionIdSchema.safeParse(id).success) throw notFound()
+    const row = await this.prisma.forensicAudit.findFirst({
+      where: { id, ...owner(session), ...(session.kind === 'guest' ? { userId: null } : {}) },
+      select: { claimedEntityName: true, principalNominalVnd: true, quotedRatePct: true, effectiveAprPct: true, extractedClaimsJson: true },
+    })
+    if (!row) throw notFound()
+    const stored = storedContract.safeParse(row.extractedClaimsJson).data
+    const math = stored?.mathBreakdown
+    const phase = math?.phaseBreakdown?.length === 1 ? math.phaseBreakdown[0] : undefined
+    const quotedRate = row.quotedRatePct?.toFixed() ?? phase?.quotedRateLabel.match(/^(\d+(?:\.\d+)?)%\/tháng$/u)?.[1]
+    const referenceApr = math?.effectiveAprPct ?? row.effectiveAprPct?.toFixed() ?? null
+    const principal = row.principalNominalVnd?.toFixed(0) ?? (math ? new D(math.principalNominalVnd).toFixed(0) : undefined)
+    const flat = quotedRate != null && (row.quotedRatePct != null || math?.scheduleType === 'FIXED_FLAT')
+    const terms = SurveyRefinanceTermsSchema.safeParse({
+      remainingPrincipalVnd: principal, remainingTermMonths: math?.termMonths,
+      currentAnnualRatePct: quotedRate == null ? referenceApr : new D(quotedRate).mul(12).toFixed(),
+      currentCalcMethod: flat ? 'FLAT_RATE' : stored?.repaymentMethod === 'DECLINING_EQUAL_PRINCIPAL' ? 'DECLINING_PRINCIPAL' : 'REDUCING_BALANCE',
+      currentFlatInterestBaseVnd: flat ? principal : undefined,
+      currentMonthlyFeeVnd: quotedRate == null ? '0' : phase?.recurringFeeVnd ?? '0',
+      earlySettlementFeePct: '0', productCategory: 'UNSECURED_LOAN',
+    })
+    if (!terms.success) throw new UnprocessableEntityException('Báo cáo chưa có đủ số tiền, kỳ hạn và lãi suất để so sánh.')
+    return {
+      ...terms.data, sourceAuditId: id, claimedEntityName: row.claimedEntityName,
+      referenceAprPct: referenceApr, rateIsEstimate: quotedRate == null || (!flat && !stored?.repaymentMethod),
+    }
+  }
+
+  async refinance(input: SurveyRefinanceRequest, session: SessionContext): Promise<SurveyRefinanceResponse> {
+    const { sourceAuditId, ...overrides } = input
+    const source = sourceAuditId ? await this.refinanceFromAudit(sourceAuditId, session) : null
+    const terms = SurveyRefinanceTermsSchema.safeParse({
+      ...Object.fromEntries(Object.keys(SurveyRefinanceTermsSchema.shape).map((key) => [key, source?.[key as keyof typeof overrides]])),
+      ...overrides,
+    })
+    if (!terms.success) invalid('Nhập đủ số tiền còn nợ, thời hạn, lãi suất và phí của hợp đồng.')
+    if (new D(terms.data.earlySettlementFeePct).gt(100)) invalid('Phí tất toán phải từ 0% đến 100%.')
+    const flatBase = terms.data.currentCalcMethod === 'FLAT_RATE' ? terms.data.currentFlatInterestBaseVnd : undefined
+    if (flatBase && new D(flatBase).lt(terms.data.remainingPrincipalVnd)) invalid('Số tiền vay ban đầu phải bằng hoặc lớn hơn phần gốc còn nợ.')
+    const currentContract: SurveyRefinanceContract = {
+      ...terms.data, currentFlatInterestBaseVnd: flatBase, sourceAuditId, claimedEntityName: source?.claimedEntityName ?? null,
+      referenceAprPct: source?.referenceAprPct ?? null, rateIsEstimate: Boolean(source?.rateIsEstimate
+        && new D(source.currentAnnualRatePct).eq(terms.data.currentAnnualRatePct)),
+    }
+    const term = currentContract.newTermMonths ?? currentContract.remainingTermMonths
+    const [profile, { products, catalogStatus }] = await Promise.all([
+      this.profile(session), this.catalog({ productCategory: currentContract.productCategory }, {
+        termMonths: term, amount: new D(currentContract.remainingPrincipalVnd), bankOnly: true,
+      }, { in: [...refinanceMethods] }),
+    ])
+    const ranked = products.flatMap((product) => {
+      const calcMethod = refinanceMethods.find((method) => method === product.calcMethod)
+      if (!calcMethod || product.rateType === 'VARIABLE_NAV') return []
+      const promo = product.rateType === 'PROMO_THEN_FLOATING' ? product.promoMonths : null
+      const initialRate = product.rateType === 'FIXED' || promo ? product.nominalRateMin : product.nominalRateMax
+      const newLaterRate = promo && promo < term ? { afterMonths: promo, annualRatePct: product.nominalRateMax.toFixed() } : undefined
+      const newAnnualRatePct = initialRate.toFixed()
+      const result = simulateRefinanceBreakEven({
+        ...currentContract, newAnnualRatePct, newCalcMethod: calcMethod, newLaterRate,
+        newUpfrontFeeRatePct: product.upfrontFeeRate?.toFixed(), newMonthlyFeeVnd: product.monthlyFeeVnd?.toFixed(),
+      })
+      return [{ institutionId: product.institutionId, offer: {
+        ...offerSource(product), newAnnualRatePct, calcMethod, newTermMonths: term, newLaterRate, result,
+      } }]
+    }).sort((a, b) => new D(b.offer.result.netSavingsVnd).cmp(a.offer.result.netSavingsVnd))
+    const institutions = new Set<string>()
+    const offers = ranked.filter(({ institutionId }) => {
+      if (institutions.has(institutionId)) return false
+      institutions.add(institutionId)
+      return true
+    }).slice(0, 3).map(({ offer }) => offer)
+    const best = offers[0]?.result
+    const messages = {
+      WORTH_REFINANCING: 'Phương án đứng đầu có tổng chi phí thấp hơn hợp đồng hiện tại.',
+      MARGINAL: 'Phương án đứng đầu chỉ tiết kiệm dưới 1% số tiền còn nợ. Hãy kiểm tra phí trước khi quyết định.',
+      KEEP_CURRENT: 'Chưa nên đổi khoản vay. Tổng chi phí sau khi chuyển bằng hoặc cao hơn chi phí giữ hợp đồng.',
+    }
+    const result = {
+      sessionId: randomUUID(), currentContract, offers,
+      bestOptionSummary: best ? messages[best.recommendation] : 'Chưa có gói vay phù hợp trong danh mục ngân hàng có giấy phép.',
+      meta: { catalogStatus, savedToHistory: true },
+    }
+    const savedToHistory = await this.saveSession(session, 'REFINANCE_COMPARE', input, result, {
+      profileId: profile?.id, sourceAuditId,
+    })
+    return { ...result, meta: { catalogStatus, savedToHistory } }
   }
 
   async history(session: SessionContext) {
@@ -388,6 +497,12 @@ export class SurveyCalcService {
         const recipe = compact.stressRecipes[index]
         const method = loanMethods.find((candidate) => candidate === offer.calcMethod)
         if (!method) throw notFound()
+        if (!offer.schedule.length) {
+          const base = compact.baseRecipes?.[index]
+          if (!base) throw notFound()
+          offer.schedule = amortizeLoan(saved.inputParams.principalVnd, base.annualRatePct, saved.inputParams.termMonths,
+            method, { monthlyFeeVnd: offer.monthlyFeeVnd, laterRate: base.laterRate }).schedule
+        }
         offer.stressSchedule = amortizeLoan(saved.inputParams.principalVnd, recipe.annualRatePct,
           saved.inputParams.termMonths, method, { monthlyFeeVnd: offer.monthlyFeeVnd, laterRate: recipe.laterRate }).schedule
       })
@@ -396,7 +511,11 @@ export class SurveyCalcService {
       saved.result.offers.forEach((offer, index) => {
         const input = saved.inputParams.offers[index]
         if (!offer.schedule.length && input) {
-          offer.schedule = amortizeLoan(input.principalVnd, input.annualRatePct, input.termMonths, offer.calcMethod).schedule
+          offer.schedule = amortizeLoan(input.principalVnd, input.annualRatePct, input.termMonths, offer.calcMethod, {
+            monthlyFeeVnd: offer.monthlyFeeVnd,
+            laterRate: input.promoMonths != null && input.floatingRatePct != null
+              ? { afterMonths: input.promoMonths, annualRatePct: input.floatingRatePct } : undefined,
+          }).schedule
         }
       })
     }

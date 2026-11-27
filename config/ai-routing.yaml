@@ -2,6 +2,9 @@ routing:
   PROFILE_PARSE_NATURAL:
     primary: openai:gpt-4.1-mini
     fallbacks: [google:gemini-3.5-flash-lite]
+  FORENSIC_CONVERSATION_GUIDE:
+    primary: openai:gpt-4.1-mini
+    fallbacks: [google:gemini-3.5-flash-lite]
   PROFILE_HEALTH_COACH:
     primary: openai:gpt-4.1-mini
     fallbacks: [google:gemini-3.5-flash-lite]

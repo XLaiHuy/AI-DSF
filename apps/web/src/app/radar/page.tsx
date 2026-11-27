@@ -5,19 +5,19 @@ import { ArrowDown, ArrowUpRight, ExternalLink, RefreshCw, Search, Bell, Calenda
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { handoffRoutes } from '@fincopilot/shared-types'
 import { Button } from '@/components/ui'
 import { MarketRateBenchmarkChart } from '@/components/charts/MarketRateBenchmarkChart'
-import { DeskNavigation, type DeskPanel } from '@/components/radar/DeskNavigation'
+import { useRadarDesk, type DeskPanel, type RadarTab } from '@/components/layout/RadarDeskContext'
 import { DeskDialog } from '@/components/radar/DeskDialog'
+import { ThreatTrendBoard } from '@/components/radar/ThreatTrendBoard'
 import { EditorialImage } from '@/components/radar/EditorialImage'
 import { getReadingHistory, getSavedArticles, readingStoreEvent, toggleSavedArticle, type ReadingEntry } from '@/components/radar/ReadingStore'
 import { QuickSurvey, RecentActivity, ProfileStatus } from '@/components/home/OverviewWidgets'
 import { RadarDailyBrief, type DailyBriefResponse } from '@/components/radar/RadarDailyBrief'
 import { ApiError, apiClient } from '@/lib/api-client'
 import { marketOverviewQuery, sessionQuery } from '@/lib/workspace-data'
-import './desk.css'
 
 type Source = { sourceKey: string; name: string; lastFetchStatus: string | null; lastAttemptAt: string | null; lastSuccessAt: string | null }
 type ArticleSource = { sourceName: string; url: string; firstSeenAt?: string | null; lastSeenAt?: string | null }
@@ -138,57 +138,114 @@ function RecommendationStory({ article, reason, lead = false }: { article: Artic
 }
 
 function sourceState(status: string | null) {
-  if (status === 'SUCCESS') return { label: 'Quét thành công', className: 'is-success' }
+  if (status === 'SUCCESS') return { label: 'Đang hoạt động', className: 'is-success' }
   if (status === 'ERROR') return { label: 'Quét lỗi', className: 'is-error' }
   return { label: status ? 'Chưa rõ trạng thái' : 'Chưa có lần quét', className: 'is-idle' }
+}
+
+function readRadarTab(params: Pick<URLSearchParams, 'get'>): RadarTab {
+  const feed = params.get('feed')
+  const view = params.get('tab')
+  return feed === 'saved' || feed === 'history' ? feed : view === 'alerts' || view === 'personal' ? view : 'articles'
+}
+
+const radarTabs = [['personal', 'Dành cho bạn'], ['articles', 'Xu hướng'], ['alerts', 'Cảnh báo'], ['saved', 'Đã lưu']] as const
+
+function RadarTabs({ tab, selectView }: { tab: RadarTab; selectView: (view: RadarTab) => void }) {
+  const [pendingTab, setPendingTab] = useState<RadarTab>()
+  const [pending, loadView] = useTransition()
+  const activeTab = pending ? pendingTab ?? tab : tab
+  return <div className="desk-tabs" role="group" aria-label="Loại nội dung">
+    {radarTabs.map(([key, label]) => <button className="desk-tab" key={key} type="button"
+      aria-pressed={activeTab === key} onClick={() => {
+        setPendingTab(key)
+        loadView(() => selectView(key))
+      }}>{label}</button>)}
+  </div>
 }
 
 function RadarWorkspace() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const [tab, setTab] = useState<'articles' | 'alerts' | 'personal' | 'saved' | 'history'>('articles')
+  const [tab, setTab] = useState<RadarTab>(() => readRadarTab(searchParams))
+  const { register } = useRadarDesk()
   const [panel, setPanel] = useState<DeskPanel | null>(null)
   const [quickCheck, setQuickCheck] = useState('')
   const [savedEntries, setSavedEntries] = useState<ReadingEntry[]>([])
   const [historyEntries, setHistoryEntries] = useState<ReadingEntry[]>([])
   const feed = useRef<HTMLElement>(null)
-  function selectView(view: typeof tab) {
+  const scrollPositions = useRef<Partial<Record<RadarTab, number>>>({})
+  const restoreScroll = useRef(false)
+
+  const changeTab = useCallback((view: RadarTab) => {
+    if (view === tab) return
+    scrollPositions.current[tab] = window.innerWidth <= 900 ? window.scrollY : feed.current?.scrollTop ?? 0
+    restoreScroll.current = true
     setTab(view)
-    const query = new URLSearchParams(searchParams.toString())
-    query.delete('feed'); query.delete('tab')
+  }, [tab])
+
+  useLayoutEffect(() => {
+    if (!restoreScroll.current) return
+    restoreScroll.current = false
+    const top = scrollPositions.current[tab] ?? 0
+    if (window.innerWidth <= 900) window.scrollTo({ top, behavior: 'instant' })
+    else feed.current?.scrollTo({ top, behavior: 'instant' })
+  }, [tab])
+
+  const replaceQuery = useCallback((query: URLSearchParams) => {
+    startTransition(() => window.history.replaceState(null, '', pathname + (query.size ? '?' + query : '')))
+  }, [pathname])
+
+  const selectView = useCallback((view: RadarTab) => {
+    changeTab(view)
+    const query = new URLSearchParams(window.location.search)
+    query.delete('feed')
+    query.delete('tab')
     if (view === 'saved' || view === 'history') query.set('feed', view)
     else if (view === 'alerts' || view === 'personal') query.set('tab', view)
-    router.replace(`${pathname}${query.size ? `?${query}` : ''}`, { scroll: false })
-    feed.current?.scrollTo({ top: 0 })
-    if (window.innerWidth <= 900) feed.current?.scrollIntoView({block: 'start'})
-  }
+    replaceQuery(query)
+  }, [changeTab, replaceQuery])
+
+  useLayoutEffect(() => {
+    register({ openPanel: setPanel, selectView, isAlertsTab: tab === 'alerts' })
+    return () => register(undefined)
+  }, [register, selectView, tab])
+
   function chooseTopic(code: string) {
     const next = category === code ? '' : code
-    setCategory(next); setTab('articles')
-    const query = new URLSearchParams(searchParams.toString())
-    query.delete('feed'); query.delete('tab')
-    if (next) query.set('category', next); else query.delete('category')
-    router.replace(`${pathname}${query.size ? `?${query}` : ''}`, { scroll: false })
+    setCategory(next)
+    changeTab('articles')
+    const query = new URLSearchParams(window.location.search)
+    query.delete('feed')
+    query.delete('tab')
+    if (next) query.set('category', next)
+    else query.delete('category')
+    replaceQuery(query)
   }
+
   function clearFilters() {
     setCategory(''); setSearch(''); setPeriod('all'); setDateFrom(''); setDateTo('')
-    const query = new URLSearchParams(searchParams.toString())
+    const query = new URLSearchParams(window.location.search)
     query.delete('category')
-    router.replace(`${pathname}${query.size ? `?${query}` : ''}`, { scroll: false })
+    replaceQuery(query)
   }
-  const [category, setCategory] = useState('')
+  const [category, setCategory] = useState(() => searchParams.get('category') ?? '')
   const [search, setSearch] = useState('')
   const [period, setPeriod] = useState<'all' | 'today' | '7d' | 'month' | 'year' | 'custom'>('all')
   const [year, setYear] = useState(String(new Date().getFullYear()))
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   useEffect(() => {
-    const feedParam = searchParams.get('feed')
-    const tabParam = searchParams.get('tab')
-    setTab(feedParam === 'saved' || feedParam === 'history' ? feedParam : tabParam === 'alerts' || tabParam === 'personal' ? tabParam : 'articles')
-    setCategory(searchParams.get('category') ?? '')
-  }, [searchParams])
+    const sync = () => {
+      const params = new URLSearchParams(window.location.search)
+      changeTab(readRadarTab(params))
+      setCategory(params.get('category') ?? '')
+    }
+    sync()
+    window.addEventListener('popstate', sync)
+    return () => window.removeEventListener('popstate', sync)
+  }, [searchParams, changeTab])
   useEffect(() => {
     const refresh = () => { setSavedEntries(getSavedArticles()); setHistoryEntries(getReadingHistory()) }
     refresh()
@@ -238,6 +295,7 @@ function RadarWorkspace() {
   const articlesQuery = useInfiniteQuery({
     queryKey: ['radar-articles', category, search, period, year, dateFrom, dateTo],
     initialPageParam: null as string | null,
+    staleTime: 3 * 60_000,
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({ limit: '10', ...(category ? { category } : {}), ...(search ? { search } : {}), ...(period !== 'all' && period !== 'year' && period !== 'custom' ? { period } : {}), ...(period === 'year' ? { year } : {}), ...(period === 'custom' && dateFrom ? { from: dateFrom } : {}), ...(period === 'custom' && dateTo ? { to: dateTo } : {}) })
       if (pageParam) params.set('cursor', pageParam)
@@ -247,9 +305,9 @@ function RadarWorkspace() {
   })
   const market = useQuery(marketOverviewQuery)
   const session = useQuery(sessionQuery)
-  const alertsQuery = useQuery({ queryKey: ['radar-alerts'], queryFn: () => apiClient.get<{ items: AlertItem[] }>('/radar/alerts') })
-  const fraudArticlesQuery = useQuery({ queryKey: ['radar-fraud-articles'], queryFn: () => apiClient.get<ArticlePage>('/radar/articles?category=FINANCIAL_FRAUD&limit=5') })
-  const highlightsQuery = useQuery({ queryKey: ['radar-highlights'], queryFn: () => apiClient.get<{ items: Highlight[]; ranking: string }>('/radar/articles/highlights') })
+  const alertsQuery = useQuery({ queryKey: ['radar-alerts'], enabled: tab === 'alerts', staleTime: 3 * 60_000, queryFn: () => apiClient.get<{ items: AlertItem[] }>('/radar/alerts') })
+  const fraudArticlesQuery = useQuery({ queryKey: ['radar-fraud-articles'], enabled: tab === 'alerts', staleTime: 3 * 60_000, queryFn: () => apiClient.get<ArticlePage>('/radar/articles?category=FINANCIAL_FRAUD&limit=5') })
+  const highlightsQuery = useQuery({ queryKey: ['radar-highlights'], enabled: tab === 'personal' || (!market.isPending && !market.data?.scamFinanceRail?.length), staleTime: 3 * 60_000, queryFn: () => apiClient.get<{ items: Highlight[]; ranking: string }>('/radar/articles/highlights') })
   const dailyBriefQuery = useQuery({
     queryKey: ['radar-daily-brief', dailyBriefDay, personalizationEnabled, interests, includeProfileGoal, includeSurveyTopics, includeForensicHistory],
     queryFn: () => apiClient.post<DailyBriefResponse>('/radar/daily-brief', {
@@ -258,8 +316,8 @@ function RadarWorkspace() {
       includeSurveyTopics: personalizationEnabled && includeSurveyTopics,
       includeForensicHistory: personalizationEnabled && includeForensicHistory,
     }),
-    staleTime: 5 * 60_000,
-    refetchOnWindowFocus: true,
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
   })
   const signalsQuery = useQuery({
     queryKey: ['radar-recommendation-signals', includeProfileGoal, includeSurveyTopics, includeForensicHistory],
@@ -376,10 +434,8 @@ function RadarWorkspace() {
         </details>
       </section>
     </section>
-  return <div className={`desk-shell ${tab === 'alerts' ? 'desk-shell--alerts' : ''}`}>
-    <a href="#main-content" className="skip-link">Đến nội dung chính</a>
-    <DeskNavigation openPanel={setPanel} selectView={selectView} />
-    <main id="main-content" tabIndex={-1} className="desk-main"><div className="desk-body">
+  return <>
+    <main className="desk-main"><div className="desk-body">
       <section ref={feed} className="desk-feed" aria-label="Tin tức và cảnh báo">
         <header className="desk-banner desk-quick-check"><span className="desk-icon"><ScanLine size={24} /></span>
           <div className="desk-banner-copy"><h1>Kiểm tra trước khi chuyển tiền</h1><p>Nhập nội dung đáng ngờ để chuyển sang Giám định.</p></div>
@@ -392,7 +448,7 @@ function RadarWorkspace() {
           <button className="desk-bell" aria-label="Xem cảnh báo lừa đảo" onClick={()=>selectView('alerts')}><Bell size={20}/></button></div>
           <div className="desk-chips" role="group" aria-label="Lọc nhanh theo chủ đề">{showTopics(Object.entries(categoryLabels).slice(0,4))}
             {(category || search || period!=='all') && <button onClick={clearFilters}>Xóa bộ lọc</button>}</div></div>
-        <div className="desk-tabs" role="group" aria-label="Loại nội dung">{([['personal','Dành cho bạn'],['articles','Xu hướng'],['alerts','Cảnh báo'],['saved','Đã lưu']] as const).map(([key,label])=><button className="desk-tab" key={key} aria-pressed={tab===key} onClick={()=>selectView(key)}>{label}</button>)}</div>
+        <RadarTabs tab={tab} selectView={selectView} />
         <div className="desk-stream">
         {tab === 'articles' ? <div className="radar-article-content" aria-label="Tin thị trường">
           {articlesQuery.isPending && <p role="status" className="radar-state-message">Đang tải tin…</p>}
@@ -427,6 +483,7 @@ function RadarWorkspace() {
           </div>}
         </div> : tab === 'alerts' ? <div className="radar-alert-feed" aria-label="Cảnh báo lừa đảo">
           <header className="radar-alert-intro"><p className="radar-alert-eyebrow">RADAR / AN TOÀN TÀI CHÍNH</p><h1>Cảnh báo lừa đảo</h1><p>“Đã xác minh” là trạng thái cảnh báo; mở nguồn để tự đối chiếu trường hợp của bạn.</p></header>
+          <ThreatTrendBoard />
           {alertsQuery.isPending && <p role="status" className="radar-state-message">Đang tải cảnh báo…</p>}
           {alertsQuery.isError && <div className="radar-state-message radar-error-state"><p role="alert">Không tải được cảnh báo.</p><Button variant="outline" size="sm" onClick={() => void alertsQuery.refetch()}><RefreshCw size={14} aria-hidden="true"/> Thử lại</Button></div>}
           {publishedAlerts?.map((alert, index) => <article className={`radar-alert-row ${index === 0 ? 'is-lead' : ''}`} key={alert.id}>
@@ -485,22 +542,22 @@ function RadarWorkspace() {
         </div>
       </section>
       <aside className="desk-rail" aria-label={tab === 'alerts' ? 'Cách đọc cảnh báo' : 'Khám phá tin'}>
-        {tab === 'alerts' ? <div className="radar-alert-rail"><p className="radar-alert-eyebrow">ĐỌC CẢNH BÁO</p><h2>Kiểm tra trước khi tin</h2><p>“Đã xác minh” là trạng thái của cảnh báo được công bố; không phải mức độ nghiêm trọng của trường hợp bạn gặp.</p><div className="radar-alert-rail-note"><strong>Nguồn dẫn chứng</strong><span>Mở liên kết gốc trong mỗi cảnh báo để tự xem thông tin có sẵn.</span></div><div className="radar-alert-rail-note"><strong>Cần đối chiếu trường hợp của bạn?</strong><span>Giám định là một bước kiểm tra riêng, chưa được thực hiện chỉ bằng việc đọc cảnh báo.</span></div><Link href="/forensic" className="radar-alert-rail-action">Mở Giám định <ArrowUpRight size={15} aria-hidden="true"/></Link></div> : <><h2>{railItems.length ? 'Scam & Finance' : 'Đọc thêm'}</h2>
+        {tab === 'alerts' ? <div className="radar-alert-rail"><p className="radar-alert-eyebrow">ĐỌC CẢNH BÁO</p><h2>Kiểm tra trước khi tin</h2><p>“Đã xác minh” là trạng thái của cảnh báo được công bố; không phải mức độ nghiêm trọng của trường hợp bạn gặp.</p><div className="radar-alert-rail-note"><strong>Nguồn dẫn chứng</strong><span>Mở liên kết gốc trong mỗi cảnh báo để tự xem thông tin có sẵn.</span></div><div className="radar-alert-rail-note"><strong>Cần đối chiếu trường hợp của bạn?</strong><span>Giám định là một bước kiểm tra riêng, chưa được thực hiện chỉ bằng việc đọc cảnh báo.</span></div><Link href="/forensic" className="radar-alert-rail-action">Mở Giám định <ArrowUpRight size={15} aria-hidden="true"/></Link></div> : <><h2>{railItems.length ? 'Cảnh báo & Tài chính' : 'Đọc thêm'}</h2>
         {market.isPending && <p role="status">Đang tải tin chọn lọc…</p>}
         {market.isError && <button onClick={()=>void market.refetch()}>Tải lại tin chọn lọc</button>}
         {railItems.map((item) => <article className="desk-pick" key={`${item.kind}-${item.id}`}>
-          <p className="desk-rail-badge">{item.kind === 'ALERT' ? 'Cảnh báo đã xác minh' : item.kind === 'SCAM_NEWS' ? 'Bài viết về lừa đảo · Chưa xác minh cảnh báo' : categoryLabels[articles.find((article) => article.id === item.id)?.categories[0] ?? ''] ?? 'Tin tài chính'} · {item.kind === 'ALERT' ? 'Dẫn chứng: ' : 'Nguồn: '}{item.sourceName || 'Chưa rõ nguồn'}</p>
+          <p className="desk-rail-meta"><span className="desk-rail-badge" data-kind={item.kind}>{item.kind === 'ALERT' ? 'Cảnh báo' : item.kind === 'SCAM_NEWS' ? 'Tin lừa đảo' : 'Tin tài chính'}</span><span>{item.sourceName || 'Chưa rõ nguồn'}</span></p>
           <div className={`desk-pick-main ${item.imageUrl ? '' : 'desk-pick-main--text'}`}><h3><Link href={item.kind === 'ALERT' ? `/radar/${item.id}?kind=alert` : `/radar/${item.id}`}>{item.title}</Link></h3>
             {item.imageUrl && <EditorialImage className="desk-rail-image" imageUrl={item.imageUrl} proxyUrl={item.proxyUrl} alt={item.title} categories={[item.kind === 'FINANCE_NEWS' ? 'MARKET' : 'FINANCIAL_FRAUD']} />}</div>
           <div className="desk-pick-foot">{item.publishedAt ? <time dateTime={item.publishedAt}>{formatDateTime(item.publishedAt, true)}</time> : <span>Chưa rõ ngày công bố</span>}
-            <Link href={item.handoffHref}>Đi kiểm tra <ArrowUpRight size={14}/></Link></div>
+            <Link href={item.handoffHref}>Kiểm tra <ArrowUpRight size={14} aria-hidden="true"/></Link></div>
         </article>)}
         {!market.isPending && !market.data?.scamFinanceRail?.length && railFallback.map((article)=><article className="desk-pick" key={article.id}>
           <Byline article={article}/>{article.categories.includes('FINANCIAL_FRAUD') && <p className="desk-rail-badge">Bài viết cùng chủ đề · Chưa xác minh cảnh báo</p>}<div className={`desk-pick-main ${article.image?.url ? '' : 'desk-pick-main--text'}`}><h3><Link href={`/radar/${article.id}`}>{article.title}</Link></h3>{article.image?.url && <div className="desk-thumb"><EditorialImage imageUrl={article.image.url} proxyUrl={article.image.proxyUrl} alt={article.image.alt || article.title} credit={article.image.credit} sourceUrl={article.image.sourceUrl} categories={article.categories} /></div>}</div>
           <div className="desk-pick-foot"><Published article={article}/><details><summary>Vì sao?</summary><p>{highlightReasons(article).join(' · ') || 'Theo thời gian công bố.'}</p></details></div>
         </article>)}
         {tab === 'personal' && !market.isPending && !market.isError && railItems.length === 0 && railFallback.length === 0 && <p className="desk-rail-empty">Chưa có tin khác ngoài bản tin đang đọc.</p>}
-        <section className="desk-section"><h2>Trạng thái nguồn</h2>{sources.length ? sources.map((source) => <p className="desk-source-line" key={source.sourceKey}>{source.name}<span>{sourceState(source.lastFetchStatus).label}</span></p>) : <p>Chưa có dữ liệu trạng thái.</p>}
+        <section className="desk-section"><h2>Trạng thái nguồn</h2>{sources.length ? sources.map((source) => <p className="desk-source-line" key={source.sourceKey}>{source.name}<span><i className={'radar-source-state ' + sourceState(source.lastFetchStatus).className} aria-label={sourceState(source.lastFetchStatus).label} /> {source.lastAttemptAt ? formatDateTime(source.lastAttemptAt, true) : sourceState(source.lastFetchStatus).label}</span></p>) : <p>Chưa có dữ liệu trạng thái.</p>}
           <button className="desk-underline" onClick={() => setPanel('sources')}>Xem chi tiết nguồn</button></section>
         <section className="desk-section"><h2>Hoạt động gần đây</h2><button className="desk-underline" onClick={() => setPanel('history')}>Xem hoạt động</button></section></>}
       </aside>
@@ -523,7 +580,6 @@ function RadarWorkspace() {
               </li>
             })}
           </ul> : <p className="radar-context-empty">Trạng thái nguồn chưa được API cung cấp.</p>}
-          <p className="radar-source-footnote">Quét thành công không đồng nghĩa nội dung đã được xác minh.</p>
         </section>}
       {panel==='topics' && <><div className="desk-cloud">{showTopics(Object.entries(categoryLabels))}</div><div className="radar-date-controls">
             <label><span className="sr-only">Lọc thời gian</span><select aria-label="Lọc thời gian" value={period} onChange={(event) => setPeriod(event.target.value as typeof period)}>
@@ -534,7 +590,7 @@ function RadarWorkspace() {
           </div>
         <button className="desk-small-button" onClick={()=>{setPanel(null);selectView('articles')}}>Xem kết quả</button></>}
     </DeskDialog>}
-  </div>
+  </>
 }
 
 export default function RadarPage() {

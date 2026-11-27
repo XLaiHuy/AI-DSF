@@ -1,9 +1,11 @@
 import { Prisma } from '@prisma/client'
-import { AdminProductSyncResultSchema, LoanUseCase, ManualCompareRequestSchema, ManualCompareResponseSchema, SurveyInvestResponseSchema, SurveyLoanResponseSchema } from '@fincopilot/shared-types'
+import { AdminProductSyncResultSchema, LoanUseCase, ManualCompareRequestSchema, ManualCompareResponseSchema, SurveyInvestResponseSchema, SurveyLoanResponseSchema, SurveyRefinanceRequestSchema, SurveyRefinanceResponseSchema } from '@fincopilot/shared-types'
 import { describe, expect, it, vi } from 'vitest'
 import type { PrismaService } from '../../common/prisma.service'
 import type { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { SurveyCalcService } from './survey-calc.service'
+import { SurveyCalcController } from './survey-calc.controller'
+import type { FastifyRequest } from 'fastify'
 
 vi.mock('../admin/threat-safety', () => ({ fetchPublicDocument: vi.fn().mockRejectedValue(new Error('offline')) }))
 
@@ -36,6 +38,61 @@ function setup(products: Array<Record<string, unknown>> = [offer]) {
   return { service, prisma, generateStructured }
 }
 
+describe('Contract comparison', () => {
+  const borrower = { kind: 'user', userId: '55555555-5555-4555-8555-555555555555' } as const
+  const terms = {
+    remainingPrincipalVnd: '10000000', remainingTermMonths: 12, currentAnnualRatePct: '36',
+    currentCalcMethod: 'FLAT_RATE', currentMonthlyFeeVnd: '0', earlySettlementFeePct: '0',
+    productCategory: 'UNSECURED_LOAN',
+  } as const
+
+  it('ranks up to three distinct licensed banks and restores a compact history record', async () => {
+    const { service, prisma } = setup(['A', 'A', 'B', 'C', 'D'].map((key, index) => ({
+      ...offer, id: 'offer-' + index, institutionId: key, institution: { name: key }, nominalRateMin: decimal(String(10 + index)),
+    })))
+    const request = { session } as unknown as FastifyRequest
+    const controller = new SurveyCalcController(service)
+    const result = SurveyRefinanceResponseSchema.parse(await controller.refinance(SurveyRefinanceRequestSchema.parse(terms), request))
+    expect(result.offers.map((item) => item.institutionName)).toEqual(['A', 'B', 'C'])
+    expect(result.offers[0].result).toMatchObject({ breakEvenMonth: 1, recommendation: 'WORTH_REFINANCING' })
+    expect(prisma.financialProduct.findMany.mock.calls[0][0].where).toMatchObject({
+      institution: { trustStatus: 'LICENSED', licenseIssuer: 'NHNN', institutionType: 'BANK' },
+      dataProvenance: { in: ['CATALOG_VERIFIED', 'WEB_REFERENCE'] },
+    })
+    const { data } = prisma.calculationSession.create.mock.calls[0][0]
+    expect(data.sessionMode).toBe('REFINANCE_COMPARE')
+    expect(JSON.stringify(data.mathResultsJson)).not.toContain('schedule')
+    prisma.calculationSession.findFirst.mockResolvedValue({ ...data, createdAt: new Date() })
+    await expect(service.sessionDetail(session, result.sessionId)).resolves.toMatchObject({ result, sessionMode: 'REFINANCE_COMPARE' })
+  })
+
+  it('uses the monthly flat rate from an owned audit without charging the original upfront fee twice', async () => {
+    const { service, prisma } = setup([])
+    prisma.forensicAudit.findFirst.mockResolvedValue({
+      id: sourceAuditId, claimedEntityName: 'Bên cho vay', principalNominalVnd: decimal('10000000'), quotedRatePct: decimal('3'),
+      effectiveAprPct: decimal('60'), extractedClaimsJson: {
+        mathBreakdown: { principalNominalVnd: '10000000', principalNetVnd: '9700000', upfrontFeeVnd: '300000',
+          quotedRateLabel: '3% mỗi tháng', effectiveAprPct: '60', effectiveEarPct: '70', termMonths: 12, scheduleType: 'FIXED_FLAT' },
+      },
+    })
+    const result = await service.refinance({ sourceAuditId }, borrower)
+    expect(result.currentContract).toMatchObject({ ...terms, sourceAuditId, referenceAprPct: '60', rateIsEstimate: false })
+    expect(prisma.forensicAudit.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: sourceAuditId, userId: borrower.userId } }))
+  })
+
+  it('returns 404 for another owner even when all manual terms were also supplied', async () => {
+    const { service, prisma } = setup()
+    prisma.forensicAudit.findFirst.mockImplementation(async (input) =>
+      input.where.userId === borrower.userId ? { id: sourceAuditId } : null)
+    const request = { session: { kind: 'user', userId: '77777777-7777-4777-8777-777777777777' } } as unknown as FastifyRequest
+    const controller = new SurveyCalcController(service)
+    await expect(controller.refinance({ ...terms, sourceAuditId }, request)).rejects.toMatchObject({ status: 404 })
+    await expect(controller.refinanceFromAudit(request, sourceAuditId)).rejects.toMatchObject({ status: 404 })
+    expect(prisma.financialProduct.findMany).not.toHaveBeenCalled()
+    expect(prisma.calculationSession.create).not.toHaveBeenCalled()
+  })
+})
+
 describe('Survey API contracts', () => {
   it.each(LoanUseCase.options)('selects by %s and supplies the payment after the promotional period', async (loanUseCase) => {
     const { service, prisma } = setup([{
@@ -55,6 +112,8 @@ describe('Survey API contracts', () => {
     const result = await service.loan({ ...loan, termMonths: 360, rateShockDeltaPct: '1' }, session)
     const { data } = prisma.calculationSession.create.mock.calls[0][0]
     expect(result.offers).toHaveLength(2)
+    expect(data.mathResultsJson.baseRecipes).toHaveLength(2)
+    expect(data.mathResultsJson.result.offers.every((item: { schedule: unknown[] }) => item.schedule.length === 0)).toBe(true)
     expect(JSON.stringify(data.mathResultsJson)).not.toContain('stressSchedule')
     expect(JSON.stringify(data.mathResultsJson).length).toBeLessThan(JSON.stringify(result).length * 0.6)
     prisma.calculationSession.findFirst.mockResolvedValue({ ...data, createdAt: new Date() })
@@ -184,7 +243,7 @@ describe('Survey API contracts', () => {
   })
 
   it('compares all three methods, models the rate change and charges the early exit fee', async () => {
-    const { service } = setup()
+    const { service, prisma } = setup()
     const base = { label: 'A', principalVnd: '12000000', annualRatePct: '12', termMonths: 12 }
     const input = ManualCompareRequestSchema.parse({ offers: [
       base, { ...base, label: 'B', calcMethod: 'DECLINING_PRINCIPAL' },
@@ -192,7 +251,12 @@ describe('Survey API contracts', () => {
         promoMonths: 6, floatingRatePct: '24', earlySettlementMonth: 8, earlySettlementFeePct: '2' },
       { ...base, label: 'D' },
     ] })
-    const { offers } = await service.manualCompare(input, session)
+    const result = await service.manualCompare(input, session)
+    const { offers } = result
+    const { data } = prisma.calculationSession.create.mock.calls[0][0]
+    expect(data.mathResultsJson.offers.every((item: { schedule: unknown[] }) => item.schedule.length === 0)).toBe(true)
+    prisma.calculationSession.findFirst.mockResolvedValue({ ...data, createdAt: new Date() })
+    expect((await service.sessionDetail(session, result.sessionId)).result).toEqual(result)
     expect(offers.map(({ calcMethod }) => calcMethod)).toEqual(['REDUCING_BALANCE', 'DECLINING_PRINCIPAL', 'FLAT_RATE', 'REDUCING_BALANCE'])
     expect(offers[2].schedule[5]).toMatchObject({ paymentVnd: '1140000', interestVnd: '120000', feeVnd: '20000' })
     expect(offers[2].schedule[6]).toMatchObject({ paymentVnd: '1260000', interestVnd: '240000', feeVnd: '20000' })

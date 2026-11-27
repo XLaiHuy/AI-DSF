@@ -4,14 +4,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   handoffRoutes, LoanUseCase, ManualCompareRequestSchema, ManualCompareResponseSchema, SurveyInvestResponseSchema, SurveyLoanResponseSchema,
   SurveySessionDetailResponseSchema, SurveyTermMonthsSchema, type ManualCompareRequest, type ManualCompareResponse, type SurveyInvestResponse,
-  type SurveyLoanRequest, type SurveyLoanResponse, type parseSurveyHandoff,
+  type SurveyLoanRequest, type SurveyLoanResponse, type SurveyRefinanceResponse, type parseSurveyHandoff,
 } from '@fincopilot/shared-types'
 import { AlertTriangle, Calculator, Loader2, ShieldCheck } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { InvestmentGrowthChart } from '@/components/charts/InvestmentGrowthChart'
-import { LoanAmortizationChart } from '@/components/charts/LoanAmortizationChart'
-import { LoanAprDtiChart } from '@/components/charts/LoanAprDtiChart'
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, TermInfo } from '@/components/ui'
 import { stripSpacedAmount } from '@/components/ui/money-input'
 import { validChartAmount } from '@/components/charts/chart-math'
@@ -19,15 +17,21 @@ import { apiClient, ApiError } from '@/lib/api-client'
 import { formatVnd, profileQuery, surveyHistoryQuery } from '@/lib/workspace-data'
 import { decimal, Field, fieldStyle, manualDraft, manualInput, ManualOfferFields, methodLabels, MoneyField } from './SurveyFields'
 
+import { RefinanceWorkspace } from './RefinanceWorkspace'
+
+const InvestmentGrowthChart = dynamic(() => import('@/components/charts/InvestmentGrowthChart').then(module => module.InvestmentGrowthChart), { ssr: false })
+const LoanAmortizationChart = dynamic(() => import('@/components/charts/LoanAmortizationChart').then(module => module.LoanAmortizationChart), { ssr: false })
+const LoanAprDtiChart = dynamic(() => import('@/components/charts/LoanAprDtiChart').then(module => module.LoanAprDtiChart), { ssr: false })
+
 type Handoff = ReturnType<typeof parseSurveyHandoff>
-type Tab = 'loan' | 'invest' | 'manual'
+type Tab = NonNullable<Handoff['mode']>
 type Result =
   | { tab: 'loan'; data: SurveyLoanResponse; amount: string; term: number }
   | { tab: 'invest'; data: SurveyInvestResponse; queriedFilter: InvestmentFilter; initial: string; term: number }
   | { tab: 'manual'; data: ManualCompareResponse; inputs: ManualCompareRequest['offers'] }
 
 const tabs = [
-  ['loan', 'Khảo sát vay'], ['invest', 'Đầu tư / tích lũy'], ['manual', 'Tự nhập so sánh'],
+  ['loan', 'Khảo sát vay'], ['invest', 'Đầu tư / tích lũy'], ['manual', 'Tự nhập so sánh'], ['refinance', 'Đổi khoản vay / Đảo nợ'],
 ] as const
 const priorities: Record<SurveyLoanRequest['priority'], string> = {
   LOWEST_APR: 'APR thấp nhất',
@@ -59,18 +63,21 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
   const [restoring, setRestoring] = useState(Boolean(handoff.sessionId))
   const [error, setError] = useState('')
   const [result, setResult] = useState<Result | null>(null)
+  const [refinanceResult, setRefinanceResult] = useState<SurveyRefinanceResponse>()
   const request = useRef<AbortController | null>(null)
   const queryClient = useQueryClient()
   const profile = useQuery(profileQuery).data?.profile
   const [form, setForm] = useState({
-    principal: handoff.amount ?? '50000000', initial: '20000000', contribution: '3000000',
-    loan: String(handoff.term ?? 24), invest: '12',
+    principal: (handoff.mode === 'invest' ? undefined : handoff.amount) ?? '50000000',
+    initial: (handoff.mode === 'invest' ? handoff.amount : undefined) ?? '20000000', contribution: '3000000',
+    loan: String((handoff.mode === 'invest' ? undefined : handoff.term) ?? 24),
+    invest: String((handoff.mode === 'invest' ? handoff.term : undefined) ?? 12),
     entity: '', shock: handoff.shockDelta ?? '0',
   })
-  const [loanUseCase, setLoanUseCase] = useState<LoanUseCase | ''>(() => handoff.amount || handoff.auditId ? '' : 'UNSECURED_SALARY')
+  const [loanUseCase, setLoanUseCase] = useState<LoanUseCase | ''>(() => (handoff.mode !== 'invest' && handoff.amount) || handoff.auditId ? '' : 'UNSECURED_SALARY')
   const [category, setCategory] = useState<SurveyLoanRequest['productCategory']>('UNSECURED_LOAN')
-  const [source, setSource] = useState({ sourceArticleId: handoff.articleId, sourceAuditId: handoff.auditId })
-  const touched = useRef({ amount: Boolean(handoff.amount), term: handoff.term != null })
+  const [source, setSource] = useState({ sourceArticleId: handoff.articleId, sourceAuditId: handoff.mode === 'refinance' ? undefined : handoff.auditId })
+  const touched = useRef({ amount: handoff.mode !== 'invest' && Boolean(handoff.amount), term: handoff.mode !== 'invest' && handoff.term != null })
   const [priority, setPriority] = useState<SurveyLoanRequest['priority']>('LOWEST_APR')
   const [investmentFilter, setInvestmentFilter] = useState<InvestmentFilter>('ALL')
   const [manualOffers, setManualOffers] = useState(() => [manualDraft(0), manualDraft(1)])
@@ -114,6 +121,9 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
         setInvestmentFilter(input.productCategory ?? 'ALL')
         setForm((old) => ({ ...old, initial: input.initialVnd, contribution: input.monthlyContributionVnd, invest: String(input.termMonths) }))
         setResult({ tab: 'invest', queriedFilter: input.productCategory ?? 'ALL', data: saved.result, initial: input.initialVnd, term: input.termMonths })
+      } else if (saved.sessionMode === 'REFINANCE_COMPARE') {
+        setTab('refinance')
+        setRefinanceResult(saved.result)
       } else {
         const inputs = saved.inputParams.offers
         setTab('manual')
@@ -154,7 +164,7 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (request.current || restoring) return
+    if (request.current || restoring || tab === 'refinance') return
     const term = Number(tab === 'invest' ? form.invest : form.loan)
     if (tab !== 'manual' && !SurveyTermMonthsSchema.safeParse(term).success) {
       setError('Nhập kỳ hạn nguyên từ 1 đến 600 tháng.')
@@ -219,14 +229,17 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
 
   return <main className="mx-auto max-w-6xl space-y-6">
     <header><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Mình cùng tìm phương án phù hợp nhé</h1></header>
-    <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(15rem,0.35fr)]">
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
       <div className="min-w-0 space-y-4">
-        <div role="group" aria-label="Chế độ khảo sát" className="grid grid-cols-3 rounded-xl border border-border bg-card p-1">
+        <div role="group" aria-label="Chế độ khảo sát" className="grid grid-cols-2 rounded-xl border border-border bg-card p-1 sm:grid-cols-4">
           {tabs.map(([id, label]) => <button type="button" key={id} aria-pressed={tab === id}
             disabled={restoring} onClick={() => changeTab(id)}
             className={`rounded-lg px-2 py-3 text-sm font-semibold ${tab === id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>)}
         </div>
         {restoring ? <p role="status" className="min-h-48 text-sm text-muted-foreground">Đang mở lại phiên khảo sát…</p>
+          : tab === 'refinance' ? <RefinanceWorkspace
+            sourceAuditId={handoff.mode === 'refinance' ? handoff.auditId : undefined}
+            restored={refinanceResult} onResult={setRefinanceResult} />
           : <form onSubmit={submit}>
           <fieldset className="min-w-0 space-y-4">
           <legend className="sr-only">{tabs.find(([id]) => id === tab)?.[1]}</legend>
@@ -251,7 +264,7 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
                 </select>
               </label>
               {loanUseCase && <p id="catalog-term-hint" className="text-xs text-muted-foreground sm:col-span-2">
-                Theo danh mục tham chiếu, {loanDefaults[loanUseCase].label.toLowerCase()} hỗ trợ {loanDefaults[loanUseCase].range} tháng. Mức để bắt đầu mô phỏng {formatVnd(loanDefaults[loanUseCase].amount)} trong {loanDefaults[loanUseCase].term} tháng.
+                Theo danh mục tham chiếu, {loanDefaults[loanUseCase].label.toLowerCase()} hỗ trợ {loanDefaults[loanUseCase].range} tháng. Bạn có thể tính thử với {formatVnd(loanDefaults[loanUseCase].amount)} trong {loanDefaults[loanUseCase].term} tháng.
               </p>}
             </div>
           </>}
@@ -302,7 +315,11 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
         {result?.data.meta?.savedToHistory === false && <p role="status" className="text-sm text-muted-foreground">Kết quả chưa lưu được vào lịch sử.</p>}
         {result && <Results key={result.data.sessionId} result={result} investmentFilter={investmentFilter} />}
       </div>
-      <aside className="min-w-0"><Card className="bg-accent/50">
+      <aside className="min-w-0 space-y-4 self-start lg:sticky lg:top-4">
+        <Card><CardHeader><CardTitle>Nguồn được kiểm tra</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm"><p>Mỗi phương án có liên kết đến nguồn niêm yết để bạn đối chiếu lãi và phí.</p>
+          <Link className="font-semibold text-primary underline" href="/forensic">Giám định hợp đồng hoặc lời mời vay</Link></CardContent>
+        </Card><Card className="bg-accent/50">
         <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck aria-hidden="true" size={19} className="text-primary" />Cách đọc nhanh</CardTitle></CardHeader>
         <CardContent className="space-y-3 text-sm leading-relaxed text-muted-foreground">
           <p><strong className="text-foreground">APR</strong> tính chi phí theo số tiền thực nhận và toàn bộ lịch trả.</p>
@@ -341,6 +358,8 @@ function HighAprLink({ apr, amount, term, label }: { apr: string; amount: string
   </p>
 }
 
+const dtiColors = { SAFE: '#227048', MODERATE: '#b48414', HIGH_PRESSURE: '#c25a28', CRITICAL_OVERLOAD: '#ae3034', UNAVAILABLE: '#777' }
+
 function LoanResults({ result }: { result: Extract<Result, { tab: 'loan' }> }) {
   const [open, setOpen] = useState(0)
   const { data, amount, term } = result
@@ -350,16 +369,16 @@ function LoanResults({ result }: { result: Extract<Result, { tab: 'loan' }> }) {
     <Card><CardHeader><CardTitle>Phương án từ danh mục</CardTitle>
       <CardDescription>Ưu tiên độ tin cậy của nguồn, sau đó xếp theo tiêu chí chi phí bạn chọn.</CardDescription></CardHeader>
       <CardContent className="space-y-3">{data.offers.map((item, index) => <div key={item.productId}
-        className={`rounded-xl border p-4 ${open === index ? 'border-primary bg-accent/50' : 'border-border'}`}>
-        <button type="button" aria-pressed={open === index} onClick={() => setOpen(index)} className="flex w-full flex-wrap justify-between gap-2 rounded text-left">
+        className={`relative rounded-xl border p-4 [&_a]:relative [&_button:not([aria-pressed])]:relative ${open === index ? 'border-primary bg-accent/50' : 'border-border'}`}>
+        <button type="button" aria-pressed={open === index} onClick={() => setOpen(index)} className="flex w-full flex-wrap justify-between gap-2 rounded text-left after:absolute after:inset-0 after:rounded-xl">
           <span><strong>{item.institutionName}</strong><span className="block text-sm text-muted-foreground">{item.productName}</span></span>
-          <strong>{formatVnd(item.monthlyPaymentFirstVnd)} <span className="text-xs font-normal">tháng đầu</span></strong>
+          <strong className="text-xl text-primary">{formatVnd(item.monthlyPaymentFirstVnd)} <span className="text-xs font-normal">/tháng</span></strong>
         </button>
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
           <Badge variant={item.trustScore >= 90 ? 'safe' : 'warning'}>Uy tín {item.trustScore}/100</Badge>
           {item.fitScore != null && <Badge variant="outline">Phù hợp hồ sơ {item.fitScore}/100</Badge>}
           <span>APR <TermInfo term="APR" /> <strong>{percent(item.effectiveAprPct)}%</strong></span>
-          <span>Tổng chi phí {formatVnd(item.totalInterestAndFeesVnd)}</span>
+          <span>Tổng trả {formatVnd(item.totalPayableVnd)}</span><span>Tổng chi phí {formatVnd(item.totalInterestAndFeesVnd)}</span>
           <Badge variant="outline">{rateLabels[item.rateType]}</Badge>
           <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="text-primary underline">{item.sourceLabel}</a>
         </div>
@@ -380,14 +399,19 @@ function LoanResults({ result }: { result: Extract<Result, { tab: 'loan' }> }) {
         {offer.stressPaymentFirstVnd != null && <dl className="mb-4">
           <Metric label="Khoản trả tham chiếu sau ưu đãi hoặc khi lãi tăng 2 điểm %" value={formatVnd(offer.stressPaymentFirstVnd)} />
         </dl>}
-        <details className="min-w-0 space-y-3">
+        <dl className="mb-4 grid gap-3 sm:grid-cols-3">
+          <Metric label="Tháng đầu" value={formatVnd(offer.monthlyPaymentFirstVnd)} />
+          <Metric label="Tổng tiền lãi" value={formatVnd(offer.schedule.reduce((sum, row) => sum + BigInt(row.interestVnd.split('.')[0]), 0n).toString())} />
+          <Metric label="APR" value={percent(offer.effectiveAprPct) + '%'} />
+        </dl>
+        <details open className="min-w-0 space-y-3">
           <summary className="cursor-pointer text-sm font-semibold">Xem bảng trả nợ tháng</summary>
           <div className="max-h-80 overflow-auto rounded-xl border border-border" tabIndex={0} role="region" aria-label="Lịch trả nợ theo tháng">
             <table className="w-full min-w-[580px] text-right text-sm">
               <caption className="sr-only">Lịch trả nợ theo tháng của {offer.productName}</caption>
-              <thead className="bg-muted/60"><tr>{['Tháng', 'Khoản trả', 'Gốc', 'Lãi', 'Phí', 'Dư nợ'].map((label) => <th key={label} scope="col" className="p-3">{label}</th>)}</tr></thead>
+              <thead className="bg-muted/60"><tr>{['Tháng', 'Khoản trả', 'Gốc', 'Lãi', 'Phí', 'Dư nợ còn lại'].map((label) => <th key={label} scope="col" className="p-3">{label}</th>)}</tr></thead>
               <tbody>{offer.schedule.map((row) => <tr key={row.month} className="border-t border-border">
-                <th scope="row" className="p-2">{row.month}</th>
+                <th scope="row" className="p-2">Tháng {row.month}</th>
                 {[row.paymentVnd, row.principalVnd, row.interestVnd, row.feeVnd ?? '0', row.remainingBalanceVnd].map((value, i) => <td key={i} className="p-2">{formatVnd(value)}</td>)}
               </tr>)}</tbody>
             </table>
@@ -397,10 +421,14 @@ function LoanResults({ result }: { result: Extract<Result, { tab: 'loan' }> }) {
     </Card>
     {dti && <Card><CardHeader><CardTitle>Khả năng trả nợ · DTI <TermInfo term="DTI" /></CardTitle>
       <CardDescription>{offer.productName}</CardDescription></CardHeader>
-      <CardContent><dl className="grid gap-3 sm:grid-cols-2">
-        <Metric label="Tỷ lệ trả nợ" value={dti.bestOfferDtiPct === null ? 'Chưa xác định với thu nhập hiện có' : percent(dti.bestOfferDtiPct) + '%'} />
-        <Metric label="Dòng tiền còn lại mỗi tháng" value={formatVnd(dti.disposableCashflowVnd)} />
-      </dl><p className="mt-2 text-xs text-muted-foreground">{dti.disclaimer}</p></CardContent>
+      <CardContent>
+        <p className="flex flex-wrap items-baseline justify-between gap-2">
+          <strong className="text-3xl">{dti.bestOfferDtiPct === null ? 'Chưa xác định với thu nhập hiện có' : percent(dti.bestOfferDtiPct) + '%'}</strong>
+          <span>Sau chi phí và nợ, còn khoảng {formatVnd(dti.disposableCashflowVnd)}</span>
+        </p>
+        {dti.bestOfferDtiPct !== null && <progress aria-label="Tỷ lệ thu nhập dùng trả nợ" className="dti-progress mt-3 block w-full" max="100"
+          value={dti.bestOfferDtiPct} style={{ color: dtiColors[dti.riskBand] }} />}
+        <p className="mt-2 text-xs text-muted-foreground">{dti.disclaimer}</p></CardContent>
     </Card>}
     {data.aiExplanation && <Card><CardHeader><CardTitle>{data.meta?.degradedMode ? 'Nhận xét từ kết quả tính' : 'Nhận xét và đánh đổi từ AI'}</CardTitle></CardHeader>
       <CardContent className="space-y-2 text-sm"><p>{data.aiExplanation.summary}</p>
@@ -430,7 +458,7 @@ function InvestmentResults({ result, filter }: { result: Extract<Result, { tab: 
           <dl className="grid gap-2 sm:grid-cols-3">
             <Metric label="Tiền mình góp" value={formatVnd(scenario.totalContributedVnd)} />
             <Metric label="Lãi ròng" value={formatVnd(scenario.netProfitVnd)} />
-            <Metric label="Giá trị cuối kỳ" value={formatVnd(scenario.netValueVnd)} />
+            <div><dt className="text-sm">Giá trị ròng cuối kỳ</dt><dd className="text-2xl font-bold text-primary">{formatVnd(scenario.netValueVnd)}</dd></div>
           </dl>
           {scenarios && <dl className="grid gap-2 sm:grid-cols-3" aria-label="Ba kịch bản quỹ mở">
             {scenarioLabels.map(([key, label]) => <Metric key={key}

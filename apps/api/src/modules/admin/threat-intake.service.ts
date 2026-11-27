@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq'
-import { BadRequestException, Injectable, Logger, type OnModuleInit } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, Optional, type OnModuleInit } from '@nestjs/common'
 import { AI_TASK_SCHEMAS, type ThreatDraft, type ThreatExtract, type ThreatIndicatorInput } from '@fincopilot/shared-types'
 import type { Job, Queue } from 'bullmq'
 import { PrismaService } from '../../common/prisma.service'
+import { homeMarketCacheKey } from '../../common/public-cache-keys'
+import { RedisService } from '../../common/redis.service'
 import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { normalizeVietnamese } from '../forensic/data/trusted-institutions'
 import { maskForensicText } from '../forensic/qr-evidence'
@@ -73,7 +75,10 @@ export class ThreatIntakeService extends WorkerHost implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly ai: AiGatewayService,
     private readonly memory: ThreatMemoryService,
+    @Optional() private readonly redis?: RedisService,
   ) { super() }
+
+  scheduler() { return this.queue.getJobScheduler('daily-threat-intake') }
 
   async onModuleInit() {
     await this.queue.upsertJobScheduler('daily-threat-intake', { every: dayMs }, { name: 'daily' })
@@ -131,9 +136,10 @@ export class ThreatIntakeService extends WorkerHost implements OnModuleInit {
     const key = sourceKey ?? '*'
     const current = this.running.get(key)
     if (current) return current
-    const crawl = this.crawl(sourceKey).finally(() => {
-      this.running.delete(key)
+    const crawl = this.crawl(sourceKey).finally(async () => {
       this.memory.invalidate()
+      await this.redis?.del(homeMarketCacheKey)
+      this.running.delete(key)
     })
     this.running.set(key, crawl)
     return crawl
