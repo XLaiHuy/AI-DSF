@@ -12,10 +12,12 @@ import { RadarImageCache } from './radar-image-cache'
 import { ProfileAuthService } from '../profile-auth/profile-auth.service'
 import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { AI_TASK_SCHEMAS, RadarDailyBriefRequestSchema } from '@fincopilot/shared-types'
-import type { SessionContext } from '@fincopilot/shared-types'
+import type { SessionContext, ThreatTrendsQuery, ThreatTrendsResponse } from '@fincopilot/shared-types'
 import { fetchPublicDocument, fetchPublicImage } from '../admin/threat-safety'
 import { attachThreatDraft, publicThreatAlertWhere } from '../forensic/threat-draft'
 import { ThreatMemoryService } from '../forensic/threat-memory.service'
+import { backfillThreatTaxonomy } from '../forensic/threat-taxonomy'
+import { invalidateThreatTrends, readThreatTrends, threatTrendCacheKey } from './threat-trends'
 
 import { relevantArticleWhere, relevantHeadline } from './legal-feed'
 
@@ -230,6 +232,15 @@ export class RadarService extends WorkerHost implements OnModuleInit {
 
   async onModuleInit() {
     await this.queue.upsertJobScheduler('radar-periodic-scan', { every: 15 * 60_000 }, { name: 'fetch-all' })
+    try {
+      const updated = await backfillThreatTaxonomy(this.prisma)
+      if (updated) {
+        await invalidateThreatTrends(this.redis)
+        this.logger.log({ event: 'threat_taxonomy_backfilled', updated })
+      }
+    } catch (error) {
+      this.logger.warn({ event: 'threat_taxonomy_backfill_failed', code: error instanceof Error ? error.name : undefined })
+    }
   }
 
   async process(job: Job<{ sourceKey?: string }>) {
@@ -636,6 +647,15 @@ export class RadarService extends WorkerHost implements OnModuleInit {
       }
       return saved
     }, { isolationLevel: 'ReadCommitted' })
+  }
+
+  async alertTrends(query: ThreatTrendsQuery): Promise<ThreatTrendsResponse> {
+    const key = threatTrendCacheKey(query)
+    const cached = await this.redis?.getJson<ThreatTrendsResponse>(key)
+    if (cached) return cached
+    const result = await readThreatTrends(this.prisma, query)
+    await this.redis?.setJson(key, result, 300)
+    return result
   }
 
   async listAlerts() {

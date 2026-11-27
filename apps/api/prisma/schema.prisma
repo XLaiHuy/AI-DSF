@@ -103,9 +103,13 @@ model ThreatAlert {
   embeddingJson      Json?                   @map("embedding_json") @db.JsonB
   embeddingModel     String?                 @map("embedding_model") @db.VarChar(64)
   distinctSessionHashes Json?                @map("distinct_session_hashes") @db.JsonB
+  vnAisCode          String?                 @map("vn_ais_code") @db.VarChar(20)
+  gasaCategory       String?                 @map("gasa_category") @db.VarChar(40)
+  targetAudience     String?                 @map("target_audience") @db.VarChar(30)
   feedbackExamples   ThreatFeedbackExample[]
 
   @@index([verificationStatus, publishedAt], map: "threat_alert_verification_status_published_at_idx")
+  @@index([verificationStatus, publishedAt, vnAisCode], map: "threat_alert_status_published_ais_idx")
   @@index([originSource, createdAt], map: "threat_alert_origin_source_created_at_idx")
   @@map("threat_alert")
 }

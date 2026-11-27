@@ -42,7 +42,7 @@ const directRules: Readonly<Record<string, number>> = {
   RULE_07_PONZI_UNREALISTIC_RETURN: 11, RULE_08_RECOVERY_SCAM_TRAP: 18, RULE_10_FAKE_EXCHANGE_CRYPTO_CLONE: 11,
 }
 const categoryFallback: Readonly<Record<string, number>> = {
-  PHISHING: 23, FAKE_APP: 23, PONZI: 11, RECOVERY_SCAM: 18, IMPERSONATION: 7, IDENTITY_THEFT: 16,
+  PHISHING: 23, PONZI: 11, RECOVERY_SCAM: 18,
 }
 
 export function classifyVnScamTaxonomy(input: {

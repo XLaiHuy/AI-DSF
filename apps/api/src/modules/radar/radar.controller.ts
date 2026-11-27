@@ -1,7 +1,9 @@
 import { BadRequestException, Body, Controller, Get, Header, NotFoundException, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common'
+import { ThreatTrendsQuerySchema, type ThreatTrendsQuery } from '@fincopilot/shared-types'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { GuestSessionGuard } from '../../common/guest-session.guard'
 import { publicRadarCacheControl } from '../../common/public-cache-keys'
+import { ZodValidationPipe } from '../../common/zod-validation.pipe'
 import { RadarService } from './radar.service'
 
 @Controller('radar')
@@ -77,6 +79,12 @@ export class RadarController {
   @Header('Cache-Control', publicRadarCacheControl)
   listAlerts() {
     return this.service.listAlerts()
+  }
+
+  @Get('alerts/trends')
+  @Header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
+  alertTrends(@Query(new ZodValidationPipe(ThreatTrendsQuerySchema)) query: ThreatTrendsQuery) {
+    return this.service.alertTrends(query)
   }
 
   @Get('alerts/:id')

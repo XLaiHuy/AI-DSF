@@ -52,8 +52,9 @@ const sources = [
 const server = createServer(async (request, response) => {
   response.setHeader('content-type', 'application/json; charset=utf-8')
   const liveRequest = /(?:^|;\s*)fincopilot_e2e_mode=phase-two(?:;|$)/.test(request.headers.cookie ?? '')
-  if (liveRequest &&
-      /^\/api\/v1\/(?:auth|profile|forensic|survey)(?:[/?]|$)/.test(request.url ?? '')) {
+  const liveTrends = /^\/api\/v1\/radar\/alerts\/trends(?:\?|$)/.test(request.url ?? '')
+  if (liveTrends || (liveRequest &&
+      /^\/api\/v1\/(?:auth|profile|forensic|survey)(?:[/?]|$)/.test(request.url ?? ''))) {
     const upstream = httpRequest({
       hostname: '127.0.0.1', port: Number(process.env.PLAYWRIGHT_PHASE_TWO_API_PORT), path: request.url,
       method: request.method, headers: proxyHeaders(request.headers), agent: false,

@@ -5,12 +5,13 @@ import { ArrowDown, ArrowUpRight, ExternalLink, RefreshCw, Search, Bell, Calenda
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { startTransition, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { handoffRoutes } from '@fincopilot/shared-types'
 import { Button } from '@/components/ui'
 import { MarketRateBenchmarkChart } from '@/components/charts/MarketRateBenchmarkChart'
 import { useRadarDesk, type DeskPanel, type RadarTab } from '@/components/layout/RadarDeskContext'
 import { DeskDialog } from '@/components/radar/DeskDialog'
+import { ThreatTrendBoard } from '@/components/radar/ThreatTrendBoard'
 import { EditorialImage } from '@/components/radar/EditorialImage'
 import { getReadingHistory, getSavedArticles, readingStoreEvent, toggleSavedArticle, type ReadingEntry } from '@/components/radar/ReadingStore'
 import { QuickSurvey, RecentActivity, ProfileStatus } from '@/components/home/OverviewWidgets'
@@ -146,6 +147,21 @@ function readRadarTab(params: Pick<URLSearchParams, 'get'>): RadarTab {
   const feed = params.get('feed')
   const view = params.get('tab')
   return feed === 'saved' || feed === 'history' ? feed : view === 'alerts' || view === 'personal' ? view : 'articles'
+}
+
+const radarTabs = [['personal', 'Dành cho bạn'], ['articles', 'Xu hướng'], ['alerts', 'Cảnh báo'], ['saved', 'Đã lưu']] as const
+
+function RadarTabs({ tab, selectView }: { tab: RadarTab; selectView: (view: RadarTab) => void }) {
+  const [pendingTab, setPendingTab] = useState<RadarTab>()
+  const [pending, loadView] = useTransition()
+  const activeTab = pending ? pendingTab ?? tab : tab
+  return <div className="desk-tabs" role="group" aria-label="Loại nội dung">
+    {radarTabs.map(([key, label]) => <button className="desk-tab" key={key} type="button"
+      aria-pressed={activeTab === key} onClick={() => {
+        setPendingTab(key)
+        loadView(() => selectView(key))
+      }}>{label}</button>)}
+  </div>
 }
 
 function RadarWorkspace() {
@@ -432,7 +448,7 @@ function RadarWorkspace() {
           <button className="desk-bell" aria-label="Xem cảnh báo lừa đảo" onClick={()=>selectView('alerts')}><Bell size={20}/></button></div>
           <div className="desk-chips" role="group" aria-label="Lọc nhanh theo chủ đề">{showTopics(Object.entries(categoryLabels).slice(0,4))}
             {(category || search || period!=='all') && <button onClick={clearFilters}>Xóa bộ lọc</button>}</div></div>
-        <div className="desk-tabs" role="group" aria-label="Loại nội dung">{([['personal','Dành cho bạn'],['articles','Xu hướng'],['alerts','Cảnh báo'],['saved','Đã lưu']] as const).map(([key,label])=><button className="desk-tab" key={key} aria-pressed={tab===key} onClick={()=>selectView(key)}>{label}</button>)}</div>
+        <RadarTabs tab={tab} selectView={selectView} />
         <div className="desk-stream">
         {tab === 'articles' ? <div className="radar-article-content" aria-label="Tin thị trường">
           {articlesQuery.isPending && <p role="status" className="radar-state-message">Đang tải tin…</p>}
@@ -467,6 +483,7 @@ function RadarWorkspace() {
           </div>}
         </div> : tab === 'alerts' ? <div className="radar-alert-feed" aria-label="Cảnh báo lừa đảo">
           <header className="radar-alert-intro"><p className="radar-alert-eyebrow">RADAR / AN TOÀN TÀI CHÍNH</p><h1>Cảnh báo lừa đảo</h1><p>“Đã xác minh” là trạng thái cảnh báo; mở nguồn để tự đối chiếu trường hợp của bạn.</p></header>
+          <ThreatTrendBoard />
           {alertsQuery.isPending && <p role="status" className="radar-state-message">Đang tải cảnh báo…</p>}
           {alertsQuery.isError && <div className="radar-state-message radar-error-state"><p role="alert">Không tải được cảnh báo.</p><Button variant="outline" size="sm" onClick={() => void alertsQuery.refetch()}><RefreshCw size={14} aria-hidden="true"/> Thử lại</Button></div>}
           {publishedAlerts?.map((alert, index) => <article className={`radar-alert-row ${index === 0 ? 'is-lead' : ''}`} key={alert.id}>

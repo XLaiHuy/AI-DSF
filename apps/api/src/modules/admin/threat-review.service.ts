@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common'
 import { type ThreatDraft, type ThreatFeedback, type ThreatFeedbackPatch, type ThreatIndicatorInput, type ThreatPatch, type ThreatStatus,
   ContinualLearningOverviewSchema, ThreatIndicatorInputSchema, ThreatRndEvalResultSchema, type ThreatRndEvalResult, VerdictLevel } from '@fincopilot/shared-types'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../common/prisma.service'
+import { RedisService } from '../../common/redis.service'
+import { threatTaxonomyFields } from '../forensic/threat-taxonomy'
+import { invalidateThreatTrends } from '../radar/threat-trends'
 import type { BenchmarkCase } from '../forensic/eval/benchmark-cases'
 import { normalizeVietnamese } from '../forensic/data/trusted-institutions'
 import { maskForensicText } from '../forensic/qr-evidence'
@@ -39,7 +42,8 @@ function excerptFields(draft: Partial<Omit<ThreatDraft, 'indicators'>>) {
 
 @Injectable()
 export class ThreatReviewService {
-  constructor(private readonly prisma: PrismaService, private readonly memory: ThreatMemoryService) {}
+  constructor(private readonly prisma: PrismaService, private readonly memory: ThreatMemoryService,
+    @Optional() private readonly redis?: RedisService) {}
 
   async list(status?: ThreatStatus) {
     const [rows, snapshot] = await Promise.all([
@@ -92,7 +96,7 @@ export class ThreatReviewService {
   async create(draft: ThreatDraft) {
     const indicators = this.validate(draft.indicators, new Set())
     const row = await this.prisma.threatAlert.create({ data: {
-      ...excerptFields(draft), id: randomUUID(), originSource: 'ADMIN_INGEST', threatCategory: draft.threatCategory,
+      ...excerptFields(draft), ...threatTaxonomyFields(draft), id: randomUUID(), originSource: 'ADMIN_INGEST', threatCategory: draft.threatCategory,
       tacticSummary: maskForensicText(draft.tacticSummary),
       preventionGuidance: maskForensicText(draft.preventionGuidance),
       indicators: { create: indicators.map((indicator) => ({ id: randomUUID(), ...indicator })) },
@@ -140,13 +144,16 @@ export class ThreatReviewService {
       const reembed = published && (current.verificationStatus !== 'VERIFIED' || summary !== current.tacticSummary || excerpt !== current.sourceExcerpt)
       const embedding = reembed ? await this.memory.computeEmbedding([summary, excerpt].filter(Boolean).join('\n'), publication?.aliases) : null
       return tx.threatAlert.update({ where: { id }, data: {
-        ...fields, verificationStatus, updatedAt: now,
+        ...fields, ...threatTaxonomyFields({ tacticSummary: summary, sourceExcerpt: excerpt,
+          threatCategory: fields.threatCategory ?? current.threatCategory }),
+        verificationStatus, updatedAt: now,
         ...(reembed && { embeddingJson: embedding?.vector ?? Prisma.DbNull, embeddingModel: embedding?.model ?? null }),
         ...(patch.verificationStatus && { publishedAt: published ? current.publishedAt ?? now : null,
           verifiedAt: published ? current.verifiedAt ?? now : null }),
       }, select: { id: true } })
     })
     this.memory.invalidate()
+    await invalidateThreatTrends(this.redis)
     return row
   }
 

@@ -1,6 +1,32 @@
 import { z } from 'zod'
 import { AnalysisMode, IndicatorType, VerificationStatus } from '../enums'
 import { decimalString } from './decimal'
+import { ForensicTaxonomyMatchSchema } from './forensic.dto'
+
+export const ThreatTrendWindowSchema = z.enum(['7d', '30d', '90d'])
+export const ThreatTrendAudienceSchema = z.enum(['ALL', ...ForensicTaxonomyMatchSchema.shape.targetAudience.options])
+export const ThreatTrendsQuerySchema = z.strictObject({
+  window: ThreatTrendWindowSchema.default('7d'),
+  audience: ThreatTrendAudienceSchema.default('ALL'),
+})
+export type ThreatTrendsQuery = z.infer<typeof ThreatTrendsQuerySchema>
+
+export const ThreatTrendsResponseSchema = z.strictObject({
+  window: ThreatTrendWindowSchema,
+  audience: ThreatTrendAudienceSchema,
+  mode: z.enum(['VERIFIED_TRENDS', 'MONITORING_CATALOG']),
+  generatedAt: z.iso.datetime(),
+  totalVerifiedInWindow: z.number().int().nonnegative(),
+  items: z.array(ForensicTaxonomyMatchSchema.extend({
+    currentCount: z.number().int().nonnegative(),
+    previousCount: z.number().int().nonnegative(),
+    trendStatus: z.enum(['RISING', 'MONITORING']),
+    sampleAlertId: z.uuid().nullable(),
+    sampleTacticSummary: z.string().nullable(),
+    handoffHref: z.string().regex(/^\/forensic(?:\?|$)/u),
+  })).max(24),
+})
+export type ThreatTrendsResponse = z.infer<typeof ThreatTrendsResponseSchema>
 
 export const ThreatIndicatorSchema = z.strictObject({
   indicatorType: IndicatorType,

@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomUUID } from 'node:crypto'
+import { threatTaxonomyFields } from './threat-taxonomy'
 import { Injectable, Optional } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Prisma } from '@prisma/client'
@@ -257,6 +258,8 @@ export class ThreatMemoryService {
   }
 
   async applyProposal({ sessionHash, candidates, sourceExcerpt }: CommunityProposal) {
+    const tacticSummary = 'Dấu hiệu trong một báo cáo giám định rủi ro cao'
+    const taxonomy = threatTaxonomyFields({ threatCategory: 'PHISHING', tacticSummary, sourceExcerpt })
     const memory = await this.get()
     for (const { indicatorType, publicValue, fingerprint } of candidates) {
       if (memory.exclusions.has(fingerprint) || publicValue && (
@@ -287,7 +290,7 @@ export class ThreatMemoryService {
             if (recent >= 10) return
             await tx.threatAlert.create({ data: {
               id: randomUUID(), originSource: 'FORENSIC_COMMUNITY', threatCategory: 'PHISHING',
-              tacticSummary: `Dấu hiệu ${indicatorType} từ một lượt giám định rủi ro cao`,
+              tacticSummary, ...taxonomy,
               preventionGuidance: 'Đối chiếu bằng chứng và xác minh qua kênh chính thức trước khi công bố.',
               distinctSessionHashes: [sessionHash], sourceExcerpt: maskForensicText(sourceExcerpt).slice(0, 2_000),
               indicators: { create: { id: randomUUID(), indicatorType, indicatorText: fingerprint } },
