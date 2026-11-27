@@ -202,7 +202,7 @@ test('Cột Scam & Finance không lặp bài đang đọc và không gán xác m
   await page.goto('/radar?tab=personal')
   await expect(page.locator('.radar-recommendation-row')).toHaveCount(2)
   await expect(page.locator('.desk-rail .desk-pick')).toHaveCount(1)
-  await expect(page.locator('.desk-rail .desk-pick')).toContainText('Bài viết về lừa đảo · Chưa xác minh cảnh báo')
+  await expect(page.locator('.desk-rail .desk-pick')).toContainText('Tin lừa đảo · NCSC')
   await expect(page.locator('.desk-rail .desk-pick')).not.toContainText(makeArticle(0).title)
 })
 

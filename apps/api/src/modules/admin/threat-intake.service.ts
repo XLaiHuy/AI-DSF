@@ -75,6 +75,8 @@ export class ThreatIntakeService extends WorkerHost implements OnModuleInit {
     private readonly memory: ThreatMemoryService,
   ) { super() }
 
+  scheduler() { return this.queue.getJobScheduler('daily-threat-intake') }
+
   async onModuleInit() {
     await this.queue.upsertJobScheduler('daily-threat-intake', { every: dayMs }, { name: 'daily' })
   }

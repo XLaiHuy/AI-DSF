@@ -135,6 +135,7 @@ export function FinancialProfileForm({
       setCoachError('Kiểm tra số tiền trong các ô trước khi xem gợi ý.')
       return
     }
+    setCoach(null)
     setCoaching(true)
     try {
       const result = await apiClient.post('/profile/coach', { ...parsed.data, riskAppetite: risk, primaryGoal: goal }, { schema: ProfileCoachResponseSchema })

@@ -153,6 +153,7 @@ model ThreatIndicator {
 }
 
 model User {
+  avatarData          String?              @map("avatar_data") @db.Text
   id                  String               @id @db.Uuid
   email               String               @unique @db.VarChar(255)
   fullName            String?              @map("full_name") @db.VarChar(150)

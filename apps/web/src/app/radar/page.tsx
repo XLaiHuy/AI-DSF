@@ -17,7 +17,6 @@ import { QuickSurvey, RecentActivity, ProfileStatus } from '@/components/home/Ov
 import { RadarDailyBrief, type DailyBriefResponse } from '@/components/radar/RadarDailyBrief'
 import { ApiError, apiClient } from '@/lib/api-client'
 import { marketOverviewQuery, sessionQuery } from '@/lib/workspace-data'
-import './desk.css'
 
 type Source = { sourceKey: string; name: string; lastFetchStatus: string | null; lastAttemptAt: string | null; lastSuccessAt: string | null }
 type ArticleSource = { sourceName: string; url: string; firstSeenAt?: string | null; lastSeenAt?: string | null }
@@ -138,7 +137,7 @@ function RecommendationStory({ article, reason, lead = false }: { article: Artic
 }
 
 function sourceState(status: string | null) {
-  if (status === 'SUCCESS') return { label: 'Quét thành công', className: 'is-success' }
+  if (status === 'SUCCESS') return { label: 'Đang hoạt động', className: 'is-success' }
   if (status === 'ERROR') return { label: 'Quét lỗi', className: 'is-error' }
   return { label: status ? 'Chưa rõ trạng thái' : 'Chưa có lần quét', className: 'is-idle' }
 }
@@ -489,7 +488,7 @@ function RadarWorkspace() {
         {market.isPending && <p role="status">Đang tải tin chọn lọc…</p>}
         {market.isError && <button onClick={()=>void market.refetch()}>Tải lại tin chọn lọc</button>}
         {railItems.map((item) => <article className="desk-pick" key={`${item.kind}-${item.id}`}>
-          <p className="desk-rail-badge">{item.kind === 'ALERT' ? 'Cảnh báo đã xác minh' : item.kind === 'SCAM_NEWS' ? 'Bài viết về lừa đảo · Chưa xác minh cảnh báo' : categoryLabels[articles.find((article) => article.id === item.id)?.categories[0] ?? ''] ?? 'Tin tài chính'} · {item.kind === 'ALERT' ? 'Dẫn chứng: ' : 'Nguồn: '}{item.sourceName || 'Chưa rõ nguồn'}</p>
+          <p className="desk-rail-badge">{item.kind === 'ALERT' ? 'Cảnh báo' : item.kind === 'SCAM_NEWS' ? 'Tin lừa đảo' : categoryLabels[articles.find((article) => article.id === item.id)?.categories[0] ?? ''] ?? 'Tin tài chính'} · {item.sourceName || 'Chưa rõ nguồn'}</p>
           <div className={`desk-pick-main ${item.imageUrl ? '' : 'desk-pick-main--text'}`}><h3><Link href={item.kind === 'ALERT' ? `/radar/${item.id}?kind=alert` : `/radar/${item.id}`}>{item.title}</Link></h3>
             {item.imageUrl && <EditorialImage className="desk-rail-image" imageUrl={item.imageUrl} proxyUrl={item.proxyUrl} alt={item.title} categories={[item.kind === 'FINANCE_NEWS' ? 'MARKET' : 'FINANCIAL_FRAUD']} />}</div>
           <div className="desk-pick-foot">{item.publishedAt ? <time dateTime={item.publishedAt}>{formatDateTime(item.publishedAt, true)}</time> : <span>Chưa rõ ngày công bố</span>}
@@ -500,7 +499,7 @@ function RadarWorkspace() {
           <div className="desk-pick-foot"><Published article={article}/><details><summary>Vì sao?</summary><p>{highlightReasons(article).join(' · ') || 'Theo thời gian công bố.'}</p></details></div>
         </article>)}
         {tab === 'personal' && !market.isPending && !market.isError && railItems.length === 0 && railFallback.length === 0 && <p className="desk-rail-empty">Chưa có tin khác ngoài bản tin đang đọc.</p>}
-        <section className="desk-section"><h2>Trạng thái nguồn</h2>{sources.length ? sources.map((source) => <p className="desk-source-line" key={source.sourceKey}>{source.name}<span>{sourceState(source.lastFetchStatus).label}</span></p>) : <p>Chưa có dữ liệu trạng thái.</p>}
+        <section className="desk-section"><h2>Trạng thái nguồn</h2>{sources.length ? sources.map((source) => <p className="desk-source-line" key={source.sourceKey}>{source.name}<span><i className={'radar-source-state ' + sourceState(source.lastFetchStatus).className} aria-label={sourceState(source.lastFetchStatus).label} /> {source.lastAttemptAt ? formatDateTime(source.lastAttemptAt, true) : sourceState(source.lastFetchStatus).label}</span></p>) : <p>Chưa có dữ liệu trạng thái.</p>}
           <button className="desk-underline" onClick={() => setPanel('sources')}>Xem chi tiết nguồn</button></section>
         <section className="desk-section"><h2>Hoạt động gần đây</h2><button className="desk-underline" onClick={() => setPanel('history')}>Xem hoạt động</button></section></>}
       </aside>
@@ -523,7 +522,6 @@ function RadarWorkspace() {
               </li>
             })}
           </ul> : <p className="radar-context-empty">Trạng thái nguồn chưa được API cung cấp.</p>}
-          <p className="radar-source-footnote">Quét thành công không đồng nghĩa nội dung đã được xác minh.</p>
         </section>}
       {panel==='topics' && <><div className="desk-cloud">{showTopics(Object.entries(categoryLabels))}</div><div className="radar-date-controls">
             <label><span className="sr-only">Lọc thời gian</span><select aria-label="Lọc thời gian" value={period} onChange={(event) => setPeriod(event.target.value as typeof period)}>

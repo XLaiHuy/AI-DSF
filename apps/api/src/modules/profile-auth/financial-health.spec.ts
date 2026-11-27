@@ -1,7 +1,7 @@
 import { ConfigService } from '@nestjs/config'
 import { describe, expect, it, vi } from 'vitest'
 import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
-import { coachContext, hasGroundedNumbers } from './coach-guidance'
+import { coachContext, formatCoachAdviceNumbers, hasGroundedNumbers } from './coach-guidance'
 import { calculateFinancialHealth } from './financial-health.engine'
 import { ProfileCopilotController } from './profile-copilot.controller'
 
@@ -40,6 +40,11 @@ describe('financial health', () => {
 })
 
 describe('profile Copilot endpoints', () => {
+  it('formats currency and uses the additional EMI already computed by the engine', () => {
+    expect(formatCoachAdviceNumbers('90000000 VNĐ, 10000000.00 đồng, 5 tháng, 11.11%')).toBe('90 000 000 đ, 10 000 000 đ, 5 tháng, 11.11%')
+    expect(formatCoachAdviceNumbers('90.000.000 đồng, 10 000 000 VNĐ')).toBe('90 000 000 đ, 10 000 000 đ')
+    expect(coachContext(profile, calculateFinancialHealth(profile))).toMatchObject({ availableForNewEmiVnd: '3400000', emergencyStatus: 'BUILDING_3_6M' })
+  })
   it('parses a Vietnamese sentence when the AI provider is offline', async () => {
     const ai = new AiGatewayService(new ConfigService())
     vi.spyOn(ai, 'generateStructured').mockRejectedValue(new Error('offline'))
@@ -71,7 +76,7 @@ describe('profile Copilot endpoints', () => {
     const health = calculateFinancialHealth(profile)
     await expect(controller.coach(profile)).resolves.toEqual({ ...advice, health, source: 'AI' })
     expect(generate).toHaveBeenCalledWith('PROFILE_HEALTH_COACH', expect.anything(), expect.objectContaining({
-      health, dtiBasis: 'thu nhập thực nhận', monthlySurplusVnd: '8000000',
+      health: coachContext(profile, health).health, dtiBasis: 'thu nhập thực nhận', monthlySurplusVnd: '8000000',
     }))
     for (let attempt = 0; attempt < 2; attempt++) {
       const fallback = await controller.coach(profile)

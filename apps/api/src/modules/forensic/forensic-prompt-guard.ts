@@ -118,6 +118,22 @@ export function inspectForensicInput(raw: string, aliases: readonly TeencodeAlia
   }
 }
 
+export function assistantIntro(raw: string) {
+  return /^(?:ban la ai|ban lam duoc gi|xin chao(?: ban)?|gioi thieu ve ban)$/.test(normalizeVietnamese(raw))
+}
+
+export function forensicGuidance(raw: string): import('@fincopilot/shared-types').ForensicGuidance | null {
+  if (assistantIntro(raw)) return { type: 'guidance', intent: 'ASSISTANT_INFO',
+    message: 'Chào bạn, mình là FinCopilot. Mình giúp bạn đọc điều khoản vay, kiểm tra mã QR và nhận ra dấu hiệu lừa đảo trong lời mời tài chính.',
+    suggestedPrompts: ['Tôi muốn vay', 'Tôi muốn đầu tư'] }
+  const plain = normalizeVietnamese(raw)
+  if (!/^(?:(?:toi|minh|em) )?(?:(?:muon|can|xin|tu van) )+(?:vay(?: tien| mua nha| mua xe)?|dau tu|tiet kiem)(?: a| nhe)?$/.test(plain)) return null
+  return { type: 'guidance', intent: 'NEEDS_DETAILS',
+    message: 'Bạn dự định dùng tiền vào việc gì, cần bao nhiêu và trong bao lâu? Nếu đã nhận lời mời cụ thể, bạn có thể gửi ảnh hoặc hợp đồng để mình kiểm tra.',
+    suggestedPrompts: ['Tôi cần vay … đồng trong … tháng', 'Tôi muốn kiểm tra lời mời đầu tư sau: '],
+    cta: { label: 'Mở Khảo sát khoản vay', href: '/survey' } }
+}
+
 export const forensicRefusal = {
   type: 'refusal',
   code: 'FORENSIC_OFF_TOPIC',

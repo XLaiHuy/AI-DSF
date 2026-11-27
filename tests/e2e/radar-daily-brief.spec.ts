@@ -99,7 +99,7 @@ test('Daily brief giữ citation gốc, hiển thị fallback và tôn trọng r
   await page.goto('/radar')
   const brief = page.locator('.desk-brief-inline .radar-daily-brief')
   await expect(brief.getByRole('link', { name: /NHNN/ }).first()).toHaveAttribute('href', 'https://example.test/brief-source/1')
-  await expect(brief).toContainText('chưa phải xác minh độc lập')
+  await expect(brief).not.toContainText('chưa phải xác minh độc lập')
   await expect(brief.locator('.radar-daily-brief-item').first()).not.toHaveCSS('animation-name', 'radar-brief-arrive')
 })
 

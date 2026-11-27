@@ -113,6 +113,9 @@ export const ScamFinanceRailItemSchema = z.strictObject({
 export type ScamFinanceRailItem = z.infer<typeof ScamFinanceRailItemSchema>
 
 export const MarketRateBenchmarkSchema = z.strictObject({
+  group: z.enum(['LOAN', 'INVESTMENT']),
+  latestEffectiveDate: z.iso.date(),
+  institutions: z.array(z.string()),
   category: z.string(),
   label: z.string(),
   minRatePct: z.number(),

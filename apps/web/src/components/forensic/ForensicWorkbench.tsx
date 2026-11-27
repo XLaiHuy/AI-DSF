@@ -2,7 +2,7 @@
 
 import {
   ForensicAuditFieldsSchema, ForensicFollowUpRequestSchema, ForensicFollowUpResponseSchema, ROUTES,
-  type ForensicAuditFields, type ForensicAuditResponse, type ForensicAuditStage, type ForensicFollowUpResponse, type ForensicHandoff,
+  type ForensicGuidance, type ForensicAuditFields, type ForensicAuditResponse, type ForensicAuditStage, type ForensicFollowUpResponse, type ForensicHandoff,
 } from '@fincopilot/shared-types'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, Bot, ChartNoAxesCombined, Check, FileText, LoaderCircle, Plus, QrCode, RotateCcw, ShieldAlert, ShieldCheck, Wallet, X } from 'lucide-react'
@@ -158,7 +158,7 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
     if (handoff.from === 'home-quick-check' && handoff.prefillText) return handoff.prefillText
     return handoff.prefillText ?? ''
   })
-  const [refusals, setRefusals] = useState<{ question: string; answer: string }[]>([])
+  const [refusals, setRefusals] = useState<{ question: string; answer: string; guidance?: ForensicGuidance }[]>([])
   const [demo, setDemo] = useState<typeof examples[number]>()
   const [loadingDemo, setLoadingDemo] = useState(false)
   const [files, setFiles] = useState<File[]>([])
@@ -352,7 +352,7 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
           })
         }, () => setPending({ kind: 'audit', submission, stages: [] }))
         if ('type' in audit) {
-          setRefusals((previous) => [...previous, { question: submission.text, answer: audit.message }])
+          setRefusals((previous) => [...previous, { question: submission.text, answer: audit.message, guidance: audit.type === 'guidance' ? audit : undefined }])
           if (!resubmission) setDraft('')
           return
         }
@@ -421,9 +421,13 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
           lastScrollTop.current = scrollTop
         }}>
         <div ref={transcript} className="grid min-w-0 gap-4 py-3 sm:py-4">
-      {refusals.map(({ question, answer }, index) => <div key={index} className="grid gap-3">
+      {refusals.map(({ question, answer, guidance }, index) => <div key={index} className="grid gap-3">
         <p className="ml-auto max-w-[85%] whitespace-pre-wrap break-words rounded-xl bg-accent p-3 text-sm">{question}</p>
-        <div aria-live="polite"><AgentBubble answer={answer} complete /></div>
+        <div aria-live="polite"><AgentBubble answer={answer} complete />
+          {guidance && <div className="mt-2 flex flex-wrap gap-2">
+            {guidance.suggestedPrompts?.map(prompt => <button type="button" key={prompt} className="rounded-full border px-3 py-2 text-sm" onClick={() => { setDraft(prompt); textarea.current?.focus() }}>{prompt}</button>)}
+            {guidance.cta && <Link className="rounded-lg bg-primary px-3 py-2 text-primary-foreground" href={guidance.cta.href}>{guidance.cta.label}</Link>}
+          </div>}</div>
       </div>)}
       {!conversation && !pending && !refusals.length && (
         <div className="grid gap-4 rounded-xl border border-primary/15 bg-card p-4 shadow-sm sm:p-6">

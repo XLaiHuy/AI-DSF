@@ -1,12 +1,14 @@
 'use client'
 
 import { AuthLoginSchema, AuthRegisterSchema, ROUTES, safeReturnTo, type AuthSessionResponse } from '@fincopilot/shared-types'
+import Image from 'next/image'
+import { useQueryClient } from '@tanstack/react-query'
 import { Github, LockKeyhole, LogIn, LogOut } from 'lucide-react'
 import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { z } from 'zod'
 import { Badge, Button, buttonVariants, Card, Input, Label } from '@/components/ui'
 import { apiClient } from '@/lib/api-client'
-import { requestError } from '@/lib/workspace-data'
+import { requestError, sessionQuery } from '@/lib/workspace-data'
 import { cn } from '@/lib/utils'
 
 const modes = ['login', 'register'] as const
@@ -137,6 +139,22 @@ export function AccountStatus({ session }: { session: AuthSessionResponse }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
+  const queries = useQueryClient()
+  async function changeAvatar(file?: File) {
+    setError('')
+    if (file && file.size > 5 * 1024 * 1024) { setError('Ảnh tối đa 5 MB.'); return }
+    setBusy(true)
+    try {
+      if (file) {
+        const form = new FormData()
+        form.append('avatar', file)
+        await apiClient.post('/profile/avatar', form)
+      } else await apiClient.delete('/profile/avatar')
+      await queries.invalidateQueries({ queryKey: sessionQuery.queryKey })
+    } catch (cause) { setError(requestError(cause, 'Chưa thể cập nhật ảnh chân dung.')) }
+    finally { setBusy(false) }
+  }
+
   async function logout() {
     setBusy(true)
     setError('')
@@ -177,6 +195,18 @@ export function AccountStatus({ session }: { session: AuthSessionResponse }) {
             </div>
           )}
         </div>
+        {session.kind === 'guest' ? <p className="mt-3 text-sm">Đăng nhập để lưu ảnh chân dung.</p> :
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            {session.user.avatarUrl && <Image unoptimized width={64} height={64} className="rounded-full" src={session.user.avatarUrl} alt="Ảnh chân dung của bạn" />}
+            <label className="grid gap-1 text-sm">Tải ảnh chân dung
+              <input type="file" disabled={busy} accept="image/jpeg,image/png,image/webp" onChange={event => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (file) void changeAvatar(file)
+              }} />
+            </label>
+            {session.user.avatarUrl && <Button type="button" disabled={busy} variant="outline" onClick={() => void changeAvatar()}>Xóa ảnh</Button>}
+          </div>}
         <AuthError error={error} />
       </section>
     </Card>

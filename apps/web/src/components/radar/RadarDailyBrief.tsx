@@ -37,15 +37,14 @@ export function RadarDailyBrief({ data, isPending, isError, onRetry }: {
         {expanded ? 'Thu gọn' : 'Xem đầy đủ'} {expanded ? <ArrowDown className="is-up" size={14} aria-hidden="true" /> : <ArrowUpRight size={14} aria-hidden="true" />}
       </button>}
     </header>
-    <p className="radar-daily-brief-deck">Những thông tin tài chính đáng chú ý, có nguồn tham khảo.</p>
     {isPending && <p className="radar-daily-brief-state" role="status">Đang tổng hợp tin có nguồn dẫn…</p>}
     {isError && <div className="radar-daily-brief-state" role="status"><span>Chưa tải được bản tin hôm nay.</span> <button type="button" onClick={onRetry}>Thử lại</button></div>}
     {!isPending && !isError && data?.status === 'EMPTY' && <p className="radar-daily-brief-state">Chưa có nội dung đủ nguồn để tóm tắt hôm nay.</p>}
     {!isPending && !isError && items.length > 0 && <>
-      <p className="radar-daily-brief-status">
-        {data?.status === 'SOURCE_FALLBACK' ? 'Bản tin nguồn gần đây · AI hiện chưa khả dụng' : 'Tóm tắt AI từ nguồn · chưa phải xác minh độc lập'}
+      {(data?.status === 'SOURCE_FALLBACK' || data?.isStale) && <p className="radar-daily-brief-status">
+        {data?.status === 'SOURCE_FALLBACK' ? 'Bản tin nguồn gần đây · AI hiện chưa khả dụng' : ''}
         {data?.isStale && <span> · Dữ liệu mới nhất đã quá 24 giờ</span>}
-      </p>
+      </p>}
       <ol id="radar-daily-brief-items" className="radar-daily-brief-items" aria-label={`Tóm tắt ngày ${data?.dateLabel ?? ''}`}>
         {visibleItems.map((item, index) => <li className="radar-daily-brief-item" key={item.id} style={{ '--brief-index': index } as CSSProperties}>
           <div className="radar-daily-brief-item-heading"><span className="radar-daily-brief-index" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span><span className="radar-daily-brief-category">{labels[item.category] ?? item.category}</span>

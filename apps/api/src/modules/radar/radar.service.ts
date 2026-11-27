@@ -13,6 +13,8 @@ import { fetchPublicDocument, fetchPublicImage } from '../admin/threat-safety'
 import { attachThreatDraft, publicThreatAlertWhere } from '../forensic/threat-draft'
 import { ThreatMemoryService } from '../forensic/threat-memory.service'
 
+import { relevantArticleWhere, relevantHeadline } from './legal-feed'
+
 const categoryKeywords: Record<string, string[]> = {
   INTEREST_RATE: ['lãi suất', 'lãi vay', 'lãi suất huy động', 'rate'],
   BANKING: ['ngân hàng', 'tín dụng', 'sbv', 'nhnn'],
@@ -21,6 +23,7 @@ const categoryKeywords: Record<string, string[]> = {
   POLICY: ['chính sách', 'nghị định', 'thông tư', 'điều hành'],
   FINANCIAL_FRAUD: ['lừa đảo', 'giả mạo', 'phishing', 'ncsc', 'cảnh báo'],
 }
+
 
 type FeedEntry = { title: string; url: string; publishedAt: Date | null; description: string; imageUrl: string | null }
 
@@ -211,6 +214,8 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     private readonly threatMemory: ThreatMemoryService,
   ) { super() }
 
+  scheduler() { return this.queue.getJobScheduler('radar-periodic-scan') }
+
   async onModuleInit() {
     await this.queue.upsertJobScheduler('radar-periodic-scan', { every: 15 * 60_000 }, { name: 'fetch-all' })
   }
@@ -266,7 +271,7 @@ export class RadarService extends WorkerHost implements OnModuleInit {
       publishedAt = { ...(gte ? { gte } : {}), ...(lt ? { lt } : {}) }
     }
     const where = {
-      feedStatus: 'ACTIVE',
+      ...relevantArticleWhere, feedStatus: 'ACTIVE',
       ...(query.category ? { categories: { some: { categoryCode: query.category.toUpperCase() } } } : {}),
       ...(query.search ? { title: { contains: query.search, mode: 'insensitive' as const } } : {}),
       ...(publishedAt ? { publishedAt } : {}),
@@ -288,7 +293,7 @@ export class RadarService extends WorkerHost implements OnModuleInit {
 
   async articleHighlights() {
     const rows = await this.prisma.marketArticle.findMany({
-      where: { feedStatus: 'ACTIVE', publishedAt: { not: null } }, take: 80,
+      where: { ...relevantArticleWhere, feedStatus: 'ACTIVE', publishedAt: { not: null } }, take: 80,
       orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
       include: { categories: true, sources: { include: { source: true } } },
     })
@@ -380,7 +385,7 @@ export class RadarService extends WorkerHost implements OnModuleInit {
         },
       }),
       this.prisma.marketArticle.findMany({
-        where: { feedStatus: 'ACTIVE', publishedAt: { gte: since } }, orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }], take: 40,
+        where: { ...relevantArticleWhere, feedStatus: 'ACTIVE', publishedAt: { gte: since } }, orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }], take: 40,
         include: {
           categories: true,
           sources: { include: { source: true } },
@@ -440,15 +445,15 @@ export class RadarService extends WorkerHost implements OnModuleInit {
           referenceId: id, kind, title, publishedAt, categories, verificationStatus,
           sources: sources.filter((source) => validHttpsUrl(source.url)), sourceFacts,
         })),
-        instruction: 'Return at most ten distinct referenceId values from this list. Prefer materially relevant information and include newly published verified warnings before general market news. Do not cite or create URLs; the application attaches links from stored evidence records.',
+        instruction: 'Copy the exact sourceTitle (candidate title) for each referenceId. Return at most ten distinct referenceId values from this list. Prefer materially relevant information and include newly published verified warnings before general market news. Do not cite or create URLs; the application attaches links from stored evidence records.',
       })
       const seen = new Set<string>()
       const generated: BriefBaseLine[] = []
       for (const item of result.items) {
         const candidate = byId.get(item.referenceId)
-        if (!candidate || seen.has(candidate.id) || !candidate.sources.some((source) => validHttpsUrl(source.url))) continue
+        if (!candidate || item.sourceTitle !== candidate.title || seen.has(candidate.id) || !candidate.sources.some((source) => validHttpsUrl(source.url))) continue
         seen.add(candidate.id)
-        generated.push({ ...item, generatedByAi: true })
+        generated.push({ referenceId: candidate.id, summary: item.summary, interpretation: item.interpretation, generatedByAi: true })
       }
       // Newly published verified warnings are retained and placed first even if the model omits one.
       const recentVerified = candidates.filter((item) => item.kind === 'ALERT' && item.verificationStatus === 'VERIFIED' && item.publishedAt && Date.now() - item.publishedAt.getTime() <= 48 * 60 * 60_000)
@@ -578,7 +583,7 @@ export class RadarService extends WorkerHost implements OnModuleInit {
       const response = await fetch(source.endpointUrl, { signal: AbortSignal.timeout(12_000), headers: { 'user-agent': 'FinCopilotRadar/1.0 (+contact project team)', accept: 'application/rss+xml, application/atom+xml, text/html;q=0.8' } })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const body = (await response.text()).slice(0, 2_000_000)
-      const entries = parseFeed(body, source.sourceType, source.endpointUrl)
+      const entries = parseFeed(body, source.sourceType, source.endpointUrl).filter(entry => relevantHeadline(source.sourceKey, entry.title))
       const ogBudget = { remaining: 5 }
       for (const entry of entries) await this.upsertEntry(source, entry, ogBudget)
       await this.prisma.marketSource.update({ where: { id: source.id }, data: { lastFetchStatus: 'SUCCESS', lastAttemptAt: attemptedAt, lastSuccessAt: new Date(), updatedAt: new Date() } })

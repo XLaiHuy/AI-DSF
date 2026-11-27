@@ -1,19 +1,10 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ROUTES } from '@fincopilot/shared-types'
 import Link from 'next/link'
 import { marketOverviewQuery } from '@/lib/workspace-data'
 import { ChartCard } from './ChartCard'
-
-const barPalette: Record<string, string> = {
-  SECURED_LOAN: '#0f5132',
-  UNSECURED_LOAN: '#b45309',
-  SAVING: '#1e3a5f',
-  ACCUMULATION: '#3b6e5c',
-  OPEN_FUND: '#111827',
-}
 
 export function MarketRateBenchmarkChart({ className }: { className?: string }) {
   const { data, isPending } = useQuery(marketOverviewQuery)
@@ -34,77 +25,29 @@ export function MarketRateBenchmarkChart({ className }: { className?: string }) 
 
   if (!rates.length) return null
 
-  const chartData = rates.map((item) => ({
-    ...item,
-    spread: Number((item.maxRatePct - item.minRatePct).toFixed(2)),
-    fill: barPalette[item.category] ?? '#1f2937',
-  }))
-
-  return (
-    <ChartCard
-      title="Mặt bằng lãi suất & lợi suất đang niêm yết"
-      subtitle="Tổng hợp theo dữ liệu danh mục đã đối chiếu nguồn chính thức (mức trung vị và biên độ)."
-      kicker="MARKET FEED · BENCHMARK"
-      unit="% / năm"
-      className={className}
-      legend={[
-        { label: 'Mức trung vị (% / năm)', color: '#111827' },
-        { label: 'Vay vốn', color: '#b45309' },
-        { label: 'Tiết kiệm & Quỹ', color: '#1e3a5f' },
-      ]}
-      summaryText={chartData
-        .map((row) => `${row.label}: trung vị ${row.medianRatePct}% (${row.minRatePct}% – ${row.maxRatePct}%)`)
-        .join('; ')}
-    >
-      <div className="h-56 w-full">
-        <ResponsiveContainer width="100%" height={224} minWidth={0} initialDimension={{ width: 520, height: 224 }}>
-          <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 48, left: 8, bottom: 4 }}>
-            <CartesianGrid stroke="#e5e7eb" strokeDasharray="2 2" horizontal={false} />
-            <XAxis
-              type="number"
-              tick={{ fontSize: 11, fill: '#4b5563' }}
-              tickFormatter={(value: number) => `${value}%`}
-              axisLine={{ stroke: '#d1d5db' }}
-              tickLine={false}
-            />
-            <YAxis
-              type="category"
-              dataKey="label"
-              width={96}
-              tick={{ fontSize: 12, fill: '#111827', fontWeight: 500 }}
-              axisLine={false}
-              tickLine={false}
-            />
-            <Tooltip
-              formatter={(value, _name, item) => {
-                const payload = item?.payload as (typeof chartData)[number] | undefined
-                if (!payload) return [`${String(value ?? '')}%`, 'Trung vị']
-                return [
-                  `${payload.medianRatePct}% (từ ${payload.minRatePct}% – ${payload.maxRatePct}%, ${payload.sampleCount} gói)`,
-                  payload.label,
-                ]
-              }}
-              contentStyle={{
-                borderRadius: '6px',
-                border: '1px solid #d1d5db',
-                fontSize: '12px',
-                backgroundColor: '#ffffff',
-              }}
-            />
-            <Bar dataKey="medianRatePct" radius={[0, 3, 3, 0]} barSize={18}>
-              {chartData.map((entry) => (
-                <Cell key={entry.category} fill={entry.fill} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
-        <span>Cập nhật trực tiếp từ danh mục ngân hàng &amp; quỹ được cấp phép.</span>
-        <Link href={ROUTES.survey} className="font-semibold text-foreground underline underline-offset-4 hover:text-primary">
-          Mô phỏng khoản vay / tích lũy
-        </Link>
-      </div>
-    </ChartCard>
-  )
+  const fmt = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 4 })
+  const floor = Math.min(0, ...rates.map(row => row.minRatePct))
+  const span = Math.max(...rates.map(row => row.maxRatePct)) - floor || 1
+  const position = (rate: number) => (rate - floor) / span * 100 + '%'
+  const latest = rates.map(row => row.latestEffectiveDate).sort().at(-1)
+  return <ChartCard title="Mặt bằng lãi suất & lợi suất đang niêm yết" kicker="MARKET FEED · BENCHMARK" className={className} unit="% / năm"
+    legend={[{ label: 'Biên độ vay', color: '#c25a46' }, { label: 'Biên độ đầu tư', color: '#397561' }, { label: 'Trung vị', color: '#161719' }]}>
+    {(['LOAN', 'INVESTMENT'] as const).map(group => <section key={group} className="mb-5">
+      <h3 className="font-semibold">{group === 'LOAN' ? 'Lãi suất vay niêm yết' : 'Lãi suất tiết kiệm & Quỹ mở'}</h3>
+      <p className="text-sm text-muted-foreground">{group === 'LOAN' ? 'Lãi thấp hơn có lợi khi các điều kiện và phí tương đương.' : 'Lợi suất tham khảo. Giá trị quỹ mở biến động theo NAV.'}</p>
+      {rates.filter(row => row.group === group).map(row => <div key={row.category} className="mt-3">
+        <div className="flex flex-wrap justify-between gap-1 text-sm"><strong>{row.label}</strong>
+          <span>{fmt.format(row.minRatePct)}% – {fmt.format(row.maxRatePct)}% · Trung vị {fmt.format(row.medianRatePct)}%</span></div>
+        <div aria-hidden="true" className="relative my-2 h-2 rounded-full bg-muted">
+          <span className="absolute inset-y-0 rounded-full" style={{ left: position(row.minRatePct), right: 'calc(100% - ' + position(row.maxRatePct) + ')', background: group === 'LOAN' ? '#c25a46' : '#397561' }} />
+          <span className="absolute -top-1 h-4 w-1 -translate-x-1/2 bg-[#161719]" style={{ left: position(row.medianRatePct) }} />
+        </div>
+      </div>)}
+    </section>)}
+    <footer className="space-y-1 border-t pt-3 text-sm"><strong>Xác thực dữ liệu</strong>
+      <p>{rates.reduce((sum, row) => sum + row.sampleCount, 0)} gói đang hoạt động · Hiệu lực mới nhất {latest?.split('-').reverse().join('/')}</p>
+      <p>{[...new Set(rates.flatMap(row => row.institutions))].join(', ')}</p>
+      <Link className="font-semibold text-primary underline" href={ROUTES.survey}>Mô phỏng khoản vay / tích lũy</Link>
+    </footer>
+  </ChartCard>
 }

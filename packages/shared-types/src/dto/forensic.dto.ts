@@ -197,12 +197,21 @@ export const ForensicRefusalSchema = z.strictObject({
   code: z.literal('FORENSIC_OFF_TOPIC'),
   message: z.string(),
 })
-export const ForensicAuditResultSchema = z.union([ForensicAuditResponseSchema, ForensicRefusalSchema])
+export const ForensicGuidanceSchema = z.strictObject({
+  type: z.literal('guidance'),
+  intent: z.enum(['ASSISTANT_INFO', 'NEEDS_DETAILS']),
+  message: z.string(),
+  suggestedPrompts: z.array(z.string()).optional(),
+  cta: z.strictObject({ label: z.string(), href: z.literal('/survey') }).optional(),
+})
+export type ForensicGuidance = z.infer<typeof ForensicGuidanceSchema>
+export const ForensicAuditResultSchema = z.union([ForensicAuditResponseSchema, ForensicRefusalSchema, ForensicGuidanceSchema])
 
 export const ForensicAuditStreamEventSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('stage'), stage: ForensicAuditStageSchema }),
   z.strictObject({ type: z.literal('result'), audit: ForensicAuditResponseSchema }),
   ForensicRefusalSchema,
+  ForensicGuidanceSchema,
   z.strictObject({ type: z.literal('error'), errorCode: z.string().optional(), message: z.string() }),
   z.strictObject({ type: z.literal('done') }),
 ])
@@ -229,7 +238,7 @@ export const ForensicFollowUpResponseSchema = z.strictObject({
   meta: z.strictObject({
     llmProvider: z.string().nullable(),
     degradedMode: z.boolean(),
-    intent: z.enum(['FINANCIAL_QA', 'NEW_CONTEXT', 'ACK', 'OFF_TOPIC']).optional(),
+    intent: z.enum(['FINANCIAL_QA', 'NEW_CONTEXT', 'ACK', 'OFF_TOPIC', 'ASSISTANT_INFO']).optional(),
     suggestReaudit: z.boolean().optional(),
     reAuditAppendText: z.string().max(2000).optional(),
   }),

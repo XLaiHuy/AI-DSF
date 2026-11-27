@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { AppShell } from '@/components/layout/AppShell'
 import { QueryProvider } from '@/components/layout/QueryProvider'
 import './globals.css'
+import './radar/desk.css'
 
 const beVietnamPro = Be_Vietnam_Pro({
   weight: ['400', '500', '600', '700'],

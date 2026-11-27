@@ -29,6 +29,7 @@ export const AI_TASK_SCHEMAS = {
   RADAR_DAILY_BRIEF: z.strictObject({
     items: z.array(z.strictObject({
       referenceId: z.uuid(),
+      sourceTitle: z.string().min(1),
       summary: z.string().trim().min(1).max(240),
       interpretation: z.string().trim().max(280).nullable(),
     })).max(10),

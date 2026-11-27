@@ -1,3 +1,4 @@
+import type { ProductScheduler } from './product-scheduler'
 import { randomUUID } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Queue } from 'bullmq'
@@ -189,12 +190,22 @@ describe('admin threat operations', () => {
     expect(await review.list()).toMatchObject([{ sourceLinks: [{ sourceName: 'Nguồn báo', url: provenance.articleSource.article.canonicalUrl }] }])
   })
 
+  it('reports independent scheduler clocks and partial crawl failures', async () => {
+    const scheduler = async () => ({ next: 1000 })
+    const admin = new AdminController({ scheduler, fetch: vi.fn().mockResolvedValue({ jobId: 'manual' }), syncProducts: vi.fn().mockResolvedValue({ productsUpserted: 1, sourcesReachable: 1, sourcesChecked: 1 }) } as unknown as AdminService,
+      { scheduler, hotCrawlNow: vi.fn().mockRejectedValue(new Error('offline')) } as unknown as ThreatIntakeService,
+      {} as ThreatReviewService, { scheduler } as unknown as ProductScheduler)
+    expect(await admin.schedulers()).toEqual(['15 phút', '24 giờ', '24 giờ'].map(intervalLabel =>
+      expect.objectContaining({ scheduled: true, intervalLabel, nextAt: new Date(1000).toISOString() })))
+    expect((await admin.hotCrawlAll()).map(row => row.status)).toEqual(['QUEUED', 'ERROR', 'SUCCESS'])
+  })
+
   it('wires the R&D endpoint to the 12 clean cases and evaluates active aliases', async () => {
     const { memory } = mockMemory()
     const prisma = { threatFeedbackExample: { findMany: async () => [{
       id: 'alias', feedbackType: 'TEENCODE_ALIAS', highlightedSpan: 'dvc', adminNote: 'dịch vụ công',
     }] } } as unknown as PrismaService
-    const controller = new AdminController({} as AdminService, {} as ThreatIntakeService, new ThreatReviewService(prisma, memory))
+    const controller = new AdminController({} as AdminService, {} as ThreatIntakeService, new ThreatReviewService(prisma, memory), {} as ProductScheduler)
     expect(await controller.runEval()).toMatchObject({
       cleanPassed: 12, cleanTotal: 12, feedbackPassed: 1, feedbackTotal: 1,
       cases: expect.arrayContaining([{ id: 'alias', kind: 'TEENCODE_ALIAS', expected: 'dich vu cong',

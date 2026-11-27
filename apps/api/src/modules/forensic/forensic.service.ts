@@ -24,7 +24,7 @@ import { classifyFollowUpIntent, prepareFollowUp, statedTransferAmount } from '.
 import { evaluatePersonalImpact } from './personal-impact.engine'
 import { selectLegalCitations } from './data/vn-legal-registry'
 import { ChannelIntelligenceService } from './channel-intelligence.service'
-import { expandTeencode, forensicRefusal, hasConcreteFinancialEvidence, hasFinancialDomain, inspectForensicInput, stripZeroWidthAndBidi } from './forensic-prompt-guard'
+import { expandTeencode, forensicGuidance, forensicRefusal, hasConcreteFinancialEvidence, hasFinancialDomain, inspectForensicInput, stripZeroWidthAndBidi } from './forensic-prompt-guard'
 import { extractThreatIocs } from './threat-iocs'
 import { ThreatMemoryService } from './threat-memory.service'
 
@@ -96,10 +96,11 @@ export class ForensicService {
   async screenAudit(fields: ForensicAuditFields, files: readonly Upload[]) {
     if (files.length || fields.rawQrString || !fields.rawText) return null
     const aliases = this.threatMemory?.cachedAliases()
-    if (!fields.claimedEntityName && !hasFinancialDomain(fields.rawText, aliases) && !hasConcreteFinancialEvidence(fields.rawText, aliases)) return forensicRefusal
     const inspection = inspectForensicInput(fields.rawText, aliases)
-    if (!inspection.refuseDirect) return null
-    return forensicRefusal
+    if (inspection.refuseDirect) return forensicRefusal
+    if (fields.claimedEntityName || hasConcreteFinancialEvidence(fields.rawText, aliases)) return null
+    const guidance = forensicGuidance(fields.rawText)
+    return guidance ?? (hasFinancialDomain(fields.rawText, aliases) ? null : forensicRefusal)
   }
 
   private async loadInstitutions() {

@@ -1,3 +1,4 @@
+import { ProductScheduler, productQueue } from './product-scheduler'
 import { Module } from '@nestjs/common'
 import { BullModule } from '@nestjs/bullmq'
 import { AdminGuard } from '../../common/admin.guard'
@@ -10,8 +11,8 @@ import { ThreatReviewService } from './threat-review.service'
 import { SurveyCalcModule } from '../survey-calc/survey-calc.module'
 
 @Module({
-  imports: [RadarModule, ForensicModule, SurveyCalcModule, BullModule.registerQueue({ name: threatIntakeQueue })],
+  imports: [RadarModule, ForensicModule, SurveyCalcModule, BullModule.registerQueue({ name: threatIntakeQueue }, { name: productQueue })],
   controllers: [AdminController],
-  providers: [AdminService, AdminGuard, ThreatIntakeService, ThreatReviewService],
+  providers: [ProductScheduler, AdminService, AdminGuard, ThreatIntakeService, ThreatReviewService],
 })
 export class AdminModule {}

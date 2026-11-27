@@ -6,7 +6,7 @@ import { evaluateHardRules, parseVnd } from './hard-rules.engine'
 import { formatCaseAmount } from './payment-qr-description'
 import { evaluatePersonalImpact } from './personal-impact.engine'
 import { maskForensicText } from './qr-evidence'
-import { isOffTopicPrompt, shouldRefuseForensicPrompt, type TeencodeAlias } from './forensic-prompt-guard'
+import { assistantIntro, isOffTopicPrompt, shouldRefuseForensicPrompt, type TeencodeAlias } from './forensic-prompt-guard'
 
 type Intent = NonNullable<ForensicFollowUpResponse['meta']['intent']>
 const vnd = /(?<![\p{L}\d.,])(\d+(?:[., ]\d+){0,5})\s*(triệu|tr|tỷ|tỉ|nghìn|ngàn|k|đồng|vnd|vnđ|đ|₫)(?![\p{L}\d])/giu
@@ -40,6 +40,7 @@ export function classifyFollowUpIntent(question: string, audit: ForensicAuditRes
   const plain = normalizeVietnamese(question)
   if (!/[?？]/u.test(question) && plain.split(' ').length <= 4 && ack.test(plain)) return 'ACK'
   if (isOffTopicPrompt(question) || shouldRefuseForensicPrompt(question, aliases)) return 'OFF_TOPIC'
+  if (assistantIntro(question)) return 'ASSISTANT_INFO'
   const { amountVnd, purposeText, foreign } = facts(question)
   const sameAmount = amountVnd && audit.qrPayloads.some((qr) => qr.qrAmountVnd && new Decimal(qr.qrAmountVnd).eq(amountVnd))
   const samePurpose = purposeText && audit.qrPayloads.some((qr) => normalizeVietnamese(qr.purposeText ?? '') === normalizeVietnamese(purposeText))
@@ -68,13 +69,14 @@ export function recheckFollowUpContext(question: string, audit: ForensicAuditRes
 }
 
 const directAnswers = {
+  ASSISTANT_INFO: 'Mình là FinCopilot. Mình giúp đọc hợp đồng, kiểm tra giao dịch và mã QR. Bạn muốn mình giải thích phần nào của hồ sơ vừa rồi?',
   ACK: 'Rất vui được hỗ trợ bạn. Nếu có thêm ảnh chụp, số tiền cụ thể hoặc điều khoản mới từ bên kia, bạn cứ gửi vào đây để mình kiểm tra giúp nhé.',
   OFF_TOPIC: 'Mình là trợ lý giám định rủi ro và tài chính cá nhân FinCopilot, nên mình chỉ hỗ trợ phân tích giao dịch, mã QR, hợp đồng và các bước bảo vệ tiền của bạn. Bạn muốn hỏi thêm chi tiết nào trong báo cáo vừa rồi không?',
 }
 
 export function prepareFollowUp(audit: ForensicAuditResponse, input: ForensicFollowUpRequest, profile: FinancialHealthRequest | null, aliases?: readonly TeencodeAlias[]) {
   const intent = classifyFollowUpIntent(input.question, audit, aliases)
-  const directAnswer = intent === 'ACK' || intent === 'OFF_TOPIC' ? directAnswers[intent] : null
+  const directAnswer = intent === 'ACK' || intent === 'ASSISTANT_INFO' || intent === 'OFF_TOPIC' ? directAnswers[intent] : null
   const question = maskForensicText(input.question)
   const newContext = intent === 'NEW_CONTEXT' ? recheckFollowUpContext(input.question, audit, profile) : null
   const highRisk = audit.verdictLevel === 'HIGH_RISK'

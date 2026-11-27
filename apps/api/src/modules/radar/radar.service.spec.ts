@@ -1,3 +1,4 @@
+import { relevantHeadline } from './legal-feed'
 import { describe, expect, it, vi } from 'vitest'
 import type { PrismaService } from '../../common/prisma.service'
 import { fetchPublicImage } from '../admin/threat-safety'
@@ -176,11 +177,17 @@ describe('Radar V2 parsing and date rules', () => {
     await expect(service.recommendationSignals({ kind: 'guest', guestSessionId: 'guest-1' }, { includeProfileGoal: true, includeForensicData: true })).rejects.toThrow('Tùy chọn cá nhân hóa không hợp lệ.')
   })
 
+  it('filters ordinary crime on general legal feeds', () => {
+    expect(relevantHeadline('vnexpress_phapluat', 'Tai nạn giao thông')).toBe(false)
+    expect(relevantHeadline('dantri_phapluat', 'Mạo danh ngân hàng để lừa đảo')).toBe(true)
+  })
+
   it('builds source citations from records and discards model references that do not exist', async () => {
     const id = '00000000-0000-4000-8000-000000000111'
     const { service, ai } = dailyBriefHarness({ articles: [briefArticle(id)], aiResult: { items: [
-      { referenceId: id, summary: 'Tóm lược có căn cứ.', interpretation: 'Ý nghĩa chung.' },
-      { referenceId: '00000000-0000-4000-8000-000000000999', summary: 'Tin bịa.', interpretation: null },
+      { referenceId: id, sourceTitle: 'Sai tiêu đề', summary: 'Sai nguồn.', interpretation: null },
+      { referenceId: id, sourceTitle: 'Tin nguồn ' + id, summary: 'Tóm lược có căn cứ.', interpretation: 'Ý nghĩa chung.' },
+      { referenceId: '00000000-0000-4000-8000-000000000999', sourceTitle: 'Unknown', summary: 'Tin bịa.', interpretation: null },
     ] } })
     const result = await service.dailyBrief({ kind: 'guest', guestSessionId: 'g-1' }, {})
     expect(result.items).toHaveLength(1)
@@ -201,7 +208,7 @@ describe('Radar V2 parsing and date rules', () => {
     const alertId = '00000000-0000-4000-8000-000000000113'
     const articleId = '00000000-0000-4000-8000-000000000114'
     const { service } = dailyBriefHarness({ alerts: [briefAlert(alertId, 'VERIFIED')], articles: [briefArticle(articleId)], aiResult: { items: [
-      { referenceId: articleId, summary: 'Tin thị trường.', interpretation: null },
+      { referenceId: articleId, sourceTitle: 'Tin nguồn ' + articleId, summary: 'Tin thị trường.', interpretation: null },
     ] } })
     const result = await service.dailyBrief({ kind: 'guest', guestSessionId: 'g-3' }, {})
     expect(result.items[0]).toMatchObject({ id: alertId, kind: 'ALERT', summary: `Cảnh báo nguồn ${alertId}`, verificationStatus: 'VERIFIED', generatedByAi: false })
@@ -211,7 +218,7 @@ describe('Radar V2 parsing and date rules', () => {
     const articleId = '00000000-0000-4000-8000-000000000115'
     const articles = [briefArticle(articleId)]
     const alerts: unknown[] = []
-    const { service, ai } = dailyBriefHarness({ articles, alerts, aiResult: { items: [{ referenceId: articleId, summary: 'Tin nguồn.', interpretation: null }] } })
+    const { service, ai } = dailyBriefHarness({ articles, alerts, aiResult: { items: [{ referenceId: articleId, sourceTitle: 'Tin nguồn ' + articleId, summary: 'Tin nguồn.', interpretation: null }] } })
     await service.dailyBrief({ kind: 'guest', guestSessionId: 'g-4' }, {})
     await service.dailyBrief({ kind: 'guest', guestSessionId: 'g-4' }, {})
     expect(ai.generateStructured).toHaveBeenCalledOnce()
@@ -230,7 +237,7 @@ describe('Radar V2 parsing and date rules', () => {
 
   it('uses only explicitly consented topic/profile signals for personal relevance, outside the AI prompt', async () => {
     const id = '00000000-0000-4000-8000-000000000118'
-    const { service, prisma, ai } = dailyBriefHarness({ articles: [briefArticle(id)], aiResult: { items: [{ referenceId: id, summary: 'Nguồn về lãi suất.', interpretation: null }] } })
+    const { service, prisma, ai } = dailyBriefHarness({ articles: [briefArticle(id)], aiResult: { items: [{ referenceId: id, sourceTitle: 'Tin nguồn ' + id, summary: 'Nguồn về lãi suất.', interpretation: null }] } })
     prisma.financialProfile.findUnique.mockResolvedValue({ primaryGoal: 'BORROW_SAFE' })
     const result = await service.dailyBrief({ kind: 'guest', guestSessionId: 'g-consent' }, { personalizationEnabled: true, includeProfileGoal: true })
     expect(prisma.financialProfile.findUnique).toHaveBeenCalledWith({ where: { guestSessionId: 'g-consent' }, select: { primaryGoal: true } })
@@ -250,7 +257,7 @@ describe('Radar V2 parsing and date rules', () => {
     vi.setSystemTime(new Date('2026-11-24T16:59:00.000Z'))
     try {
       const id = '00000000-0000-4000-8000-000000000117'
-      const { service, prisma, ai } = dailyBriefHarness({ articles: [briefArticle(id)], aiResult: { items: [{ referenceId: id, summary: 'Tin ngày.', interpretation: null }] } })
+      const { service, prisma, ai } = dailyBriefHarness({ articles: [briefArticle(id)], aiResult: { items: [{ referenceId: id, sourceTitle: 'Tin nguồn ' + id, summary: 'Tin ngày.', interpretation: null }] } })
       const session = { kind: 'guest' as const, guestSessionId: 'g-5' }
       expect((await service.dailyBrief(session, {})).date).toBe('2026-11-24')
       await service.dailyBrief(session, {})
