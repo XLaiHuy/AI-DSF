@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
+import type { Queue } from 'bullmq'
+import type { CommunityProposal, ThreatMemoryService } from './threat-memory.service'
+import type { FastifyRequest } from 'fastify'
+import type { SessionContext } from '@fincopilot/shared-types'
+import type { PrismaService } from '../../common/prisma.service'
+import { ForensicController } from './forensic.controller'
+import { ForensicService } from './forensic.service'
 import { ConfigService } from '@nestjs/config'
 import sharp from 'sharp'
 import { prepareZXingModule, writeBarcode } from 'zxing-wasm/writer'
@@ -406,4 +413,79 @@ describe('masking before persistence', () => {
     expect(maskPii('CCCD 079.123.456.234, STK VCB000123456')).toBe('CCCD 079******234, STK VCB******456')
     expect(maskPii('Khoản vay 50000000 VND, phí 2.500.000đ, BIN 970422')).toBe('Khoản vay 50000000 VND, phí 2.500.000đ, BIN 970422')
   })
+})
+
+describe('audit feedback', () => {
+  const id = 'a2714a2a-f21c-4c57-a1cc-ebfe63bd320e'
+  const owner = '3ad68bc9-30d7-4560-a2b0-45bffed1a07e'
+  function setup(session: SessionContext) {
+    const tx = {
+      $queryRaw: vi.fn(),
+      forensicAudit: { findFirst: vi.fn().mockResolvedValue({
+        rawTextMasked: null, verdictLevel: 'HIGH_RISK', findings: [{ title: 'Giao dịch đáng ngờ', description: 'SĐT 0901234567' }],
+      }) },
+      threatFeedbackExample: {
+        findFirst: vi.fn().mockResolvedValue(null), count: vi.fn().mockResolvedValue(0),
+        create: vi.fn(({ data }) => ({ ...data, createdAt: new Date('2026-11-27') })),
+      },
+    }
+    const prisma = { $transaction: (work: (client: typeof tx) => unknown) => work(tx) } as unknown as PrismaService
+    const ai = { generateStructured: vi.fn() } as unknown as AiGatewayService
+    const controller = new ForensicController(new ForensicService(prisma, ai, new ConfigService()))
+    return { tx, send: () => controller.feedback({ session } as FastifyRequest, id, {
+      assessment: 'INCORRECT', suggestedVerdict: 'SAFE', note: 'SĐT 0901234567',
+    }) }
+  }
+
+  it.each([
+    { kind: 'user', userId: owner },
+    { kind: 'guest', guestSessionId: owner },
+  ] satisfies SessionContext[])('accepts feedback only for the $kind owner and queues it for review', async (session) => {
+    const { tx, send } = setup(session)
+    await expect(send()).resolves.toMatchObject({ assessment: 'INCORRECT', reviewStatus: 'PENDING' })
+    expect(tx.forensicAudit.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: session.kind === 'user' ? { id, userId: owner } : { id, userId: null, guestSessionId: owner },
+    }))
+    expect(tx.threatFeedbackExample.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      auditId: id, reporterSessionHash: expect.stringMatching(/^[a-f0-9]{64}$/), sourceChannel: 'USER_REPORT',
+      reviewStatus: 'PENDING', isActive: false, expectedVerdict: 'SAFE', feedbackType: 'FALSE_POSITIVE',
+    }) })
+    const saved = tx.threatFeedbackExample.create.mock.calls[0][0].data
+    expect(saved).not.toHaveProperty('embeddingJson')
+    expect(JSON.stringify(saved)).not.toContain('0901234567')
+  })
+
+  it('returns 404 for a missing owner match, 409 for a duplicate and 429 after 10 reports', async () => {
+    const { tx, send } = setup({ kind: 'guest', guestSessionId: owner })
+    tx.forensicAudit.findFirst.mockResolvedValueOnce(null)
+    await expect(send()).rejects.toMatchObject({ status: 404 })
+    tx.threatFeedbackExample.findFirst.mockResolvedValueOnce({ id })
+    await expect(send()).rejects.toMatchObject({ status: 409 })
+    tx.threatFeedbackExample.count.mockResolvedValueOnce(10)
+    await expect(send()).rejects.toMatchObject({ status: 429 })
+    expect(tx.threatFeedbackExample.create).not.toHaveBeenCalled()
+  })
+})
+
+it('does not enqueue a high-risk result based on a degraded provider response', async () => {
+  const config = new ConfigService()
+  const prisma = {
+    financialInstitution: { findMany: vi.fn().mockResolvedValue([]) },
+    financialProfile: { findFirst: vi.fn().mockResolvedValue(null) },
+    threatIndicator: { findMany: vi.fn().mockResolvedValue([]) },
+    forensicAudit: { create: vi.fn() },
+  } as unknown as PrismaService
+  const ai = new AiGatewayService(config)
+  vi.spyOn(ai, 'generateWithProvider').mockRejectedValue(new Error('offline'))
+  vi.spyOn(ai, 'classifyForensicIntent').mockResolvedValue(null)
+  const prepareProposal = vi.fn()
+  const memory = { get: vi.fn().mockResolvedValue({ aliases: [] }), retrieve: vi.fn(), prepareProposal } as unknown as ThreatMemoryService
+  const add = vi.fn()
+  const service = new ForensicService(prisma, ai, config, memory, { add } as unknown as Queue<CommunityProposal>)
+  const audit = await service.audit({ kind: 'guest', guestSessionId: '3ad68bc9-30d7-4560-a2b0-45bffed1a07e' }, {
+    rawText: 'Tài khoản báo lỗi 102 và đóng băng vốn. Chuyển 5 triệu đồng phí giải ngân vào STK 0987654321 để mở khóa.',
+  }, [])
+  expect(audit).toMatchObject({ verdictLevel: 'HIGH_RISK', meta: { degradedMode: true } })
+  expect(prepareProposal).not.toHaveBeenCalled()
+  expect(add).not.toHaveBeenCalled()
 })

@@ -56,19 +56,20 @@ test('Lời chào và nhu cầu vay dẫn tới hướng dẫn trong hội tho�
   await page.getByRole('button', { name: 'Tôi muốn vay', exact: true }).click()
   await expect(composer).toHaveValue('Tôi muốn vay')
   await composer.press('Enter')
-  await expect(page.getByRole('link', { name: 'Mở Khảo sát khoản vay' })).toHaveAttribute('href', '/survey')
+  await expect(page.getByRole('link', { name: 'Mở Khảo sát khoản vay' })).toHaveAttribute('href', '/survey?mode=loan')
   await expect(page.getByRole('link', { name: 'Xuất báo cáo JSON' })).toHaveCount(0)
 })
 
-test('Vận hành hiển thị ba lịch và kết quả chạy từng luồng', async ({ page }, info) => {
+test('Vận hành hiển thị bốn lịch và kết quả chạy từng luồng thu thập', async ({ page }, info) => {
   await page.route('**/api/v1/auth/session', route => route.fulfill({ json: {
     kind: 'user', user: { id: randomUUID(), email: 'ops@example.test', displayName: 'Vận hành', authProvider: 'EMAIL', role: 'ADMIN' },
     oauthProviders: { google: false, github: false },
   } }))
   const names = ['Tin thị trường', 'Cảnh báo lừa đảo', 'Lãi suất & sản phẩm']
+  const schedulerNames = [...names, 'Bảo trì dữ liệu']
   await page.route('**/api/v1/admin/**', route => {
     const path = new URL(route.request().url()).pathname
-    const json = path.endsWith('/schedulers') ? names.map((name, i) => ({ name, intervalLabel: i === 0 ? '15 phút' : '24 giờ', scheduled: true, nextAt: '2026-11-28T00:00:00Z' })) :
+    const json = path.endsWith('/schedulers') ? schedulerNames.map((name, i) => ({ name, intervalLabel: i === 0 ? '15 phút' : '24 giờ', scheduled: true, nextAt: '2026-11-28T00:00:00Z' })) :
       path.endsWith('/hot-crawl-all') ? names.map((name, i) => ({ name, summary: ['Đã xếp hàng', null, 'Hoàn tất'][i], status: ['QUEUED', 'ERROR', 'SUCCESS'][i] })) :
       path.endsWith('/rnd/summary') ? { total: 0, active: 0, byCategory: {} } :
       path.endsWith('/crawl-status') ? { scheduled: true, nextAt: null } : []
@@ -76,7 +77,8 @@ test('Vận hành hiển thị ba lịch và kết quả chạy từng luồng',
   })
   await page.goto('/admin')
   await page.getByRole('tab', { name: 'Nguồn dữ liệu & Kho sản phẩm' }).click()
-  await expect(page.getByRole('table', { name: 'Lịch tự động' }).getByRole('row')).toHaveCount(4)
+  await expect(page.getByRole('table', { name: 'Lịch tự động' }).getByRole('row')).toHaveCount(5)
+  await expect(page.getByRole('rowheader', { name: 'Bảo trì dữ liệu' })).toBeVisible()
   await page.getByRole('button', { name: 'Hot Crawl All' }).click()
   await expect(page.getByText('Tin thị trường · Đã xếp hàng')).toBeVisible()
   await expect(page.getByText('Cảnh báo lừa đảo · Lỗi')).toBeVisible()

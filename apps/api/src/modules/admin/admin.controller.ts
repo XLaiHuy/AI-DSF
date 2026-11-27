@@ -8,6 +8,7 @@ import { AdminService } from './admin.service'
 import { ThreatIntakeService } from './threat-intake.service'
 import { ThreatReviewService } from './threat-review.service'
 import { ProductScheduler } from './product-scheduler'
+import { MaintenanceScheduler } from './maintenance-scheduler'
 
 const uuid = new ZodValidationPipe(z.uuid())
 
@@ -15,7 +16,8 @@ const uuid = new ZodValidationPipe(z.uuid())
 @UseGuards(AdminGuard)
 export class AdminController {
   constructor(private readonly service: AdminService, private readonly intake: ThreatIntakeService,
-    private readonly review: ThreatReviewService, private readonly productsScheduler: ProductScheduler) {}
+    private readonly review: ThreatReviewService, private readonly productsScheduler: ProductScheduler,
+    private readonly maintenance: MaintenanceScheduler) {}
 
   @Get('schedulers')
   async schedulers() {
@@ -23,6 +25,7 @@ export class AdminController {
       { name: 'Tin thị trường', intervalLabel: '15 phút', schedule: this.service.scheduler() },
       { name: 'Cảnh báo lừa đảo', intervalLabel: '24 giờ', schedule: this.intake.scheduler() },
       { name: 'Lãi suất & sản phẩm', intervalLabel: '24 giờ', schedule: this.productsScheduler.scheduler() },
+      { name: 'Bảo trì dữ liệu', intervalLabel: '24 giờ', schedule: this.maintenance.scheduler() },
     ]
     return Promise.all(streams.map(async ({ name, intervalLabel, schedule }) => {
       const job = await schedule
@@ -88,14 +91,19 @@ export class AdminController {
   recentAudits() { return this.review.recentAudits() }
 
   @Get('feedback')
-  feedback() { return this.review.listFeedback() }
+  feedback(@Query('reviewStatus', new ZodValidationPipe(z.enum(['PENDING']).optional())) status?: 'PENDING') {
+    return this.review.listFeedback(status)
+  }
+
+  @Get('learning/overview')
+  learningOverview() { return this.review.learningOverview() }
 
   @Post('feedback')
   saveFeedback(@Body(new ZodValidationPipe(ThreatFeedbackSchema)) input: ThreatFeedback) { return this.review.saveFeedback(input) }
 
   @Patch('feedback/:id')
   toggleFeedback(@Param('id', uuid) id: string, @Body(new ZodValidationPipe(ThreatFeedbackPatchSchema)) input: z.infer<typeof ThreatFeedbackPatchSchema>) {
-    return this.review.setFeedback(id, input.isActive)
+    return this.review.setFeedback(id, input)
   }
 
   @Get('rnd/summary')

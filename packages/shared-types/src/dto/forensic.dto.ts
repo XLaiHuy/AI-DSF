@@ -13,7 +13,33 @@ export const LearningTraceSchema = z.strictObject({
   zeroShotEscalated: z.boolean(),
 })
 
+const domain = z.enum(['LOAN', 'INVEST', 'SAVINGS', 'PROFILE', 'SCAM'])
+export const ForensicGuidanceSchema = z.strictObject({
+  type: z.literal('guidance'),
+  intent: z.enum(['ASSISTANT_INFO', 'NEEDS_DETAILS', 'FINANCIAL_EDUCATION', 'SCAM_CHECK_INCOMPLETE', 'EMERGENCY_SCAM_RECOVERY', 'PROFILE_HEALTH_NAV', 'ACK_SMALLTALK']),
+  message: z.string(), suggestedPrompts: z.array(z.string()).optional(),
+  checklist: z.array(z.string().max(300)).max(6).optional(),
+  cta: z.strictObject({ label: z.string(), href: z.string().regex(/^\/(?:survey|profile|radar|forensic)(?:\?[^\s#]*)?$/) }).optional(),
+  extractedSlots: z.strictObject({ domain: domain.optional(), amountVnd: nonnegativeDecimal.optional(), termMonths: z.number().int().min(1).max(600).optional() }).optional(),
+})
+export type ForensicGuidance = z.infer<typeof ForensicGuidanceSchema>
+export const PreAuditTurnSchema = z.strictObject({
+  role: z.enum(['user', 'assistant']), content: z.string().trim().min(1).max(800), intent: ForensicGuidanceSchema.shape.intent.optional(),
+})
+const assessment = z.enum(['ACCURATE', 'INCORRECT'])
+export const UserAuditFeedbackSchema = z.strictObject({
+  assessment, suggestedVerdict: VerdictLevel.optional(), note: z.string().trim().max(500).optional(),
+})
+export type UserAuditFeedback = z.infer<typeof UserAuditFeedbackSchema>
+export const UserAuditFeedbackResponseSchema = z.strictObject({
+  id: z.uuid(), assessment, reviewStatus: z.literal('PENDING'), createdAt: z.iso.datetime(),
+})
+
 export const ForensicAuditFieldsSchema = z.strictObject({
+  preAuditHistory: z.preprocess(value => {
+    if (typeof value !== 'string' || value.length > 32000) return value
+    try { return JSON.parse(value) as unknown } catch { return value }
+  }, z.array(PreAuditTurnSchema).max(6)).optional(),
   rawText: z.string().trim().min(1).max(50_000).optional(),
   rawQrString: z.string().trim().min(1).max(4096).optional(),
   claimedEntityName: z.string().trim().min(1).max(200).optional(),
@@ -95,6 +121,7 @@ export const ForensicPersonalImpactSchema = z.strictObject({
 export type ForensicPersonalImpact = z.infer<typeof ForensicPersonalImpactSchema>
 
 export const ForensicAuditResponseSchema = z.strictObject({
+  userFeedback: z.strictObject({ assessment, reviewStatus: z.enum(['PENDING', 'APPROVED', 'REJECTED']), createdAt: z.iso.datetime() }).optional(),
   auditId: z.guid(),
   createdAt: z.iso.datetime().optional(),
   verdictLevel: VerdictLevel,
@@ -197,14 +224,6 @@ export const ForensicRefusalSchema = z.strictObject({
   code: z.literal('FORENSIC_OFF_TOPIC'),
   message: z.string(),
 })
-export const ForensicGuidanceSchema = z.strictObject({
-  type: z.literal('guidance'),
-  intent: z.enum(['ASSISTANT_INFO', 'NEEDS_DETAILS']),
-  message: z.string(),
-  suggestedPrompts: z.array(z.string()).optional(),
-  cta: z.strictObject({ label: z.string(), href: z.literal('/survey') }).optional(),
-})
-export type ForensicGuidance = z.infer<typeof ForensicGuidanceSchema>
 export const ForensicAuditResultSchema = z.union([ForensicAuditResponseSchema, ForensicRefusalSchema, ForensicGuidanceSchema])
 
 export const ForensicAuditStreamEventSchema = z.discriminatedUnion('type', [
@@ -238,7 +257,7 @@ export const ForensicFollowUpResponseSchema = z.strictObject({
   meta: z.strictObject({
     llmProvider: z.string().nullable(),
     degradedMode: z.boolean(),
-    intent: z.enum(['FINANCIAL_QA', 'NEW_CONTEXT', 'ACK', 'OFF_TOPIC', 'ASSISTANT_INFO']).optional(),
+    intent: z.enum(['FINANCIAL_QA', 'NEW_CONTEXT', 'ACK', 'OFF_TOPIC', 'ASSISTANT_INFO', 'FINANCIAL_EDUCATION', 'EMERGENCY_SCAM_RECOVERY', 'NEEDS_DETAILS']).optional(),
     suggestReaudit: z.boolean().optional(),
     reAuditAppendText: z.string().max(2000).optional(),
   }),

@@ -54,6 +54,8 @@ model MarketArticle {
   impactAnalyses      ArticleImpactAnalysis[]
   calculationSessions CalculationSession[]
 
+  @@index([feedStatus, publishedAt], map: "market_article_feed_status_published_at_idx")
+  @@index([contentHash], map: "market_article_content_hash_idx")
   @@map("market_article")
 }
 
@@ -103,10 +105,16 @@ model ThreatAlert {
   distinctSessionHashes Json?                @map("distinct_session_hashes") @db.JsonB
   feedbackExamples   ThreatFeedbackExample[]
 
+  @@index([verificationStatus, publishedAt], map: "threat_alert_verification_status_published_at_idx")
+  @@index([originSource, createdAt], map: "threat_alert_origin_source_created_at_idx")
   @@map("threat_alert")
 }
 
 model ThreatFeedbackExample {
+  sourceChannel       String       @default("ADMIN") @map("source_channel") @db.VarChar(20)
+  reviewStatus        String       @default("APPROVED") @map("review_status") @db.VarChar(20)
+  reporterSessionHash String?      @map("reporter_session_hash") @db.VarChar(64)
+  assessment          String?      @db.VarChar(16)
   id               String         @id @db.Uuid
   threatAlertId    String?        @map("threat_alert_id") @db.Uuid
   auditId          String?        @map("audit_id") @db.Uuid
@@ -125,6 +133,9 @@ model ThreatFeedbackExample {
 
   @@index([feedbackType, isActive])
   @@index([threatAlertId])
+  @@index([reviewStatus, sourceChannel, createdAt], map: "threat_feedback_examples_review_status_source_channel_creat_idx")
+  @@index([auditId, reporterSessionHash], map: "threat_feedback_examples_audit_id_reporter_session_hash_idx")
+  @@index([reporterSessionHash, createdAt], map: "threat_feedback_examples_reporter_session_hash_created_at_idx")
   @@map("threat_feedback_examples")
 }
 
@@ -149,10 +160,13 @@ model ThreatIndicator {
   threatAlert      ThreatAlert       @relation(fields: [threatAlertId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   forensicFindings ForensicFinding[]
 
+  @@index([indicatorType, indicatorText], map: "threat_indicator_indicator_type_indicator_text_idx")
+  @@index([threatAlertId], map: "threat_indicator_threat_alert_id_idx")
   @@map("threat_indicator")
 }
 
 model User {
+  avatarUpdatedAt     DateTime?            @map("avatar_updated_at") @db.Timestamptz(6)
   avatarData          String?              @map("avatar_data") @db.Text
   id                  String               @id @db.Uuid
   email               String               @unique @db.VarChar(255)
@@ -204,6 +218,7 @@ model ArticleImpactAnalysis {
   article            MarketArticle     @relation(fields: [articleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   profile            FinancialProfile? @relation(fields: [profileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([articleId, analysisMode, profileId, createdAt], map: "article_impact_analyses_article_id_analysis_mode_profile_id_idx")
   @@map("article_impact_analyses")
 }
 
@@ -282,6 +297,8 @@ model CalculationSession {
 
   @@index([sourceArticleId])
   @@index([sourceAuditId])
+  @@index([userId, createdAt], map: "calculation_sessions_user_id_created_at_idx")
+  @@index([guestSessionId, createdAt], map: "calculation_sessions_guest_session_id_created_at_idx")
   @@map("calculation_sessions")
 }
 
@@ -316,6 +333,8 @@ model ForensicAudit {
 
   @@index([profileId])
   @@index([sourceAlertId])
+  @@index([userId, createdAt], map: "forensic_audits_user_id_created_at_idx")
+  @@index([guestSessionId, createdAt], map: "forensic_audits_guest_session_id_created_at_idx")
   @@map("forensic_audits")
 }
 

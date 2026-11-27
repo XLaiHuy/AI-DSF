@@ -9,6 +9,7 @@ import { Badge, Button, buttonVariants, Card, TermInfo } from '@/components/ui'
 import { formatVietnamTime } from '@/lib/workspace-data'
 import { formatSpacedAmount } from '@/components/ui/money-input'
 import { cn } from '@/lib/utils'
+import { AuditFeedback } from './AuditFeedback'
 import { LoanCost } from './LoanCost'
 import { LegalReferencesCard } from './LegalReferencesCard'
 import { PersonalImpactCard } from './PersonalImpactCard'
@@ -247,10 +248,12 @@ function LearningTrace({ trace }: { trace: NonNullable<ForensicAuditResponse['me
     trace.zeroShotEscalated && 'Tier 3 · Phân tích zero-shot',
   ].filter(Boolean)
   if (!signals.length) return null
-  return <details className="rounded-lg border border-border bg-card px-3 py-2 text-xs">
+  return <details className="rounded-lg border border-border bg-card px-4 py-3 text-sm">
     <summary className="cursor-pointer text-muted-foreground">
       <span className="font-semibold text-foreground">Trí nhớ chống lừa đảo</span>
-      <span className="ms-2">{signals.join(' / ')}</span>
+      <span className="mt-2 flex flex-wrap gap-2">
+        {signals.map(signal => <Badge key={String(signal)} variant="outline" className="whitespace-normal">{signal}</Badge>)}
+      </span>
     </summary>
     {trace.matchedTacticSummaries.length > 0 && <ul className="mt-2 list-disc space-y-1 ps-5 text-muted-foreground">
       {trace.matchedTacticSummaries.map((summary, index) => <li key={index}>{summary}</li>)}
@@ -385,6 +388,7 @@ export function ForensicReport({ audit, inline = false, animate = false, opening
       {opening && <RevealBlock animate={animated} className="print-hidden">{opening}</RevealBlock>}
       <RevealBlock animate={animated} className="print-keep"><VerdictHero audit={audit} inline={inline} /></RevealBlock>
       {audit.meta.learningTrace && <LearningTrace trace={audit.meta.learningTrace} />}
+      <AuditFeedback key={audit.auditId} audit={audit} />
       {!finished && (
         <div className="pointer-events-none sticky top-1 z-10 !-mb-9 flex justify-end pe-2 print-hidden">
           <Button ref={skip} variant="outline" className="pointer-events-auto h-8 rounded-full px-3 text-xs shadow-sm"

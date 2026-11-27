@@ -17,11 +17,12 @@ const guestSessionId = '11520285-9e97-42a2-a8b6-c71356c05c09'
 
 describe('profile avatars', () => {
   it('stores a 256px WebP and wipes input on success and rejection', async () => {
-    const update = vi.fn().mockResolvedValue({ id: userId, authProvider: 'EMAIL', role: 'USER', avatarData: 'image', updatedAt: new Date(1234) })
+    const update = vi.fn().mockResolvedValue({ id: userId, authProvider: 'EMAIL', role: 'USER', avatarUpdatedAt: new Date(1234) })
     const service = new ProfileAuthService({ user: { update } } as unknown as PrismaService)
     const input = await sharp({ create: { width: 8, height: 4, channels: 3, background: '#ef9378' } }).png().toBuffer()
     await expect(service.saveAvatar(userId, input)).resolves.toEqual({ avatarUrl: '/api/v1/profile/avatar/' + userId + '?v=1234' })
     expect(input.every(byte => byte === 0)).toBe(true)
+    expect(update.mock.calls[0][0].select).not.toHaveProperty('avatarData')
     const stored = update.mock.calls[0][0].data.avatarData
     expect(await sharp(Buffer.from(stored, 'base64')).metadata()).toMatchObject({ format: 'webp', width: 256, height: 256 })
     const invalid = Buffer.from('this is text')

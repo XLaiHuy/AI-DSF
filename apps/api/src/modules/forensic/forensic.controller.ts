@@ -4,7 +4,7 @@ import {
   Post, Req, Res, UseGuards,
 } from '@nestjs/common'
 import {
-  ApiErrorCode, ForensicAuditFieldsSchema, ForensicFollowUpRequestSchema,
+  ApiErrorCode, ForensicAuditFieldsSchema, ForensicFollowUpRequestSchema, UserAuditFeedbackSchema, type UserAuditFeedback,
   type ForensicAuditStreamEvent, type ForensicFollowUpRequest,
 } from '@fincopilot/shared-types'
 import type { FastifyReply, FastifyRequest } from 'fastify'
@@ -40,7 +40,7 @@ async function parseAuditUpload(request: FastifyRequest, body: unknown) {
   try {
     const fields: Record<string, string> = {}
     let invalidField = false
-    for await (const part of request.parts({ limits: { fields: fieldNames.size, parts: 10, fieldSize: 200_000 } })) {
+    for await (const part of request.parts({ limits: { fields: fieldNames.size, parts: fieldNames.size + 6, fieldSize: 200_000 } })) {
       if (part.type === 'file') {
         if (part.fieldname !== 'files') invalidField = true
         files.push({ buffer: await readFile(part.file) })
@@ -139,6 +139,12 @@ export class ForensicController {
     reply.header('Content-Disposition', `attachment; filename="fincopilot-${audit.auditId}.json"`)
     reply.header('Cache-Control', 'private, no-store')
     return audit
+  }
+
+  @Post('audits/:id/feedback')
+  feedback(@Req() request: FastifyRequest, @Param('id') id: string,
+    @Body(new ZodValidationPipe(UserAuditFeedbackSchema)) body: UserAuditFeedback) {
+    return this.service.recordFeedback(request.session, id, body)
   }
 
   @Post('audits/:id/chat')

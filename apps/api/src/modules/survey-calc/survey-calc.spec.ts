@@ -55,6 +55,8 @@ describe('Survey API contracts', () => {
     const result = await service.loan({ ...loan, termMonths: 360, rateShockDeltaPct: '1' }, session)
     const { data } = prisma.calculationSession.create.mock.calls[0][0]
     expect(result.offers).toHaveLength(2)
+    expect(data.mathResultsJson.baseRecipes).toHaveLength(2)
+    expect(data.mathResultsJson.result.offers.every((item: { schedule: unknown[] }) => item.schedule.length === 0)).toBe(true)
     expect(JSON.stringify(data.mathResultsJson)).not.toContain('stressSchedule')
     expect(JSON.stringify(data.mathResultsJson).length).toBeLessThan(JSON.stringify(result).length * 0.6)
     prisma.calculationSession.findFirst.mockResolvedValue({ ...data, createdAt: new Date() })
@@ -184,7 +186,7 @@ describe('Survey API contracts', () => {
   })
 
   it('compares all three methods, models the rate change and charges the early exit fee', async () => {
-    const { service } = setup()
+    const { service, prisma } = setup()
     const base = { label: 'A', principalVnd: '12000000', annualRatePct: '12', termMonths: 12 }
     const input = ManualCompareRequestSchema.parse({ offers: [
       base, { ...base, label: 'B', calcMethod: 'DECLINING_PRINCIPAL' },
@@ -192,7 +194,12 @@ describe('Survey API contracts', () => {
         promoMonths: 6, floatingRatePct: '24', earlySettlementMonth: 8, earlySettlementFeePct: '2' },
       { ...base, label: 'D' },
     ] })
-    const { offers } = await service.manualCompare(input, session)
+    const result = await service.manualCompare(input, session)
+    const { offers } = result
+    const { data } = prisma.calculationSession.create.mock.calls[0][0]
+    expect(data.mathResultsJson.offers.every((item: { schedule: unknown[] }) => item.schedule.length === 0)).toBe(true)
+    prisma.calculationSession.findFirst.mockResolvedValue({ ...data, createdAt: new Date() })
+    expect((await service.sessionDetail(session, result.sessionId)).result).toEqual(result)
     expect(offers.map(({ calcMethod }) => calcMethod)).toEqual(['REDUCING_BALANCE', 'DECLINING_PRINCIPAL', 'FLAT_RATE', 'REDUCING_BALANCE'])
     expect(offers[2].schedule[5]).toMatchObject({ paymentVnd: '1140000', interestVnd: '120000', feeVnd: '20000' })
     expect(offers[2].schedule[6]).toMatchObject({ paymentVnd: '1260000', interestVnd: '240000', feeVnd: '20000' })

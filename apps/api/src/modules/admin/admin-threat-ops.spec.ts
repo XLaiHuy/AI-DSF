@@ -7,6 +7,7 @@ import type { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import type { ThreatMemoryService } from '../forensic/threat-memory.service'
 import { AdminController } from './admin.controller'
 import type { AdminService } from './admin.service'
+import { MaintenanceScheduler } from './maintenance-scheduler'
 import { ThreatIntakeService } from './threat-intake.service'
 import { ThreatReviewService } from './threat-review.service'
 import * as safety from './threat-safety'
@@ -194,8 +195,8 @@ describe('admin threat operations', () => {
     const scheduler = async () => ({ next: 1000 })
     const admin = new AdminController({ scheduler, fetch: vi.fn().mockResolvedValue({ jobId: 'manual' }), syncProducts: vi.fn().mockResolvedValue({ productsUpserted: 1, sourcesReachable: 1, sourcesChecked: 1 }) } as unknown as AdminService,
       { scheduler, hotCrawlNow: vi.fn().mockRejectedValue(new Error('offline')) } as unknown as ThreatIntakeService,
-      {} as ThreatReviewService, { scheduler } as unknown as ProductScheduler)
-    expect(await admin.schedulers()).toEqual(['15 phút', '24 giờ', '24 giờ'].map(intervalLabel =>
+      {} as ThreatReviewService, { scheduler } as unknown as ProductScheduler, { scheduler } as unknown as MaintenanceScheduler)
+    expect(await admin.schedulers()).toEqual(['15 phút', '24 giờ', '24 giờ', '24 giờ'].map(intervalLabel =>
       expect.objectContaining({ scheduled: true, intervalLabel, nextAt: new Date(1000).toISOString() })))
     expect((await admin.hotCrawlAll()).map(row => row.status)).toEqual(['QUEUED', 'ERROR', 'SUCCESS'])
   })
@@ -205,11 +206,114 @@ describe('admin threat operations', () => {
     const prisma = { threatFeedbackExample: { findMany: async () => [{
       id: 'alias', feedbackType: 'TEENCODE_ALIAS', highlightedSpan: 'dvc', adminNote: 'dịch vụ công',
     }] } } as unknown as PrismaService
-    const controller = new AdminController({} as AdminService, {} as ThreatIntakeService, new ThreatReviewService(prisma, memory), {} as ProductScheduler)
+    const controller = new AdminController({} as AdminService, {} as ThreatIntakeService, new ThreatReviewService(prisma, memory),
+      {} as ProductScheduler, {} as MaintenanceScheduler)
     expect(await controller.runEval()).toMatchObject({
       cleanPassed: 12, cleanTotal: 12, feedbackPassed: 1, feedbackTotal: 1,
       cases: expect.arrayContaining([{ id: 'alias', kind: 'TEENCODE_ALIAS', expected: 'dich vu cong',
         actual: 'dich vu cong', passed: true, detail: 'dvc' }]),
     })
+  })
+})
+
+describe('continual learning review', () => {
+  it('shows measured coverage and warns when recent incorrect feedback exceeds five percent', async () => {
+    const sample = Array.from({ length: 20 }, (_, index) => ({
+      sourceChannel: index === 0 ? 'ADMIN' : 'USER_REPORT',
+      feedbackType: index === 0 ? 'FALSE_POSITIVE' : 'RND_PROPOSAL',
+      assessment: index === 1 ? 'INCORRECT' : 'ACCURATE',
+    }))
+    const findMany = vi.fn().mockResolvedValue(sample)
+    const prisma = {
+      threatAlert: { count: vi.fn().mockResolvedValueOnce(20).mockResolvedValueOnce(10).mockResolvedValueOnce(3),
+        groupBy: vi.fn().mockResolvedValue([{ embeddingModel: 'text-embedding-3-small' }]) },
+      threatFeedbackExample: { findMany, count: vi.fn().mockResolvedValue(2),
+        groupBy: vi.fn().mockResolvedValueOnce([{ feedbackType: 'FALSE_POSITIVE', _count: 4 }, { feedbackType: 'TEENCODE_ALIAS', _count: 3 }])
+          .mockResolvedValueOnce([{ embeddingModel: 'text-embedding-3-small' }]) },
+    } as unknown as PrismaService
+    const review = new ThreatReviewService(prisma, mockMemory().memory)
+    await expect(review.learningOverview()).resolves.toMatchObject({
+      verifiedAlertsTotal: 20, verifiedAlertsWithEmbedding: 10, embeddingCoveragePct: 50,
+      activeFewShotSafe: 4, activeTeencodeAliases: 3, pendingCommunityProposals: 3, pendingUserFeedback: 2,
+      embeddingModels: ['text-embedding-3-small'],
+      drift: { windowSize: 200, sampledCount: 20, incorrectCount: 2, errorRatePct: 10, thresholdPct: 5, warning: true },
+    })
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 200, where: { OR: [
+      { sourceChannel: 'USER_REPORT' },
+      { sourceChannel: 'ADMIN', auditId: { not: null }, feedbackType: { in: ['FALSE_POSITIVE', 'CONFIRMED_SCAM'] } },
+    ] } }))
+  })
+
+  it('requires explicit approval before embedding a report or activating it', async () => {
+    const id = randomUUID()
+    const row = { id, reviewStatus: 'PENDING', feedbackType: 'FALSE_POSITIVE', isActive: false,
+      sampleTextMasked: 'Phiếu thu đã che thông tin', embeddingJson: null, adminNote: '' }
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 })
+    const prisma = { threatFeedbackExample: { findUnique: vi.fn().mockResolvedValue(row), updateMany } } as unknown as PrismaService
+    const { memory, invalidate } = mockMemory()
+    const review = new ThreatReviewService(prisma, memory)
+    await expect(review.setFeedback(id, { isActive: true })).rejects.toThrow('Cần duyệt phản hồi trước khi bật.')
+    expect(memory.computeEmbedding).not.toHaveBeenCalled()
+    expect(updateMany).not.toHaveBeenCalled()
+    await expect(review.setFeedback(id, { reviewStatus: 'APPROVED' })).resolves.toMatchObject({ reviewStatus: 'APPROVED', isActive: true })
+    expect(memory.computeEmbedding).toHaveBeenCalledWith(row.sampleTextMasked)
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id, reviewStatus: 'PENDING', feedbackType: 'FALSE_POSITIVE', isActive: false },
+      data: expect.objectContaining({ embeddingJson: expect.any(Array), reviewStatus: 'APPROVED', isActive: true }),
+    })
+    expect(invalidate).toHaveBeenCalledOnce()
+    await expect(review.setFeedback(id, { reviewStatus: 'REJECTED' })).resolves.toMatchObject({ reviewStatus: 'REJECTED', isActive: false })
+    expect(invalidate).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('daily database maintenance', () => {
+  it('registers a daily schedule with a delayed first run and keeps the existing schedule on restart', async () => {
+    const getJobScheduler = vi.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce({ every: 86_400_000 })
+    const upsertJobScheduler = vi.fn()
+    const queue = { getJobScheduler, upsertJobScheduler } as unknown as Queue
+    const scheduler = new MaintenanceScheduler(queue, {} as PrismaService)
+    const earliest = Date.now() + 86_400_000
+    await scheduler.onModuleInit()
+    await scheduler.onModuleInit()
+    expect(upsertJobScheduler).toHaveBeenCalledOnce()
+    const [id, repeat] = upsertJobScheduler.mock.calls[0]
+    expect(id).toBe('daily-db-maintenance')
+    expect(repeat.every).toBe(86_400_000)
+    expect(repeat.startDate).toBeGreaterThanOrEqual(earliest)
+  })
+
+  it('purges only eligible guest sessions and unverified singleton proposals after their children', async () => {
+    const auditId = randomUUID()
+    const proposalId = randomUUID()
+    const entity = (id: string) => ({
+      findMany: vi.fn().mockResolvedValue([{ id }]),
+      deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+    })
+    const tx = { calculationSession: entity(randomUUID()), forensicAudit: entity(auditId),
+      forensicFinding: entity(randomUUID()), forensicQrPayload: entity(randomUUID()),
+      financialProfile: entity(randomUUID()), threatAlert: entity(proposalId),
+      threatIndicator: entity(randomUUID()), threatEvidence: entity(randomUUID()) }
+    const prisma = { $transaction: vi.fn(async cb => cb(tx)) } as unknown as PrismaService
+    const scheduler = new MaintenanceScheduler({} as Queue, prisma)
+    await expect(scheduler.process({ name: 'daily-db-maintenance' } as Parameters<MaintenanceScheduler['process']>[0]))
+      .resolves.toEqual({ calculations: 1, audits: 1, profiles: 1, proposals: 1 })
+    expect(tx.calculationSession.deleteMany).toHaveBeenCalledWith({
+      where: { userId: null, createdAt: { lt: expect.any(Date) }, id: { in: expect.any(Array) } },
+    })
+    expect(tx.forensicAudit.deleteMany).toHaveBeenCalledWith({ where: expect.objectContaining({
+      id: { in: [auditId] }, userId: null, feedbackExamples: { none: { reviewStatus: 'APPROVED' } },
+    }) })
+    expect(tx.financialProfile.deleteMany).toHaveBeenCalledWith({ where: expect.objectContaining({
+      userId: null, impactAnalyses: { none: {} }, forensicAudits: { none: {} }, calculationSessions: { none: {} },
+    }) })
+    expect(tx.threatAlert.deleteMany).toHaveBeenCalledWith({ where: expect.objectContaining({
+      id: { in: [proposalId] }, verificationStatus: 'UNVERIFIED', originSource: 'FORENSIC_COMMUNITY', hitCount: 1,
+      feedbackExamples: { none: { reviewStatus: 'APPROVED' } },
+    }) })
+    expect(tx.forensicFinding.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(tx.forensicAudit.deleteMany.mock.invocationCallOrder[0])
+    expect(tx.forensicQrPayload.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(tx.forensicAudit.deleteMany.mock.invocationCallOrder[0])
+    expect(tx.threatEvidence.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(tx.threatAlert.deleteMany.mock.invocationCallOrder[0])
+    expect(tx.threatIndicator.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(tx.threatAlert.deleteMany.mock.invocationCallOrder[0])
   })
 })

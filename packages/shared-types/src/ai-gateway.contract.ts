@@ -90,6 +90,11 @@ export const AI_TASK_SCHEMAS = {
     immediateActions: z.array(z.string().trim().min(1).max(250)).max(5),
   }),
   FORENSIC_DEEP_REASONING: z.strictObject({ findings: z.array(ReasoningFindingSchema).max(3), summary: z.string() }),
+  FORENSIC_CONVERSATION_GUIDE: z.strictObject({
+    route: z.enum(['FINANCIAL_EDUCATION', 'NEEDS_DETAILS', 'SCAM_CHECK_INCOMPLETE', 'ASSISTANT_INFO', 'EMERGENCY_SCAM_RECOVERY', 'PROFILE_HEALTH_NAV', 'OFF_TOPIC', 'FULL_AUDIT']),
+    answer: z.string().trim().min(1).max(900), suggestedPrompts: z.array(z.string().trim().min(1).max(140)).max(3),
+    domain: z.enum(['LOAN', 'INVEST', 'SAVINGS', 'PROFILE', 'SCAM']).optional(),
+  }),
   PROFILE_PARSE_NATURAL: FinancialHealthRequestSchema,
   PROFILE_HEALTH_COACH: ProfileCoachAdviceSchema,
 } as const

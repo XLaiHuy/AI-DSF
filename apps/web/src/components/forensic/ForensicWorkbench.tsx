@@ -158,7 +158,7 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
     if (handoff.from === 'home-quick-check' && handoff.prefillText) return handoff.prefillText
     return handoff.prefillText ?? ''
   })
-  const [refusals, setRefusals] = useState<{ question: string; answer: string; guidance?: ForensicGuidance }[]>([])
+  const [preAuditTurns, setPreAuditTurns] = useState<{ question: string; answer: string; guidance?: ForensicGuidance }[]>([])
   const [demo, setDemo] = useState<typeof examples[number]>()
   const [loadingDemo, setLoadingDemo] = useState(false)
   const [files, setFiles] = useState<File[]>([])
@@ -261,7 +261,7 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
     setDraft('')
     setEntity('')
     setSourceAlertId(undefined)
-    setRefusals([])
+    setPreAuditTurns([])
     setDemo(undefined)
     setFiles([])
     setError('')
@@ -326,7 +326,12 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
         })
         setConversation({ ...conversation, replies: [...conversation.replies, { question: text, ...reply, streamed }] })
       } else {
+        const history = preAuditTurns.slice(-3).flatMap(({ question, answer, guidance }) => [
+          { role: 'user' as const, content: question.trim().slice(0, 800) },
+          { role: 'assistant' as const, content: answer.trim().slice(0, 800), intent: guidance?.intent },
+        ]).filter(turn => turn.content)
         const parsed = ForensicAuditFieldsSchema.safeParse(resubmission?.fields ?? {
+          preAuditHistory: history.length ? history : undefined,
           rawText: text || undefined,
           claimedEntityName: entity || demo?.entity || undefined,
           sourceAlertId: demo ? undefined : sourceAlertId,
@@ -338,7 +343,7 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
         }
 
         const payload = new FormData()
-        for (const [name, value] of Object.entries(parsed.data)) if (value) payload.append(name, value)
+        for (const [name, value] of Object.entries(parsed.data)) if (value) payload.append(name, typeof value === 'string' ? value : JSON.stringify(value))
         for (const file of attachments) payload.append('files', file)
         const submission = resubmission ?? { text, files, context: contextName, fields: parsed.data }
         activeRequest.current = controller
@@ -352,12 +357,13 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
           })
         }, () => setPending({ kind: 'audit', submission, stages: [] }))
         if ('type' in audit) {
-          setRefusals((previous) => [...previous, { question: submission.text, answer: audit.message, guidance: audit.type === 'guidance' ? audit : undefined }])
+          setPreAuditTurns((previous) => [...previous, { question: submission.text, answer: audit.message, guidance: audit.type === 'guidance' ? audit : undefined }])
           if (!resubmission) setDraft('')
           return
         }
         followScroll.current = false
         if (scrollRoot) scrollRoot.scrollTop = 0
+        setPreAuditTurns([])
         setConversation({ audit, submission, replies: [] })
         setFiles([])
         setEntity('')
@@ -421,15 +427,18 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
           lastScrollTop.current = scrollTop
         }}>
         <div ref={transcript} className="grid min-w-0 gap-4 py-3 sm:py-4">
-      {refusals.map(({ question, answer, guidance }, index) => <div key={index} className="grid gap-3">
+      {preAuditTurns.map(({ question, answer, guidance }, index) => <div key={index} className="grid gap-3">
         <p className="ml-auto max-w-[85%] whitespace-pre-wrap break-words rounded-xl bg-accent p-3 text-sm">{question}</p>
         <div aria-live="polite"><AgentBubble answer={answer} complete />
+          {!!guidance?.checklist?.length && <ol aria-label="Các bước ứng cứu" className="mt-3 list-decimal space-y-2 rounded-lg border border-verdict-warning-border bg-verdict-warning-bg py-3 pe-3 ps-9 text-sm leading-relaxed text-verdict-warning">
+            {guidance.checklist.map(step => <li key={step}>{step}</li>)}
+          </ol>}
           {guidance && <div className="mt-2 flex flex-wrap gap-2">
             {guidance.suggestedPrompts?.map(prompt => <button type="button" key={prompt} className="rounded-full border px-3 py-2 text-sm" onClick={() => { setDraft(prompt); textarea.current?.focus() }}>{prompt}</button>)}
             {guidance.cta && <Link className="rounded-lg bg-primary px-3 py-2 text-primary-foreground" href={guidance.cta.href}>{guidance.cta.label}</Link>}
           </div>}</div>
       </div>)}
-      {!conversation && !pending && !refusals.length && (
+      {!conversation && !pending && !preAuditTurns.length && (
         <div className="grid gap-4 rounded-xl border border-primary/15 bg-card p-4 shadow-sm sm:p-6">
           <div className="flex items-start gap-3">
             <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-accent text-primary">

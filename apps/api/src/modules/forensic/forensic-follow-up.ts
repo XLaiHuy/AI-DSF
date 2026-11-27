@@ -1,6 +1,7 @@
 import Decimal from 'decimal.js'
 import type { FinancialHealthRequest, ForensicAuditResponse, ForensicFollowUpRequest, ForensicFollowUpResponse } from '@fincopilot/shared-types'
 import { normalizeVietnamese } from './data/trusted-institutions'
+import { educationGuide, emergencyGuide, guidanceEligible, isSmalltalkAck, surveyDomain } from './forensic-conversation'
 import { buildForensicDossier, followUpAnchor } from './forensic-narrative'
 import { evaluateHardRules, parseVnd } from './hard-rules.engine'
 import { formatCaseAmount } from './payment-qr-description'
@@ -38,9 +39,15 @@ export function statedTransferAmount(text: string) {
 
 export function classifyFollowUpIntent(question: string, audit: ForensicAuditResponse, aliases?: readonly TeencodeAlias[]): Intent {
   const plain = normalizeVietnamese(question)
-  if (!/[?？]/u.test(question) && plain.split(' ').length <= 4 && ack.test(plain)) return 'ACK'
+  if (isSmalltalkAck(question) || !/[?？]/u.test(question) && plain.split(' ').length <= 4 && ack.test(plain)) return 'ACK'
   if (isOffTopicPrompt(question) || shouldRefuseForensicPrompt(question, aliases)) return 'OFF_TOPIC'
   if (assistantIntro(question)) return 'ASSISTANT_INFO'
+  const emergency = emergencyGuide(question)
+  if (emergency) return 'EMERGENCY_SCAM_RECOVERY'
+  if (guidanceEligible(question, aliases)) {
+    if (educationGuide(question)) return 'FINANCIAL_EDUCATION'
+    if (surveyDomain(question) && !facts(question).amountVnd) return 'NEEDS_DETAILS'
+  }
   const { amountVnd, purposeText, foreign } = facts(question)
   const sameAmount = amountVnd && audit.qrPayloads.some((qr) => qr.qrAmountVnd && new Decimal(qr.qrAmountVnd).eq(amountVnd))
   const samePurpose = purposeText && audit.qrPayloads.some((qr) => normalizeVietnamese(qr.purposeText ?? '') === normalizeVietnamese(purposeText))
@@ -72,11 +79,15 @@ const directAnswers = {
   ASSISTANT_INFO: 'Mình là FinCopilot. Mình giúp đọc hợp đồng, kiểm tra giao dịch và mã QR. Bạn muốn mình giải thích phần nào của hồ sơ vừa rồi?',
   ACK: 'Rất vui được hỗ trợ bạn. Nếu có thêm ảnh chụp, số tiền cụ thể hoặc điều khoản mới từ bên kia, bạn cứ gửi vào đây để mình kiểm tra giúp nhé.',
   OFF_TOPIC: 'Mình là trợ lý giám định rủi ro và tài chính cá nhân FinCopilot, nên mình chỉ hỗ trợ phân tích giao dịch, mã QR, hợp đồng và các bước bảo vệ tiền của bạn. Bạn muốn hỏi thêm chi tiết nào trong báo cáo vừa rồi không?',
+  NEEDS_DETAILS: 'Bạn muốn vay, đầu tư hay tích lũy trong bao lâu? Bạn có thể mở Khảo sát để mô phỏng theo số tiền và kỳ hạn hoặc gửi điều khoản mới để mình đối chiếu.',
 }
 
 export function prepareFollowUp(audit: ForensicAuditResponse, input: ForensicFollowUpRequest, profile: FinancialHealthRequest | null, aliases?: readonly TeencodeAlias[]) {
   const intent = classifyFollowUpIntent(input.question, audit, aliases)
-  const directAnswer = intent === 'ACK' || intent === 'ASSISTANT_INFO' || intent === 'OFF_TOPIC' ? directAnswers[intent] : null
+  const recovery = intent === 'EMERGENCY_SCAM_RECOVERY' ? emergencyGuide(input.question) : null
+  const directAnswer = recovery ? [recovery.message, ...(recovery.checklist ?? [])].join('\n\n')
+    : intent === 'FINANCIAL_EDUCATION' ? educationGuide(input.question)
+    : intent === 'ACK' || intent === 'ASSISTANT_INFO' || intent === 'OFF_TOPIC' || intent === 'NEEDS_DETAILS' ? directAnswers[intent] : null
   const question = maskForensicText(input.question)
   const newContext = intent === 'NEW_CONTEXT' ? recheckFollowUpContext(input.question, audit, profile) : null
   const highRisk = audit.verdictLevel === 'HIGH_RISK'

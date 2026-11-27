@@ -44,7 +44,7 @@ export async function attachThreatDraft(tx: Prisma.TransactionClient, memory: Th
     ] },
     orderBy: [{ verificationStatus: 'desc' }, { createdAt: 'asc' }], select: { id: true },
   }) ?? (await tx.threatAlert.findMany({
-    orderBy: [{ verificationStatus: 'desc' }, { createdAt: 'asc' }],
+    take: 300, orderBy: [{ verificationStatus: 'desc' }, { updatedAt: 'desc' }],
     select: { id: true, embeddingJson: true, embeddingModel: true,
       evidence: { select: { articleSource: { select: { article: { select: { title: true } } } } } } },
   })).find((row) => {

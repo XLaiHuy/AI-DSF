@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq'
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import type { ArticleImpactAnalysis, Prisma } from '@prisma/client'
 import type { Job, Queue } from 'bullmq'
 import { z } from 'zod'
 import { PrismaService } from '../../common/prisma.service'
@@ -26,6 +27,11 @@ const categoryKeywords: Record<string, string[]> = {
 
 
 type FeedEntry = { title: string; url: string; publishedAt: Date | null; description: string; imageUrl: string | null }
+type ImpactArticle = Prisma.MarketArticleGetPayload<{ include: { sources: { include: { source: true } } } }>
+type ImpactProfile = { id: string; primaryGoal: string }
+const impactAssessment = z.object({ text: z.string() })
+const impactFacts = z.array(z.string())
+const dayMs = 86_400_000
 
 const VIETNAM_OFFSET = '+07:00'
 const recommendationConsentSchema = z.strictObject({
@@ -204,6 +210,7 @@ export class RadarService extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(RadarService.name)
   private readonly dailyBriefCache = new Map<string, { expiresAt: number; value: BriefBase }>()
   private readonly dailyBriefInFlight = new Map<string, Promise<BriefBase>>()
+  private readonly impactInFlight = new Map<string, Promise<ArticleImpactAnalysis>>()
 
   constructor(
     @InjectQueue('radar-ingestion') private readonly queue: Queue,
@@ -226,14 +233,17 @@ export class RadarService extends WorkerHost implements OnModuleInit {
       where: { isActive: true, ...(job.data.sourceKey ? { sourceKey: job.data.sourceKey } : {}) },
       orderBy: { sourceKey: 'asc' },
     })
-    const results = await Promise.all(sources.map((source) => this.fetchSource(source)))
+    const results: Array<Awaited<ReturnType<RadarService['fetchSource']>>> = []
+    for (let index = 0; index < sources.length; index += 3) {
+      results.push(...await Promise.all(sources.slice(index, index + 3).map(source => this.fetchSource(source))))
+    }
     return { results }
   }
 
   async enqueueFetch(sourceKey?: string) {
     const job = await this.queue.add('fetch-all', { sourceKey }, {
       jobId: sourceKey ? `manual-${sourceKey}-${Date.now()}` : `manual-all-${Date.now()}`,
-      attempts: 1, removeOnComplete: 100, removeOnFail: 100,
+      attempts: 1,
     })
     return { jobId: job.id, queued: true }
   }
@@ -427,7 +437,12 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     if (pending) return pending
     const build = this.buildDailyBrief(candidates).then((value) => {
       const ttl = value.status === 'AI_SUMMARY' ? 30 * 60_000 : 5 * 60_000
-      this.dailyBriefCache.set(key, { expiresAt: Date.now() + ttl, value })
+      if (day === vnDay()) {
+        this.dailyBriefCache.delete(key)
+        this.dailyBriefCache.set(key, { expiresAt: Date.now() + ttl, value })
+        const oldest = this.dailyBriefCache.keys().next().value
+        if (this.dailyBriefCache.size > 32 && oldest !== undefined) this.dailyBriefCache.delete(oldest)
+      }
       return value
     }).finally(() => this.dailyBriefInFlight.delete(key))
     this.dailyBriefInFlight.set(key, build)
@@ -539,26 +554,74 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     const profile = requestedMode === 'PERSONALIZED' ? await this.profiles.getActiveProfile(session) : null
     if (requestedMode === 'PERSONALIZED' && !profile) throw new BadRequestException('Chưa có hồ sơ tài chính để cá nhân hóa. Hãy dùng phân tích tổng quát.')
     const mode = profile ? 'PERSONALIZED' : 'GENERAL'
+    const citations = article.sources.map(source => ({ sourceId: source.sourceId, url: source.sourceUrl, sourceName: source.source.name }))
     try {
-      const output = await this.ai.generateStructured('RADAR_CLASSIFY_IMPACT', AI_TASK_SCHEMAS.RADAR_CLASSIFY_IMPACT, {
-        article: { title: article.title, publishedAt: article.publishedAt, sources: article.sources.map((source) => ({ name: source.source.name, url: source.sourceUrl })) },
-        // Only the explicit goal is passed to AI. Income, expenses, debt and savings stay out of the prompt.
-        profile: profile ? { primaryGoal: profile.primaryGoal } : null,
-        instruction: 'Separate source-backed facts from AI interpretation. Cite only supplied URLs. Return suggestedRateDelta only when the supplied title/metadata explicitly states before and after rates; use the exact difference in percentage points. Otherwise return null. Never infer or invent rates. Use only the explicit primary goal when personalized; disclose assumptions.',
-      })
-      const saved = await this.prisma.articleImpactAnalysis.create({ data: {
-        id: randomUUID(), articleId: article.id, profileId: profile?.id ?? null, analysisMode: mode,
+      const saved = await this.resolveImpact(article, profile)
+      const assumptions = profile ? ['Chỉ dùng mục tiêu đã lưu; kết quả không phải phép tính tài chính.']
+        : ['Phân tích tổng quát, không dùng hồ sơ cá nhân hay phép tính khoản vay.']
+      return {
+        mode, facts: impactFacts.safeParse(saved.extractedFactsJson).data ?? [],
+        assessment: impactAssessment.safeParse(saved.aiAssessmentJson).data?.text ?? null,
+        suggestedRateDelta: saved.suggestedRateDelta?.toString() ?? null, assumptions, citations, createdAt: saved.createdAt,
+      }
+    } catch (error) {
+      this.logger.warn(`AI impact analysis unavailable for article ${id}: ${error instanceof Error ? error.message : 'unknown error'}`)
+      return { mode, facts: [], assessment: null, suggestedRateDelta: null, assumptions: ['Dịch vụ AI hiện không khả dụng.'], citations, unavailable: true }
+    }
+  }
+
+  private resolveImpact(article: ImpactArticle, profile: ImpactProfile | null) {
+    const key = `${article.id}:${profile?.id ?? 'general'}`
+    const running = this.impactInFlight.get(key)
+    if (running) return running
+    const work = this.loadOrCreateImpact(article, profile, key).finally(() => this.impactInFlight.delete(key))
+    this.impactInFlight.set(key, work)
+    return work
+  }
+
+  private async loadOrCreateImpact(article: ImpactArticle, profile: ImpactProfile | null, key: string) {
+    const latest = {
+      where: { articleId: article.id, analysisMode: profile ? 'PERSONALIZED' : 'GENERAL', profileId: profile?.id ?? null,
+        ...(profile && { createdAt: { gte: new Date(Date.now() - dayMs) } }) },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    } satisfies Prisma.ArticleImpactAnalysisFindFirstArgs
+    const cached = await this.prisma.articleImpactAnalysis.findFirst(latest)
+    if (cached) return cached
+
+    const output = await this.ai.generateStructured('RADAR_CLASSIFY_IMPACT', AI_TASK_SCHEMAS.RADAR_CLASSIFY_IMPACT, {
+      article: { title: article.title, publishedAt: article.publishedAt,
+        sources: article.sources.map(source => ({ name: source.source.name, url: source.sourceUrl })) },
+      // Personalization uses the explicit goal alone.
+      profile: profile ? { primaryGoal: profile.primaryGoal } : null,
+      instruction: 'Classify topics and separate source-backed facts from interpretation. Cite only supplied URLs. Return no unsupported facts or indicators. Set suggestedRateDelta to the exact change in percentage points only when both rates are supplied. Otherwise return null. If personalized, consider only the explicit goal and disclose assumptions.',
+    })
+    const trustedLink = output.isFraudAlert && output.indicators.length > 0
+      ? article.sources.find(source => source.source.isTrustedForAlerts) : undefined
+    const trusted = trustedLink ? (await this.threatMemory.get()).trusted : undefined
+    return this.prisma.$transaction(async tx => {
+      // Keep the provider call outside the lock and re-read after acquiring it across workers.
+      await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtextextended(${`radar-impact:${key}`}, 0))`
+      const existing = await tx.articleImpactAnalysis.findFirst(latest)
+      if (existing) return existing
+      const saved = await tx.articleImpactAnalysis.create({ data: {
+        id: randomUUID(), articleId: article.id, profileId: latest.where.profileId, analysisMode: latest.where.analysisMode,
         extractedFactsJson: output.extractedFacts, aiAssessmentJson: { text: output.aiAssessment, topics: output.topics },
         suggestedRateDelta: output.suggestedRateDelta, llmProvider: 'gateway', llmModel: 'configured',
       } })
-      if (output.isFraudAlert && article.sources.some((source) => source.source.isTrustedForAlerts)) {
-        await this.createThreatAlert(article, output)
+      if (trustedLink && trusted) {
+        await attachThreatDraft(tx, this.threatMemory, {
+          source: { articleId: article.id, sourceId: trustedLink.sourceId, url: trustedLink.sourceUrl,
+            title: article.title, publishedAt: article.publishedAt },
+          draft: {
+            threatCategory: 'PHISHING', tacticSummary: (output.aiAssessment.trim() || article.title).slice(0, 800),
+            preventionGuidance: 'Không chia sẻ mã OTP, không chuyển phí để mở khóa khoản vay. Hãy xác minh trực tiếp qua kênh chính thức.',
+            indicators: output.indicators.slice(0, 40),
+          },
+          trusted, origin: 'RADAR_AUTO',
+        })
       }
-      return { mode, facts: output.extractedFacts, assessment: output.aiAssessment, suggestedRateDelta: output.suggestedRateDelta, assumptions: profile ? ['Chỉ dùng mục tiêu đã lưu; kết quả không phải phép tính tài chính.'] : ['Phân tích tổng quát, không dùng hồ sơ cá nhân hay phép tính khoản vay.'], citations: article.sources.map((source) => ({ sourceId: source.sourceId, url: source.sourceUrl, sourceName: source.source.name })), createdAt: saved.createdAt }
-    } catch (error) {
-      this.logger.warn(`AI impact analysis unavailable for article ${id}: ${error instanceof Error ? error.message : 'unknown error'}`)
-      return { mode, facts: [], assessment: null, suggestedRateDelta: null, assumptions: ['Dịch vụ AI hiện không khả dụng.'], citations: article.sources.map((source) => ({ sourceId: source.sourceId, url: source.sourceUrl, sourceName: source.source.name })), unavailable: true }
-    }
+      return saved
+    }, { isolationLevel: 'ReadCommitted' })
   }
 
   async listAlerts() {
@@ -585,7 +648,8 @@ export class RadarService extends WorkerHost implements OnModuleInit {
       const body = (await response.text()).slice(0, 2_000_000)
       const entries = parseFeed(body, source.sourceType, source.endpointUrl).filter(entry => relevantHeadline(source.sourceKey, entry.title))
       const ogBudget = { remaining: 5 }
-      for (const entry of entries) await this.upsertEntry(source, entry, ogBudget)
+      const analysisBudget = { remaining: 10 }
+      for (const entry of entries) await this.upsertEntry(source, entry, ogBudget, analysisBudget)
       await this.prisma.marketSource.update({ where: { id: source.id }, data: { lastFetchStatus: 'SUCCESS', lastAttemptAt: attemptedAt, lastSuccessAt: new Date(), updatedAt: new Date() } })
       return { sourceKey: source.sourceKey, status: 'SUCCESS', items: entries.length }
     } catch (error) {
@@ -605,7 +669,7 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     }
   }
 
-  private async upsertEntry(source: { id: string }, entry: FeedEntry, ogBudget?: { remaining: number }) {
+  private async upsertEntry(source: { id: string }, entry: FeedEntry, ogBudget: { remaining: number }, analysisBudget: { remaining: number }) {
     let sourceUrl: string
     let normalizedUrl: string
     try { sourceUrl = new URL(entry.url, 'https://invalid.local').toString(); normalizedUrl = normalizeUrl(sourceUrl) } catch { return }
@@ -616,7 +680,7 @@ export class RadarService extends WorkerHost implements OnModuleInit {
       ? await this.prisma.marketArticle.findUnique({ where: { id: exact.articleId } })
       : await this.prisma.marketArticle.findFirst({ where: { contentHash: hash, feedStatus: 'ACTIVE' }, orderBy: { createdAt: 'asc' } })
     let resolvedImageUrl = entry.imageUrl
-    if (!resolvedImageUrl && !canonical?.imageUrl && ogBudget && ogBudget.remaining > 0) {
+    if (!resolvedImageUrl && !canonical?.imageUrl && ogBudget.remaining > 0) {
       ogBudget.remaining -= 1
       resolvedImageUrl = await this.resolveOgFallback(sourceUrl)
     }
@@ -637,44 +701,19 @@ export class RadarService extends WorkerHost implements OnModuleInit {
     })
     const categories = categoriesFor(`${entry.title} ${entry.description}`)
     for (const categoryCode of categories) await this.prisma.articleCategory.upsert({ where: { articleId_categoryCode: { articleId: article.id, categoryCode } }, create: { articleId: article.id, categoryCode }, update: {} })
-    await this.classifyIngestion(article.id)
-  }
-
-  private async classifyIngestion(articleId: string) {
-    const alreadyAnalyzed = await this.prisma.articleImpactAnalysis.findFirst({ where: { articleId, analysisMode: 'GENERAL' }, select: { id: true } })
-    if (alreadyAnalyzed) return
-    const article = await this.prisma.marketArticle.findUnique({ where: { id: articleId }, include: { sources: { include: { source: true } } } })
-    if (!article) return
-    try {
-      const output = await this.ai.generateStructured('RADAR_CLASSIFY_IMPACT', AI_TASK_SCHEMAS.RADAR_CLASSIFY_IMPACT, {
-        article: { title: article.title, publishedAt: article.publishedAt, sources: article.sources.map((source) => ({ name: source.source.name, url: source.sourceUrl })) },
-        profile: null,
-        instruction: 'Classify topics and extract only source-supported facts. Separate interpretation. Use only supplied source URLs. Return no unsupported facts or indicators. Set suggestedRateDelta only if the supplied title/metadata explicitly states before and after rates, using the exact difference in percentage points; otherwise return null.',
-      })
-      await this.prisma.articleImpactAnalysis.create({ data: {
-        id: randomUUID(), articleId, profileId: null, analysisMode: 'GENERAL',
-        extractedFactsJson: output.extractedFacts, aiAssessmentJson: { text: output.aiAssessment, topics: output.topics },
-        suggestedRateDelta: output.suggestedRateDelta, llmProvider: 'gateway', llmModel: 'configured',
-      } })
-      if (output.isFraudAlert) await this.createThreatAlert(article, output)
-    } catch (error) {
-      this.logger.warn(`Ingestion classification unavailable for article ${articleId}: ${error instanceof Error ? error.message : 'unknown error'}`)
+    if (!exact && analysisBudget.remaining > 0) {
+      analysisBudget.remaining -= 1
+      await this.classifyIngestion(article.id)
     }
   }
 
-  private async createThreatAlert(article: { id: string; title: string; publishedAt: Date | null; sources: Array<{ sourceId: string; sourceUrl: string; source: { isTrustedForAlerts: boolean } }> }, output: z.infer<typeof AI_TASK_SCHEMAS.RADAR_CLASSIFY_IMPACT>) {
-    const trustedLink = article.sources.find((item) => item.source.isTrustedForAlerts)
-    if (!trustedLink || output.indicators.length === 0) return
-    const { trusted } = await this.threatMemory.get()
-    await this.prisma.$transaction((tx) => attachThreatDraft(tx, this.threatMemory, {
-      source: { articleId: article.id, sourceId: trustedLink.sourceId, url: trustedLink.sourceUrl, title: article.title, publishedAt: article.publishedAt },
-      draft: {
-        threatCategory: 'PHISHING', tacticSummary: (output.aiAssessment.trim() || article.title).slice(0, 800),
-        preventionGuidance: 'Không chia sẻ mã OTP, không chuyển phí để mở khóa khoản vay. Hãy xác minh trực tiếp qua kênh chính thức.',
-        indicators: output.indicators.slice(0, 40),
-      },
-      trusted, origin: 'RADAR_AUTO',
-    }))
+  private async classifyIngestion(articleId: string) {
+    try {
+      const article = await this.prisma.marketArticle.findUnique({ where: { id: articleId }, include: { sources: { include: { source: true } } } })
+      if (article) await this.resolveImpact(article, null)
+    } catch (error) {
+      this.logger.warn(`Ingestion classification unavailable for article ${articleId}: ${error instanceof Error ? error.message : 'unknown error'}`)
+    }
   }
 
   proxyArticleImage(rawUrl: string) {

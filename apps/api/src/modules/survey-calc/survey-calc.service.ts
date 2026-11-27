@@ -22,7 +22,7 @@ const stressRecipeSchema = z.strictObject({
   annualRatePct: storedRate,
   laterRate: z.strictObject({ afterMonths: z.number().int().min(1).max(600), annualRatePct: storedRate }).optional(),
 })
-const storedLoanSchema = z.strictObject({ result: z.unknown(), stressRecipes: z.array(stressRecipeSchema) })
+const storedLoanSchema = z.strictObject({ result: z.unknown(), stressRecipes: z.array(stressRecipeSchema), baseRecipes: z.array(stressRecipeSchema).optional() })
 const blockedTerms = ['app vay', 'vay nong', 'tin dung den', 'tindungden', 'ponzi', 'lua dao', 'bao loi']
 const fallbackExplanation = {
   summary: 'Kết quả được tính từ dòng tiền của từng phương án.',
@@ -184,6 +184,7 @@ export class SurveyCalcService {
         existingDebtPaymentVnd: profile.existingDebtPaymentVnd.toString() }
       : undefined)
     const recipes = new Map<string, z.infer<typeof stressRecipeSchema>>()
+    const baseRecipes = new Map<string, z.infer<typeof stressRecipeSchema>>()
     let rateOutOfRange = false
     const offers = catalog.products.flatMap((product): SurveyLoanResponse['offers'] => {
       const calcMethod = loanMethods.find((method) => method === product.calcMethod)
@@ -222,6 +223,8 @@ export class SurveyCalcService {
         annualRatePct: (laterRate ? initialRate : shockedRate(initialRate)).toFixed(),
         ...(laterRate && { laterRate: { afterMonths: laterRate.afterMonths, annualRatePct: shockedRate(laterRate.annualRatePct).toFixed() } }),
       }
+      baseRecipes.set(product.id, { annualRatePct: initialRate.toFixed(),
+        ...(laterRate && { laterRate: { afterMonths: laterRate.afterMonths, annualRatePct: laterRate.annualRatePct.toFixed() } }) })
       recipes.set(product.id, recipe)
       const stressSchedule = amortizeLoan(principal, recipe.annualRatePct, input.termMonths, calcMethod, {
         monthlyFeeVnd: monthlyFee, laterRate: recipe.laterRate,
@@ -273,7 +276,8 @@ export class SurveyCalcService {
       ...(degradedMode ? { errorCode: 'ERR_AI_DEGRADED_FALLBACK' as const } : {}) }
     const savedToHistory = await this.saveSession(session, 'LOAN_SURVEY', input, { ...result, meta },
       { ...links, profileId: profile?.id }, dti, shock.toString(), {
-        result: { ...result, meta, offers: offers.map(({ stressSchedule: _schedule, ...offer }) => offer) },
+        result: { ...result, meta, offers: offers.map(({ stressSchedule: _schedule, ...offer }) => ({ ...offer, schedule: [] })) },
+        baseRecipes: offers.map(offer => baseRecipes.get(offer.productId)),
         stressRecipes: offers.map((offer) => recipes.get(offer.productId)),
       })
     return { ...result, meta: { ...meta, savedToHistory } }
@@ -355,7 +359,8 @@ export class SurveyCalcService {
     })
     const profile = await this.profile(session)
     const result = { sessionId: randomUUID(), offers, meta: { savedToHistory: true } }
-    const savedToHistory = await this.saveSession(session, 'MANUAL_COMPARE', input, result, { profileId: profile?.id })
+    const savedToHistory = await this.saveSession(session, 'MANUAL_COMPARE', input, result, { profileId: profile?.id }, undefined, undefined,
+      { ...result, offers: offers.map(offer => ({ ...offer, schedule: [] })) })
     return { ...result, meta: { savedToHistory } }
   }
 
@@ -388,6 +393,12 @@ export class SurveyCalcService {
         const recipe = compact.stressRecipes[index]
         const method = loanMethods.find((candidate) => candidate === offer.calcMethod)
         if (!method) throw notFound()
+        if (!offer.schedule.length) {
+          const base = compact.baseRecipes?.[index]
+          if (!base) throw notFound()
+          offer.schedule = amortizeLoan(saved.inputParams.principalVnd, base.annualRatePct, saved.inputParams.termMonths,
+            method, { monthlyFeeVnd: offer.monthlyFeeVnd, laterRate: base.laterRate }).schedule
+        }
         offer.stressSchedule = amortizeLoan(saved.inputParams.principalVnd, recipe.annualRatePct,
           saved.inputParams.termMonths, method, { monthlyFeeVnd: offer.monthlyFeeVnd, laterRate: recipe.laterRate }).schedule
       })
@@ -396,7 +407,11 @@ export class SurveyCalcService {
       saved.result.offers.forEach((offer, index) => {
         const input = saved.inputParams.offers[index]
         if (!offer.schedule.length && input) {
-          offer.schedule = amortizeLoan(input.principalVnd, input.annualRatePct, input.termMonths, offer.calcMethod).schedule
+          offer.schedule = amortizeLoan(input.principalVnd, input.annualRatePct, input.termMonths, offer.calcMethod, {
+            monthlyFeeVnd: offer.monthlyFeeVnd,
+            laterRate: input.promoMonths != null && input.floatingRatePct != null
+              ? { afterMonths: input.promoMonths, annualRatePct: input.floatingRatePct } : undefined,
+          }).schedule
         }
       })
     }

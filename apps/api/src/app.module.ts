@@ -35,6 +35,7 @@ function loadYaml(name: string): unknown {
       useFactory: (config: ConfigService) => {
         const url = new URL(config.getOrThrow<string>('REDIS_URL'))
         return {
+          defaultJobOptions: { removeOnComplete: { count: 100, age: 86400 }, removeOnFail: { count: 200, age: 7 * 86400 } },
           connection: {
             host: url.hostname,
             port: Number(url.port || '6379'),

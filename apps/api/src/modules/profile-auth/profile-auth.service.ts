@@ -10,7 +10,7 @@ import { PrismaService } from '../../common/prisma.service'
 import type { OAuthIdentity } from './oauth.service'
 import { hashPassword, verifyPassword } from './password'
 
-const publicUser = { id: true, email: true, fullName: true, authProvider: true, role: true, avatarData: true, updatedAt: true } satisfies Prisma.UserSelect
+const publicUser = { id: true, email: true, fullName: true, authProvider: true, role: true, avatarUpdatedAt: true } satisfies Prisma.UserSelect
 type UserDetails = Prisma.UserGetPayload<{ select: typeof publicUser }>
 type SessionUser = Extract<AuthSessionResponse, { kind: 'user' }>['user']
 
@@ -23,7 +23,7 @@ function profileOwner(session: SessionContext) {
 function serializeUser(user: UserDetails): SessionUser {
   return {
     id: user.id, email: user.email, displayName: user.fullName,
-    avatarUrl: user.avatarData ? '/api/v1/profile/avatar/' + user.id + '?v=' + user.updatedAt.getTime() : null,
+    avatarUrl: user.avatarUpdatedAt ? '/api/v1/profile/avatar/' + user.id + '?v=' + user.avatarUpdatedAt.getTime() : null,
     authProvider: AuthProvider.parse(user.authProvider), role: UserRole.parse(user.role),
   }
 }
@@ -89,7 +89,8 @@ export class ProfileAuthService {
   }
 
   async setAvatar(id: string, avatarData: string | null) {
-    const user = await this.prisma.user.update({ where: { id }, data: { avatarData, updatedAt: new Date() }, select: publicUser })
+    const now = new Date()
+    const user = await this.prisma.user.update({ where: { id }, data: { avatarData, avatarUpdatedAt: avatarData ? now : null, updatedAt: now }, select: publicUser })
     return { avatarUrl: serializeUser(user).avatarUrl }
   }
 
