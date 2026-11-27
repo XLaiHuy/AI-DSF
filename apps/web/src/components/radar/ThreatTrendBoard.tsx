@@ -31,7 +31,7 @@ export function ThreatTrendBoard() {
   return <section aria-labelledby="threat-trends-title" className="min-w-0 rounded-xl border border-border bg-card px-3 py-1.5 sm:p-6">
     <header className="flex min-w-0 items-center justify-between gap-2">
       <h2 id="threat-trends-title" className="text-base font-semibold sm:text-2xl">Xu hướng thủ đoạn lừa đảo</h2>
-      <Button type="button" variant="ghost" size="icon" className="size-9 shrink-0 sm:hidden"
+      <Button type="button" variant="ghost" size="icon" className="threat-trend-btn size-9 shrink-0 sm:hidden"
         aria-label="Bộ lọc và danh mục xu hướng" aria-controls="threat-trends-body" aria-expanded={expanded}
         onClick={() => setExpanded((open) => !open)}>
         <ChevronDown className={expanded ? 'rotate-180' : undefined} aria-hidden="true" />
@@ -40,17 +40,17 @@ export function ThreatTrendBoard() {
     <div id="threat-trends-body" className={expanded ? 'mt-3 space-y-4 pb-2 sm:pb-0' : 'mt-3 hidden space-y-4 sm:block'}>
       <p className="text-sm text-muted-foreground">Tổng hợp từ cảnh báo đã xác minh trên FinCopilot. Tên thủ đoạn dựa trên danh mục của Cục An toàn thông tin.</p>
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Khoảng thời gian">
-        {windows.map(([value, label]) => <Button type="button" size="sm" className="min-h-9" key={value}
+        {windows.map(([value, label]) => <Button type="button" size="sm" className="threat-trend-btn min-h-9" key={value}
           variant={value === period ? 'default' : 'outline'} aria-pressed={value === period} onClick={() => setPeriod(value)}>{label}</Button>)}
       </div>
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Đối tượng theo dõi">
-        {audiences.map(([value, label]) => <Button type="button" size="sm" className="min-h-9 h-auto whitespace-normal rounded-full px-2.5" key={value}
+        {audiences.map(([value, label]) => <Button type="button" size="sm" className="threat-trend-btn min-h-9 h-auto whitespace-normal rounded-full px-2.5" key={value}
           variant={value === audience ? 'default' : 'outline'} aria-pressed={value === audience} onClick={() => setAudience(value)}>{label}</Button>)}
       </div>
       {trends.isPending && <p role="status" className="text-sm text-muted-foreground">Đang tải số liệu cảnh báo…</p>}
       {trends.isError && <div className="flex flex-wrap items-center gap-3">
         <p role="alert" className="text-sm">Chưa tải được xu hướng cảnh báo.</p>
-        <Button type="button" variant="outline" size="sm" onClick={() => void trends.refetch()}>Thử lại</Button>
+        <Button type="button" variant="outline" size="sm" className="threat-trend-btn" onClick={() => void trends.refetch()}>Thử lại</Button>
       </div>}
       {data && <>
         <div aria-live="polite" className="space-y-1.5">
