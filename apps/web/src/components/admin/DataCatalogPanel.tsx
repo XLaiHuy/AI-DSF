@@ -62,7 +62,7 @@ export function DataCatalogPanel({ credentials }: { credentials: AdminCredential
   return <div className="space-y-7">
     <section className="space-y-3" aria-labelledby="catalog-schedulers">
       <div className="flex flex-wrap items-center justify-between gap-2"><h2 id="catalog-schedulers" className="text-lg font-semibold">Lịch cập nhật dữ liệu</h2>
-        <Button type="button" disabled={all.isPending} onClick={() => all.mutate()}>{all.isPending ? 'Đang cập nhật…' : 'Hot Crawl All'}</Button></div>
+        <Button type="button" disabled={all.isPending} onClick={() => all.mutate()}>{all.isPending ? 'Đang cập nhật…' : 'Thu thập ngay từ mọi nguồn'}</Button></div>
       {schedulers.isError && <p role="alert">Chưa tải được lịch cập nhật.</p>}
       {schedulers.data && <CatalogTable title="Lịch tự động" headers={['Luồng dữ liệu', 'Chu kỳ', 'Trạng thái', 'Lần tới']}>
         {schedulers.data.map(row => <tr key={row.name}><th className={cell} scope="row">{row.name}</th><td className={cell}>{row.intervalLabel}</td>

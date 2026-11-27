@@ -7,6 +7,7 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { z } from 'zod'
 import { AppModule } from './app.module'
 import { ApiExceptionFilter } from './common/api-exception.filter'
+import { registerHttpSecurity } from './common/http-security'
 
 const port = z.coerce.number().int().min(1).max(65535)
 const mib = 1024 * 1024
@@ -30,15 +31,7 @@ export async function bootstrap() {
       origin: [...allowedOrigins],
       credentials: true,
     })
-    app.getHttpAdapter().getInstance().addHook('onRequest', async (request, reply) => {
-      const { method, headers } = request
-      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) &&
-        (headers.origin ? !allowedOrigins.has(headers.origin) : headers['sec-fetch-site'] === 'cross-site')) {
-        return reply.code(403).send({
-          statusCode: 403, errorCode: 'ERR_FORBIDDEN', message: 'Nguồn của yêu cầu không được phép.',
-        })
-      }
-    })
+    registerHttpSecurity(app.getHttpAdapter().getInstance(), allowedOrigins)
     app.setGlobalPrefix('api/v1')
     app.useGlobalFilters(new ApiExceptionFilter())
     app.enableShutdownHooks()

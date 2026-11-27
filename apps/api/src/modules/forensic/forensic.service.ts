@@ -29,6 +29,8 @@ import { ChannelIntelligenceService } from './channel-intelligence.service'
 import { expandTeencode, stripZeroWidthAndBidi } from './forensic-prompt-guard'
 import { extractThreatIocs } from './threat-iocs'
 import { communityProposalQueue } from './community-proposal.processor'
+import { ConversationSessionStore } from './conversation-session.store'
+import type { PreAuditTurn } from './context-compressor'
 import { routeForensicConversation } from './forensic-conversation'
 import { type CommunityProposal, ThreatMemoryService } from './threat-memory.service'
 
@@ -102,10 +104,41 @@ export class ForensicService {
     private readonly config: ConfigService,
     private readonly threatMemory?: ThreatMemoryService,
     @Optional() @InjectQueue(communityProposalQueue) private readonly communityQueue?: Queue<CommunityProposal>,
+    @Optional() private readonly conversations?: ConversationSessionStore,
   ) {}
 
-  async screenAudit(fields: ForensicAuditFields, files: readonly Upload[]) {
-    return routeForensicConversation(fields, files.length > 0, this.ai, this.threatMemory?.cachedAliases())
+  async screenAudit(fields: ForensicAuditFields, files: readonly Upload[], session?: SessionContext) {
+    const { conversationId, rawText } = fields
+    const store = this.conversations
+    const aliases = this.threatMemory?.cachedAliases()
+    if (!session || !conversationId || !store) return routeForensicConversation(fields, files.length > 0, this.ai, aliases)
+
+    let pending: ReturnType<ConversationSessionStore['load']> | undefined
+    const load = () => (pending ??= store.load(session, conversationId)).catch(() => undefined)
+    const result = await routeForensicConversation(fields, files.length > 0, this.ai, aliases, async () => (await load())?.state)
+    if (result?.type !== 'guidance' || !rawText) return result
+
+    const snapshot = await load()
+    if (!snapshot) return result
+    const previous = snapshot.state
+    const { domain, ...slots } = result.extractedSlots ?? {}
+    const turns: PreAuditTurn[] = [
+      { role: 'user', content: maskForensicText(rawText) },
+      { role: 'assistant', content: result.message, intent: result.intent },
+    ]
+    await store.save(session, conversationId, snapshot.raw, {
+      domain: domain ?? previous?.domain,
+      slots: { ...(domain && domain !== previous?.domain ? {} : previous?.slots), ...slots },
+      rollingSummary: previous?.rollingSummary ?? '',
+      recentTurns: [...(previous?.recentTurns ?? []), ...turns.filter(turn => turn.content.length > 0 && turn.content.length <= 800)],
+      lastIntent: result.intent,
+      updatedAt: new Date().toISOString(),
+    }).catch(() => undefined)
+    return result
+  }
+
+  async deleteConversation(session: SessionContext, id: string) {
+    await this.conversations?.remove(session, id)
   }
 
   private async loadInstitutions() {

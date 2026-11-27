@@ -15,7 +15,7 @@
 .desk-logo{width:32px;height:32px;background:#e16b52;color:white}
 .desk-profile{gap:10px;margin:24px 0 16px;border:1px solid var(--line);padding:8px 10px;height:60px;border-radius:12px}
 .desk-profile small{display:block;font-size:12px;color:var(--soft)}.desk-profile>svg:last-child{margin-left:auto}
-.desk-avatar{height:40px;width:40px;background:#eee8da;color:#715536}
+.desk-avatar{height:40px;width:40px;overflow:hidden;background:#eee8da;color:#715536}
 .desk-nav-item{width:100%;min-height:40px;text-align:left;padding:6px 12px;gap:12px;border-radius:7px;color:#465052}
 .desk-nav-item svg{height:20px;width:20px;stroke-width:1.55}
 .desk-nav-item[aria-current],.desk-nav-item:hover{background:#f7f7f7;color:#111}
@@ -59,7 +59,8 @@
 .desk-stamp{margin-top:auto;gap:6px;flex-wrap:wrap}
 .desk-rail{padding:24px 24px 24px 23px;border-left:1px solid var(--line)}
 .desk-rail h2{font:500 20px/26px Arial,sans-serif;letter-spacing:-.5px}
-.desk-pick{border-bottom:1px solid var(--line);padding:16px 0;min-height:153px;display:flex;flex-direction:column;gap:14px}
+.desk-pick{margin-block:12px;padding:14px;min-width:0;display:flex;flex-direction:column;gap:12px;border:1px solid #e5e7e3;border-radius:12px;background:#fff}
+.desk-pick h3,.desk-rail-meta{overflow-wrap:anywhere}
 .desk-pick-main{display:grid;align-items:center;grid-template-columns:minmax(0,1fr) 60px;gap:14px}
 .desk-pick-main--text{display:block}
 .desk-pick .desk-thumb{width:60px;aspect-ratio:60/46;border-radius:6px}
@@ -70,7 +71,7 @@
 .desk-seal svg,.desk-badge svg{width:14px;height:14px}.desk-shell svg{flex:none}
 @media(min-width:901px){.desk-nav,.desk-feed,.desk-rail{scrollbar-width:none}}
 
-.desk-rail>h2:first-child{margin-bottom:8px}.desk-pick:last-of-type{padding-bottom:24px;min-height:161px}.desk-section:has(.desk-cloud){min-height:296px}
+.desk-rail>h2:first-child{margin-bottom:8px}.desk-section:has(.desk-cloud){min-height:296px}
 /* Live content uses the measured specimen structure. */
 .desk-shell .desk-brand{font-weight:500}
 .desk-shell .desk-brand:hover{text-decoration:none}
@@ -149,7 +150,10 @@
 .desk-reading-list article h3{font-size:18px;line-height:1.3;margin-top:5px}
 .desk-reading-list article button{margin-top:8px;text-decoration:underline}
 .desk-rail-image{width:60px;height:46px;border-radius:6px}
+.desk-rail-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;color:#536063;font-size:12px}
 .desk-rail-badge{font-size:12px;color:#8c3f2c}
+.desk-rail-meta .desk-rail-badge{display:inline-block;padding:2px 7px;border-radius:999px;background:#f9e8e2;font-weight:650}
+.desk-rail-badge[data-kind="FINANCE_NEWS"]{background:#e9f2ec;color:#27624d}
 .desk-pick-foot a{display:inline-flex;gap:2px;align-items:center;text-decoration:underline!important}
 .desk-source-line{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:12px}
 .desk-source-line span{color:var(--soft)}
@@ -419,6 +423,11 @@
  .desk-dialog:has(.radar-v2-personal)>header{top:-15px;margin:-15px -16px 15px;padding:12px 16px}
 }
 
+.desk-shell .radar-daily-brief-items{display:grid;gap:12px}
+.desk-shell .radar-daily-brief-item{min-width:0;overflow-wrap:anywhere;padding:12px 14px;border:1px solid #e5e7e3;border-radius:12px;background:#fff}
+.desk-shell .radar-daily-brief-item[data-kind="ALERT"]{border-left:3px solid #c25a46;background:#fff7f5}
+.desk-shell .radar-daily-brief-index,.desk-shell .radar-daily-brief-ai{padding:2px 7px;border-radius:999px;background:#eef1ed;color:#41564b;font-size:.7rem;font-weight:650}
+.desk-shell .radar-daily-brief-item[data-kind="ALERT"] .radar-daily-brief-index{background:#f9e8e2;color:#8c3f2c}
 .desk-shell .radar-daily-brief-summary{font-size:1rem}
 .desk-shell .radar-daily-brief-interpretation{font-size:.875rem}
 .desk-shell .radar-daily-brief-citations{font-size:.8rem}

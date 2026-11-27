@@ -79,7 +79,7 @@ test('Vận hành hiển thị bốn lịch và kết quả chạy từng luồn
   await page.getByRole('tab', { name: 'Nguồn dữ liệu & Kho sản phẩm' }).click()
   await expect(page.getByRole('table', { name: 'Lịch tự động' }).getByRole('row')).toHaveCount(5)
   await expect(page.getByRole('rowheader', { name: 'Bảo trì dữ liệu' })).toBeVisible()
-  await page.getByRole('button', { name: 'Hot Crawl All' }).click()
+  await page.getByRole('button', { name: 'Thu thập ngay từ mọi nguồn' }).click()
   await expect(page.getByText('Tin thị trường · Đã xếp hàng')).toBeVisible()
   await expect(page.getByText('Cảnh báo lừa đảo · Lỗi')).toBeVisible()
   await expect(page.getByText('Lãi suất & sản phẩm · Hoàn tất')).toBeVisible()

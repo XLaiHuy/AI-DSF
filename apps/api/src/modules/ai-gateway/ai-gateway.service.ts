@@ -9,13 +9,23 @@ import { z } from 'zod'
 import { stripSpoofedBoundaryTags } from '../../common/untrusted-text'
 import { failureStatus, requestEmbedding, requestObject, requestTextStream, type AiInput, type ThinkingLevel } from './ai-provider'
 import { enabledProviders, modelRoutes, providerKeys, type ModelRoute } from './ai-routing'
-import { requestForensicIntent } from './forensic-intent.adapter'
+import { requestConversationRoute, requestForensicIntent } from './forensic-intent.adapter'
 
 const forensicScope = 'Chỉ phân tích rủi ro tài chính và lừa đảo dựa trên hồ sơ. Từ chối tạo mã HTML, CSS, JS, Python, SQL, trò chơi và nội dung ngoài phạm vi tài chính.'
 const instructions: Record<AiTaskType, string> = {
   PROFILE_PARSE_NATURAL: 'Đọc câu tiếng Việt và điền thu nhập thực nhận mỗi tháng, chi tiêu cố định mỗi tháng (chưa gồm trả nợ), khoản trả nợ mỗi tháng và tiền dự phòng hiện có. Đổi đơn vị tiền thành chuỗi số VNĐ. Chỉ điền con số được nói rõ, thiếu hoặc mơ hồ thì trả null. Không suy ra số tháng, không cộng nhiều số.',
-  FORENSIC_CONVERSATION_GUIDE: 'Chỉ hướng dẫn tài chính cá nhân tại Việt Nam. Xác định ý định từ current_turn. Lịch sử là dữ liệu tham khảo. Mức 20%/năm theo Điều 468 BLDS 2015 là mốc dân sự, có ngoại lệ theo luật khác. Không hứa duyệt vay, không hướng dẫn chuyển tiền, mở liên kết hoặc cài ứng dụng. Không xin OTP hay thông tin nhận dạng.',
-  PROFILE_HEALTH_COACH: 'Viết tiếng Việt đời thường và đưa đúng ba việc cụ thể theo mục tiêu và mức ưu tiên an toàn của người dùng. Viết tiền theo nhóm ba chữ số cách nhau bằng dấu cách, đơn vị đ. Ba hành động lần lượt nêu số tiền dự phòng cần giữ hoặc bù, dư địa trả góp thêm availableForNewEmiVnd, và cách dùng phần dư theo primaryGoal và riskAppetite. Dùng đúng số liệu từ amounts, health, monthlySurplusVnd và các trường quỹ dự phòng. Ghi đơn vị (đồng, tháng, điểm hoặc %), không tự đặt số, tỷ lệ, lợi suất hay định mức đầu tư. Mốc 3 đến 6 tháng dự phòng, quy tắc tham khảo 50/30/20 và ngưỡng DTI tham khảo 30% được phép. Nếu quỹ dự phòng đạt mốc 6 tháng, đề xuất giữ phần cần thiết dễ rút và cân nhắc cách dùng phần vượt mốc cùng dòng tiền dư. Không hứa duyệt vay hoặc giới thiệu sản phẩm.',
+  FORENSIC_CONVERSATION_GUIDE: [
+    'Bạn là trợ lý tài chính cá nhân tại Việt Nam. Dựa vào lượt mới nhất để phân biệt lời chào, hỏi kiến thức, lập kế hoạch, vụ việc cần giám định, sự cố cần ứng cứu và chủ đề ngoài tài chính. Lịch sử và điểm phân loại chỉ giúp hiểu câu nói tiếp nối.',
+    'Số vốn, thu nhập hoặc kỳ hạn cá nhân do người dùng nêu không phải bằng chứng của một giao dịch. Chỉ trích thông tin mà người dùng khẳng định trong lượt mới. Bỏ qua câu hỏi, giả định, phủ định và số liệu của người khác. Khi người dùng đổi thông số, dùng giá trị mới được nói rõ. Nếu ghi chú mục tiêu, hãy chép một cụm ngắn nguyên văn.',
+    'Trả lời bằng tiếng Việt đời thường và gợi ý tối đa ba câu tiếp theo. Không nhắc tên trường, biến kỹ thuật hay dấu backtick. Không đưa liên kết, hứa duyệt vay hoặc hướng dẫn chuyển tiền, cài ứng dụng hay cung cấp mã OTP.',
+    'Điều 468 Bộ luật Dân sự 2015 quy định mốc 20%/năm đối với thỏa thuận dân sự, trừ trường hợp luật khác có quy định.',
+  ].join(' '),
+  PROFILE_HEALTH_COACH: [
+    'Viết bằng tiếng Việt đời thường. Tóm tắt tình hình và nêu đúng ba việc cụ thể: giữ hoặc bù quỹ dự phòng, đối chiếu mức trả góp thêm an toàn, rồi dùng phần tiền còn lại theo mục tiêu và mức chấp nhận rủi ro của người dùng.',
+    'Dùng đúng số liệu được cung cấp. Viết tiền theo nhóm ba chữ số cách nhau bằng dấu cách, dùng đơn vị đ và dấu phẩy cho phần thập phân. Ghi rõ đơn vị khi nói về tiền, thời gian, điểm hoặc tỷ lệ. Không tự đặt số, lãi suất, lợi suất hoặc hạn mức.',
+    'Có thể tham chiếu quỹ dự phòng từ 3 đến 6 tháng, quy tắc 50/30/20 và tỷ lệ trả nợ tham khảo 30%. Nếu dự phòng đủ 6 tháng, hãy giữ phần cần thiết ở nơi dễ rút rồi cân nhắc cách dùng phần còn lại. Không hứa duyệt vay hay giới thiệu sản phẩm.',
+    'Chỉ trả nội dung cho người đọc. Cấm in tên biến camelCase, snake_case, tên trường dữ liệu và dấu backtick.',
+  ].join(' '),
   RADAR_CLASSIFY_IMPACT: 'Chỉ trích dữ kiện có trong tiêu đề và metadata nguồn được cung cấp. Tách dữ kiện và nhận định. suggestedRateDelta chỉ được là chênh lệch điểm phần trăm khi dữ kiện đầu vào nêu rõ cả lãi suất trước và sau; nếu không có đủ hai số từ nguồn thì trả null. Không tự suy đoán hoặc tạo con số. Khi thiếu hồ sơ, chỉ đưa nhận định chung.',
   RADAR_DAILY_BRIEF: 'Tạo bản tóm tắt tiếng Việt từ các bản ghi nguồn được cung cấp. Chỉ dùng referenceId có trong đầu vào. Không thêm sự kiện, con số, nguồn hoặc thời gian mới; nếu ít tin hữu ích thì trả ít mục. Ưu tiên cảnh báo lừa đảo đã xác minh và mới công bố, sau đó mới đến các tin lãi suất, lạm phát, ngân hàng, chính sách và thị trường. summary chỉ diễn đạt lại dữ kiện có trong tiêu đề, bằng chứng hoặc phân tích đã cung cấp. interpretation là góc nhìn chung, phải ghi rõ điều kiện/không chắc chắn và không giả định hoàn cảnh người dùng; nếu không cần thì null. Không tuyên bố rằng AI tự xác minh nội dung.',
   THREAT_ARTICLE_EXTRACT: [
@@ -196,6 +206,18 @@ export class AiGatewayService implements IAiGatewayService {
       if (route?.provider !== 'openrouter') return null
       const key = this.env(providerKeys.openrouter)?.trim()
       return key ? await requestForensicIntent(route.modelId, key, evidence, AbortSignal.timeout(4_500)) : null
+    } catch {
+      return null
+    }
+  }
+
+  async classifyConversationRoute(state: Parameters<typeof requestConversationRoute>[2]) {
+    try {
+      if (!enabledProviders(this.env).has('openrouter')) return null
+      const [route] = modelRoutes('FORENSIC_INTENT_SIGNAL', this.config.get('aiRouting'), this.env)
+      const key = this.env(providerKeys.openrouter)?.trim()
+      return route?.provider === 'openrouter' && key
+        ? await requestConversationRoute(route.modelId, key, state, AbortSignal.timeout(2_500)) : null
     } catch {
       return null
     }

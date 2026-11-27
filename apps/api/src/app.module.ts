@@ -3,8 +3,10 @@ import { resolve } from 'node:path'
 import { BullModule } from '@nestjs/bullmq'
 import { Module } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
+import { APP_GUARD } from '@nestjs/core'
 import { parse } from 'yaml'
 import { PrismaModule } from './common/prisma.module'
+import { RateLimitGuard } from './common/rate-limit.guard'
 import { HealthController } from './health.controller'
 import { AdminModule } from './modules/admin/admin.module'
 import { AiGatewayModule } from './modules/ai-gateway/ai-gateway.module'
@@ -56,5 +58,6 @@ function loadYaml(name: string): unknown {
     AdminModule,
   ],
   controllers: [HealthController, HomeController],
+  providers: [{ provide: APP_GUARD, useClass: RateLimitGuard }],
 })
 export class AppModule {}

@@ -20,7 +20,7 @@ export const ForensicGuidanceSchema = z.strictObject({
   message: z.string(), suggestedPrompts: z.array(z.string()).optional(),
   checklist: z.array(z.string().max(300)).max(6).optional(),
   cta: z.strictObject({ label: z.string(), href: z.string().regex(/^\/(?:survey|profile|radar|forensic)(?:\?[^\s#]*)?$/) }).optional(),
-  extractedSlots: z.strictObject({ domain: domain.optional(), amountVnd: nonnegativeDecimal.optional(), termMonths: z.number().int().min(1).max(600).optional() }).optional(),
+  extractedSlots: z.strictObject({ domain: domain.optional(), amountVnd: nonnegativeDecimal.optional(), termMonths: z.number().int().min(1).max(600).optional(), goalNote: z.string().trim().min(1).max(160).optional() }).optional(),
 })
 export type ForensicGuidance = z.infer<typeof ForensicGuidanceSchema>
 export const PreAuditTurnSchema = z.strictObject({
@@ -36,6 +36,7 @@ export const UserAuditFeedbackResponseSchema = z.strictObject({
 })
 
 export const ForensicAuditFieldsSchema = z.strictObject({
+  conversationId: z.uuid().optional(),
   preAuditHistory: z.preprocess(value => {
     if (typeof value !== 'string' || value.length > 32000) return value
     try { return JSON.parse(value) as unknown } catch { return value }

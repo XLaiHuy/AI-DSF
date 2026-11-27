@@ -63,14 +63,16 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
   const queryClient = useQueryClient()
   const profile = useQuery(profileQuery).data?.profile
   const [form, setForm] = useState({
-    principal: handoff.amount ?? '50000000', initial: '20000000', contribution: '3000000',
-    loan: String(handoff.term ?? 24), invest: '12',
+    principal: (handoff.mode === 'invest' ? undefined : handoff.amount) ?? '50000000',
+    initial: (handoff.mode === 'invest' ? handoff.amount : undefined) ?? '20000000', contribution: '3000000',
+    loan: String((handoff.mode === 'invest' ? undefined : handoff.term) ?? 24),
+    invest: String((handoff.mode === 'invest' ? handoff.term : undefined) ?? 12),
     entity: '', shock: handoff.shockDelta ?? '0',
   })
-  const [loanUseCase, setLoanUseCase] = useState<LoanUseCase | ''>(() => handoff.amount || handoff.auditId ? '' : 'UNSECURED_SALARY')
+  const [loanUseCase, setLoanUseCase] = useState<LoanUseCase | ''>(() => (handoff.mode !== 'invest' && handoff.amount) || handoff.auditId ? '' : 'UNSECURED_SALARY')
   const [category, setCategory] = useState<SurveyLoanRequest['productCategory']>('UNSECURED_LOAN')
   const [source, setSource] = useState({ sourceArticleId: handoff.articleId, sourceAuditId: handoff.auditId })
-  const touched = useRef({ amount: Boolean(handoff.amount), term: handoff.term != null })
+  const touched = useRef({ amount: handoff.mode !== 'invest' && Boolean(handoff.amount), term: handoff.mode !== 'invest' && handoff.term != null })
   const [priority, setPriority] = useState<SurveyLoanRequest['priority']>('LOWEST_APR')
   const [investmentFilter, setInvestmentFilter] = useState<InvestmentFilter>('ALL')
   const [manualOffers, setManualOffers] = useState(() => [manualDraft(0), manualDraft(1)])
@@ -251,7 +253,7 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
                 </select>
               </label>
               {loanUseCase && <p id="catalog-term-hint" className="text-xs text-muted-foreground sm:col-span-2">
-                Theo danh mục tham chiếu, {loanDefaults[loanUseCase].label.toLowerCase()} hỗ trợ {loanDefaults[loanUseCase].range} tháng. Mức để bắt đầu mô phỏng {formatVnd(loanDefaults[loanUseCase].amount)} trong {loanDefaults[loanUseCase].term} tháng.
+                Theo danh mục tham chiếu, {loanDefaults[loanUseCase].label.toLowerCase()} hỗ trợ {loanDefaults[loanUseCase].range} tháng. Bạn có thể tính thử với {formatVnd(loanDefaults[loanUseCase].amount)} trong {loanDefaults[loanUseCase].term} tháng.
               </p>}
             </div>
           </>}

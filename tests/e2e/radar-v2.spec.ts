@@ -194,7 +194,7 @@ test('Giao diện bỏ qua tín hiệu trả về khi quyền tương ứng chư
   await expect(page.locator('.radar-recommendation-row').first()).toContainText('Chưa có trạng thái xác minh cảnh báo')
 })
 
-test('Cột Scam & Finance không lặp bài đang đọc và không gán xác minh cho bài viết', async ({ page }) => {
+test('Cột Cảnh báo & Tài chính không lặp bài đang đọc và không gán xác minh cho bài viết', async ({ page }) => {
   await fixturePage(page, 2)
   const rail = (id: string, kind: 'SCAM_NEWS' | 'FINANCE_NEWS', title: string) => ({ id, kind, title, badge: 'Nhãn API', imageUrl: null, proxyUrl: null, sourceName: 'NCSC', publishedAt: null, handoffHref: `/radar/${id}` })
   await page.unroute('**/api/v1/home/market')
@@ -202,7 +202,7 @@ test('Cột Scam & Finance không lặp bài đang đọc và không gán xác m
   await page.goto('/radar?tab=personal')
   await expect(page.locator('.radar-recommendation-row')).toHaveCount(2)
   await expect(page.locator('.desk-rail .desk-pick')).toHaveCount(1)
-  await expect(page.locator('.desk-rail .desk-pick')).toContainText('Tin lừa đảo · NCSC')
+  await expect(page.locator('.desk-rail .desk-pick')).toContainText(/Tin lừa đảo\s*NCSC/)
   await expect(page.locator('.desk-rail .desk-pick')).not.toContainText(makeArticle(0).title)
 })
 
@@ -328,16 +328,19 @@ test('Lạm phát được phân loại riêng với dữ kiện CPI', async ({ 
   await expect(page.getByRole('dialog').getByRole('button', { name: 'Lạm phát', exact: true })).toBeVisible()
 })
 
-test('Ảnh HTTPS hiển thị kèm nguồn; ảnh hỏng rơi về minh họa chủ đề', async ({ page }) => {
+test('Ảnh HTTPS qua proxy hiển thị kèm nguồn; ảnh hỏng rơi về minh họa chủ đề', async ({ page }) => {
   const goodId = articleId
   const brokenId = '11111111-1111-4111-8111-111111111112'
-  const detail = (id: string, imageUrl: string) => ({ ...makeArticle(0), id, image: { url: imageUrl, alt: 'Biểu đồ được xuất bản', credit: 'Nguồn NHNN', sourceUrl: 'https://publisher.example.test/article' }, sources: [{ ...source, url: 'https://publisher.example.test/article' }], analysis: null })
+  const detail = (id: string, imageUrl: string) => ({ ...makeArticle(0), id, image: { url: imageUrl, proxyUrl: '/api/v1/radar/image-proxy?url=' + encodeURIComponent(imageUrl), alt: 'Biểu đồ được xuất bản', credit: 'Nguồn NHNN', sourceUrl: 'https://publisher.example.test/article' }, sources: [{ ...source, url: 'https://publisher.example.test/article' }], analysis: null })
   await page.route('**/api/v1/radar/articles/*', (route) => {
     const id = new URL(route.request().url()).pathname.split('/').at(-1) ?? goodId
     return route.fulfill({ json: detail(id, id === goodId ? 'https://publisher.example.test/ok.png' : 'https://publisher.example.test/missing.png') })
   })
-  await page.route('https://publisher.example.test/ok.png', (route) => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="190"><rect width="320" height="190" fill="#d6ded3"/></svg>' }))
-  await page.route('https://publisher.example.test/missing.png', (route) => route.abort())
+  await page.route('**/api/v1/radar/image-proxy?url=*', route => {
+    const url = new URL(route.request().url()).searchParams.get('url')
+    return url?.endsWith('/ok.png') ? route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="190"><rect width="320" height="190" fill="#d6ded3"/></svg>' })
+      : route.fulfill({ status: 404 })
+  })
   await page.goto(`/radar/${goodId}`)
   await expect(page.locator('.detail-source-image img')).toBeVisible()
   await expect(page.locator('.detail-source-image .editorial-image-credit')).toContainText('Nguồn NHNN')

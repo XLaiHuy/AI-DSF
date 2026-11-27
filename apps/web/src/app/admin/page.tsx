@@ -3,7 +3,7 @@
 import { AuthLoginSchema, AuthSessionResponseSchema, type AuthSessionResponse } from '@fincopilot/shared-types'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { LogIn, LogOut } from 'lucide-react'
-import { useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Badge, Button, Card, Input, Label } from '@/components/ui'
 import { ThreatReviewPanel } from '@/components/admin/ThreatReviewPanel'
 import { DataCatalogPanel } from '@/components/admin/DataCatalogPanel'
@@ -19,11 +19,15 @@ const tabs = [
 export default function AdminPage() {
   const session = useQuery(sessionQuery)
   const queryClient = useQueryClient()
+  const [hydrated, setHydrated] = useState(false)
   const [credentials, setCredentials] = useState({ key: '', revision: 0 })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const email = session.data?.kind === 'user' ? session.data.user.email : undefined
   const isAdmin = session.data?.kind === 'user' && session.data.user.role === 'ADMIN'
+
+  // Navigation can fill the shared session cache before this page hydrates.
+  useEffect(() => setHydrated(true), [])
 
   async function updateSession(next?: AuthSessionResponse) {
     await queryClient.cancelQueries({ queryKey: sessionQuery.queryKey })
@@ -80,14 +84,16 @@ export default function AdminPage() {
     <LogOut size={15} aria-hidden="true" /> Đăng xuất
   </Button>
 
+  if (!hydrated || (session.isPending && !credentials.key)) {
+    return <p role="status" className="mx-auto max-w-sm py-16 text-center text-sm text-muted-foreground">Đang kiểm tra phiên đăng nhập…</p>
+  }
+
   if (isAdmin || credentials.key) {
     return <AdminWorkspace credentials={credentials} toolbar={isAdmin
       ? <><Badge variant="safe" className="max-w-full break-all whitespace-normal">{email}</Badge>{signOut}</>
       : <Button type="button" variant="outline" size="sm" onClick={clearKey}>Ngắt kết nối khóa API</Button>
     } error={error} />
   }
-
-  if (session.isPending) return <p role="status" className="mx-auto max-w-sm py-16 text-center text-sm text-muted-foreground">Đang kiểm tra phiên đăng nhập…</p>
 
   return <div className="mx-auto grid w-full max-w-md gap-4 py-4 sm:py-12">
     <Card className="gap-5 p-5 sm:p-7">

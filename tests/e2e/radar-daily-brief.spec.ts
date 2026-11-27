@@ -46,7 +46,7 @@ test('Bản tin ngày hiển thị 0, 1, 3, 5, 10 và hơn 10 mục đúng trạ
     const brief = page.locator('.desk-brief-inline .radar-daily-brief')
     await expect(brief).toBeVisible()
     if (count === 0) {
-      await expect(brief).toContainText('Chưa có nội dung đủ nguồn')
+      await expect(brief).toContainText('Chưa có tin phù hợp để tổng hợp hôm nay.')
       await expect(brief.locator('.radar-daily-brief-toggle')).toHaveCount(0)
     } else {
       await expect(brief.locator('.radar-daily-brief-item')).toHaveCount(Math.min(count, 3))
@@ -64,7 +64,7 @@ test('Daily brief chụp ảnh desktop/mobile và mở rộng không che điều
   const path = info.outputPath('screenshots')
   await mkdir(path, { recursive: true })
   for (const viewport of [
-    { width: 1440, height: 900, key: 'desktop' },
+    { width: 1280, height: 800, key: 'desktop' },
     { width: 390, height: 844, key: 'mobile' },
   ]) {
     const page = await browser.newPage({ viewport })
@@ -73,12 +73,16 @@ test('Daily brief chụp ảnh desktop/mobile và mở rộng không che điều
     const brief = page.locator('.desk-brief-inline .radar-daily-brief')
     await expect(brief).toContainText('24/11/2026')
     await expect(brief.locator('.radar-daily-brief-item')).toHaveCount(3)
-    await page.waitForTimeout(600)
-    await page.screenshot({ path: `${path}/radar-daily-brief-collapsed-${viewport.key}.png` })
+    await expect(brief.locator('.radar-daily-brief-items')).toHaveCSS('gap', '12px')
+    await expect(brief.locator('.radar-daily-brief-item').first()).toHaveCSS('border-left-width', '3px')
+    await expect(brief.locator('.radar-daily-brief-item').first()).toHaveCSS('background-color', 'rgb(255, 247, 245)')
+    await expect(brief.getByText('Đã xác minh')).toBeVisible()
+    await expect(brief.getByText(/ưu tiên theo ngày công bố/)).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await brief.screenshot({ path: `${path}/radar-daily-brief-collapsed-${viewport.key}.png`, animations: 'disabled', style: '.desk-nav { visibility: hidden }' })
     await brief.getByRole('button', { name: 'Xem đầy đủ' }).click()
     await expect(brief.locator('.radar-daily-brief-item')).toHaveCount(8)
-    await page.waitForTimeout(1_000)
-    await page.screenshot({ path: `${path}/radar-daily-brief-expanded-${viewport.key}.png` })
+    await page.screenshot({ path: `${path}/radar-daily-brief-expanded-${viewport.key}.png`, animations: 'disabled' })
     if (viewport.key === 'mobile') {
       const nav = page.getByRole('navigation', { name: 'Điều hướng chính' })
       await expect(nav).toBeVisible()
@@ -87,7 +91,7 @@ test('Daily brief chụp ảnh desktop/mobile và mở rộng không che điều
       await expect(page).toHaveURL(/\/radar$/)
       await page.setViewportSize({ width: 320, height: 844 })
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-      await page.screenshot({ path: `${path}/radar-daily-brief-mobile-320.png` })
+      await brief.screenshot({ path: `${path}/radar-daily-brief-mobile-320.png`, animations: 'disabled', style: '.desk-nav { visibility: hidden }' })
     }
     await page.close()
   }
@@ -138,7 +142,7 @@ test('Tin thứ cấp hiện ảnh có nguồn và dùng minh họa chủ đề 
     id: `11111111-1111-4111-8111-${String(index + 1).padStart(12, '0')}`,
     title: `Tin thứ cấp minh họa ${index + 1}`, canonicalUrl: `https://example.test/article-${index + 1}`,
     publishedAt, categories: ['INTEREST_RATE'], sources: [{ ...source, url: `https://example.test/article-${index + 1}` }],
-    image: index === 2 ? { url: 'https://example.test/cleared.jpg', alt: 'Biểu đồ lãi suất được cấp quyền', credit: 'NHNN', sourceUrl: `https://example.test/article-${index + 1}` } : null,
+    image: index === 2 ? { url: 'https://example.test/cleared.jpg', proxyUrl: '/api/v1/radar/image-proxy?url=' + encodeURIComponent('https://example.test/cleared.jpg'), alt: 'Biểu đồ lãi suất được cấp quyền', credit: 'NHNN', sourceUrl: `https://example.test/article-${index + 1}` } : null,
   }))
   await page.route('**/api/v1/radar/daily-brief', (route) => route.fulfill({ json: makeBrief(0) }))
   await page.route('**/api/v1/radar/articles/highlights', (route) => route.fulfill({ json: { items: [], ranking: 'Fixture' } }))
@@ -146,10 +150,18 @@ test('Tin thứ cấp hiện ảnh có nguồn và dùng minh họa chủ đề 
   await page.route('**/api/v1/radar/articles', (route) => route.fulfill({ json: { items: articles, page: { limit: 20, hasMore: false, nextCursor: null }, sources: [] } }))
   await page.route('**/api/v1/radar/alerts**', (route) => route.fulfill({ json: { items: [] } }))
   await page.route('**/api/v1/radar/recommendation-signals', (route) => route.fulfill({ json: { signals: [] } }))
-  await page.route('https://example.test/cleared.jpg', (route) => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="190"><rect width="320" height="190" fill="#d6ded3"/></svg>' }))
+  await page.route('**/api/v1/radar/image-proxy?url=*', route => route.fulfill({
+    contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="190"><rect width="320" height="190" fill="#d6ded3"/></svg>',
+  }))
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/radar')
-  await expect(page.locator('.desk-row .desk-thumb img[src="https://example.test/cleared.jpg"]')).toHaveCount(1)
+  const image = page.locator('.desk-row').getByRole('img', { name: 'Biểu đồ lãi suất được cấp quyền' })
+  await image.scrollIntoViewIfNeeded()
+  await expect(image).toBeVisible()
+  await expect.poll(() => image.evaluate(element => {
+    const picture = element as HTMLImageElement
+    return picture.naturalWidth > 2 ? new URL(picture.currentSrc).pathname : null
+  })).toBe('/api/v1/radar/image-proxy')
   await expect(page.locator('.desk-row .radar-category-art').first()).toHaveAttribute('aria-label', /Minh họa chủ đề Lãi suất/)
   await expect(page.locator('.desk-row .editorial-image-credit').filter({ hasText: 'NHNN' })).toBeVisible()
 })

@@ -1,6 +1,6 @@
 import { PassThrough, Readable } from 'node:stream'
 import {
-  BadRequestException, Body, Controller, Get, HttpCode, HttpException, Param, PayloadTooLargeException,
+  BadRequestException, Body, Controller, Delete, Get, HttpCode, HttpException, Param, PayloadTooLargeException,
   Post, Req, Res, UseGuards,
 } from '@nestjs/common'
 import {
@@ -8,6 +8,8 @@ import {
   type ForensicAuditStreamEvent, type ForensicFollowUpRequest,
 } from '@fincopilot/shared-types'
 import type { FastifyReply, FastifyRequest } from 'fastify'
+import { z } from 'zod'
+import { RateLimit } from '../../common/rate-limit.guard'
 import { GuestSessionGuard } from '../../common/guest-session.guard'
 import { ZodValidationPipe } from '../../common/zod-validation.pipe'
 import { ForensicService, validateAuditInput } from './forensic.service'
@@ -69,16 +71,18 @@ export class ForensicController {
   constructor(private readonly service: ForensicService) {}
 
   @Post(['audit', 'audits'])
+  @RateLimit('forensic')
   async audit(@Req() request: FastifyRequest, @Body() body: unknown) {
     const { fields, files } = await parseAuditUpload(request, body)
     try {
-      return await this.service.screenAudit(fields, files) ?? await this.service.audit(request.session, fields, files)
+      return await this.service.screenAudit(fields, files, request.session) ?? await this.service.audit(request.session, fields, files)
     } finally {
       for (const { buffer } of files) buffer.fill(0)
     }
   }
 
   @Post('audit/stream')
+  @RateLimit('forensic')
   async auditStream(@Req() request: FastifyRequest, @Body() body: unknown, @Res() reply: FastifyReply) {
     const { fields, files } = await parseAuditUpload(request, body)
     const purge = () => {
@@ -99,7 +103,7 @@ export class ForensicController {
         .header('X-Accel-Buffering', 'no')
         .send(stream)
       try {
-        const refusal = await this.service.screenAudit(fields, files)
+        const refusal = await this.service.screenAudit(fields, files, request.session)
         if (refusal) emit(refusal)
         else {
           const audit = await this.service.audit(request.session, fields, files, (stage) => emit({ type: 'stage', stage }))
@@ -119,6 +123,12 @@ export class ForensicController {
       reply.raw.off('close', purge)
       stream.end()
     }
+  }
+
+  @Delete('conversations/:id')
+  @HttpCode(204)
+  async deleteConversation(@Req() request: FastifyRequest, @Param('id', new ZodValidationPipe(z.uuid())) id: string) {
+    await this.service.deleteConversation(request.session, id)
   }
 
   @Get('audits')

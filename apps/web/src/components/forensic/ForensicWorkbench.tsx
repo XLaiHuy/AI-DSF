@@ -14,6 +14,7 @@ import { auditListQuery, auditQuery, formatVnd, requestError, sessionQuery } fro
 import { cn } from '@/lib/utils'
 import { addAttachments, AttachmentStrip } from './AttachmentStrip'
 import { AuditHistory } from './AuditHistory'
+import { conversationCacheExpiry, readConversationCache, safeCachedQuestion, writeConversationCache } from './conversation-cache'
 import { ForensicReport } from './ForensicReport'
 import { plainAuditText } from './report-copy'
 import { streamAudit } from './stream-audit'
@@ -165,6 +166,8 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
   const [conversation, setConversation] = useState<Conversation>()
   const [pending, setPending] = useState<Pending>()
   const [error, setError] = useState('')
+  const [resetting, setResetting] = useState(false)
+  const [conversationSession, setConversationSession] = useState<{ owner: string; id: string; expiresAt: number }>()
   const [dragging, setDragging] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const attach = useRef<HTMLButtonElement>(null)
@@ -177,11 +180,26 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
   const demoRequest = useRef<AbortController>(null)
   const session = useQuery(sessionQuery)
   const queryClient = useQueryClient()
+  const viewer = session.data?.kind === 'user' ? 'user:' + session.data.user.id : session.isSuccess ? 'guest' : undefined
   const followingUp = Boolean(conversation && !files.length && !entity && !demo)
   const promptLabel = followingUp ? 'Câu hỏi tiếp theo' : 'Nội dung cần giám định'
   const submitLabel = followingUp ? 'Gửi câu hỏi' : 'Gửi giám định'
   const attachmentLabel = 'Đính kèm ảnh/PDF · kéo thả hoặc dán Ctrl+V · tối đa 6 tệp, ' + uploadMaxMb + ' MB/tệp, PDF ' + pdfMaxPages + ' trang'
   const contextName = entity ? 'Đơn vị từ Bộ lọc Tin cậy: ' + entity : demo ? 'Mẫu: ' + demo.label : ''
+
+  useEffect(() => {
+    if (!viewer) return
+    const cached = readConversationCache(viewer)
+    setConversationSession({ owner: viewer, id: cached?.id ?? crypto.randomUUID(), expiresAt: cached?.expiresAt ?? conversationCacheExpiry() })
+    setPreAuditTurns(cached?.turns.map(turn => ({ ...turn, answer: turn.guidance.message })) ?? [])
+  }, [viewer])
+
+  useEffect(() => {
+    if (!conversationSession || conversationSession.owner !== viewer) return
+    const turns = preAuditTurns.flatMap(({ question, guidance }) =>
+      guidance ? [{ question: safeCachedQuestion(question), guidance }] : []).slice(-3)
+    writeConversationCache(conversationSession.owner, conversationSession.id, turns, conversationSession.expiresAt)
+  }, [conversationSession, preAuditTurns, viewer])
 
   useEffect(() => () => {
     activeRequest.current?.abort()
@@ -254,7 +272,19 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
     addFiles(pasted)
   }
 
-  function resetConversation() {
+  async function resetConversation() {
+    if (!conversationSession || resetting || activeRequest.current) return
+    setResetting(true)
+    setError('')
+    try {
+      await apiClient.delete('/forensic/conversations/' + conversationSession.id)
+    } catch (cause) {
+      setError(requestError(cause, 'Chưa bắt đầu được phiên mới. Vui lòng thử lại.'))
+      return
+    } finally {
+      setResetting(false)
+    }
+    setConversationSession({ owner: conversationSession.owner, id: crypto.randomUUID(), expiresAt: conversationCacheExpiry() })
     followScroll.current = false
     if (scrollRoot) scrollRoot.scrollTop = 0
     setConversation(undefined)
@@ -292,7 +322,7 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
   }
 
   async function send(resubmission?: Submission) {
-    if (activeRequest.current || demoRequest.current || !session.isSuccess) return
+    if (activeRequest.current || demoRequest.current || !conversationSession || conversationSession.owner !== viewer || resetting) return
     const text = draft.trim()
     const controller = new AbortController()
     const options = { signal: controller.signal }
@@ -326,15 +356,21 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
         })
         setConversation({ ...conversation, replies: [...conversation.replies, { question: text, ...reply, streamed }] })
       } else {
-        const history = preAuditTurns.slice(-3).flatMap(({ question, answer, guidance }) => [
-          { role: 'user' as const, content: question.trim().slice(0, 800) },
-          { role: 'assistant' as const, content: answer.trim().slice(0, 800), intent: guidance?.intent },
-        ]).filter(turn => turn.content)
-        const parsed = ForensicAuditFieldsSchema.safeParse(resubmission?.fields ?? {
-          preAuditHistory: history.length ? history : undefined,
-          rawText: text || undefined,
-          claimedEntityName: entity || demo?.entity || undefined,
-          sourceAlertId: demo ? undefined : sourceAlertId,
+        const sameSession = conversationSession.expiresAt > Date.now()
+        const id = sameSession ? conversationSession.id : crypto.randomUUID()
+        if (!sameSession) setPreAuditTurns([])
+        const history = sameSession ? preAuditTurns.filter(turn => turn.guidance).slice(-3).flatMap(({ question, answer, guidance }) => [
+          { role: 'user' as const, content: question.trim() },
+          { role: 'assistant' as const, content: answer.trim(), intent: guidance?.intent },
+        ]).filter(turn => turn.content.length > 0 && turn.content.length <= 800) : []
+        const parsed = ForensicAuditFieldsSchema.safeParse({
+          conversationId: id,
+          ...(resubmission?.fields ?? {
+            preAuditHistory: history.length ? history : undefined,
+            rawText: text || undefined,
+            claimedEntityName: entity || demo?.entity || undefined,
+            sourceAlertId: demo ? undefined : sourceAlertId,
+          }),
         })
         const attachments = resubmission?.files ?? files
         if (!parsed.success || (!attachments.length && !parsed.data.rawText && !parsed.data.claimedEntityName && !parsed.data.rawQrString)) {
@@ -357,6 +393,9 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
           })
         }, () => setPending({ kind: 'audit', submission, stages: [] }))
         if ('type' in audit) {
+          if (audit.type === 'guidance' || !sameSession) setConversationSession({
+            owner: conversationSession.owner, id, expiresAt: conversationCacheExpiry(),
+          })
           setPreAuditTurns((previous) => [...previous, { question: submission.text, answer: audit.message, guidance: audit.type === 'guidance' ? audit : undefined }])
           if (!resubmission) setDraft('')
           return
@@ -400,13 +439,11 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
     <section className="forensic-workspace flex min-w-0 flex-col" aria-label="Hội thoại giám định">
       <header className="print-hidden flex shrink-0 flex-wrap items-center justify-between gap-1 border-b border-border py-1.5">
         <h1 className="min-w-0 text-base font-semibold tracking-tight sm:text-lg">Giám định tài chính</h1>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 pe-2">
           <AuditHistory dropdown />
-          {conversation && (
-            <Button variant="ghost" className="h-9 gap-1 px-2 text-xs sm:text-sm" disabled={Boolean(pending) || loadingDemo} onClick={resetConversation}>
-              <RotateCcw size={16} aria-hidden="true" className="hidden sm:inline-block" /> Phiên mới
-            </Button>
-          )}
+          <Button variant="ghost" type="button" className="min-h-11 gap-1 px-2 text-xs sm:text-sm" disabled={Boolean(pending) || loadingDemo || resetting || !conversationSession} onClick={() => void resetConversation()}>
+            <RotateCcw size={16} aria-hidden="true" className="hidden sm:inline-block" /> Phiên mới
+          </Button>
         </div>
       </header>
       {handoff.from && <aside className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
@@ -428,7 +465,7 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
         }}>
         <div ref={transcript} className="grid min-w-0 gap-4 py-3 sm:py-4">
       {preAuditTurns.map(({ question, answer, guidance }, index) => <div key={index} className="grid gap-3">
-        <p className="ml-auto max-w-[85%] whitespace-pre-wrap break-words rounded-xl bg-accent p-3 text-sm">{question}</p>
+        <p className="ml-auto max-w-[85%] whitespace-pre-wrap [overflow-wrap:anywhere] rounded-xl bg-accent p-3 text-sm">{question}</p>
         <div aria-live="polite"><AgentBubble answer={answer} complete />
           {!!guidance?.checklist?.length && <ol aria-label="Các bước ứng cứu" className="mt-3 list-decimal space-y-2 rounded-lg border border-verdict-warning-border bg-verdict-warning-bg py-3 pe-3 ps-9 text-sm leading-relaxed text-verdict-warning">
             {guidance.checklist.map(step => <li key={step}>{step}</li>)}
@@ -446,7 +483,7 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
             </span>
             <div className="min-w-0">
               <h2 className="font-semibold tracking-tight">Giám định với FinCopilot</h2>
-              <p className="text-sm leading-relaxed text-muted-foreground">Đọc mã QR · Bóc tách lãi thực · Đối chiếu Luật VN · Xóa ảnh gốc</p>
+              <p className="text-sm leading-relaxed text-muted-foreground">Kiểm tra mã QR, chi phí vay và dấu hiệu lừa đảo. Ảnh gốc được xóa sau khi kiểm tra.</p>
             </div>
           </div>
           <div className="grid gap-2.5 sm:grid-cols-2" aria-label="Mẫu giám định">

@@ -10,6 +10,7 @@ import {
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { authCookie, guestCookie, GuestSessionGuard, sessionCookieOptions } from '../../common/guest-session.guard'
+import { RateLimit } from '../../common/rate-limit.guard'
 import { ZodValidationPipe } from '../../common/zod-validation.pipe'
 import { calculateFinancialHealth } from './financial-health.engine'
 import { oauthCallbackPath, oauthLifetimeSeconds, OAuthProviderSchema, OAuthService, type OAuthProvider } from './oauth.service'
@@ -53,6 +54,7 @@ export class ProfileAuthController {
   }
 
   @Post('auth/register')
+  @RateLimit('register')
   async register(
     @Body(new ZodValidationPipe(AuthRegisterSchema)) input: AuthRegister,
     @Req() request: FastifyRequest,
@@ -64,6 +66,7 @@ export class ProfileAuthController {
   }
 
   @Post('auth/login')
+  @RateLimit('login')
   @HttpCode(200)
   async login(
     @Body(new ZodValidationPipe(AuthLoginSchema)) input: AuthLogin,
@@ -129,6 +132,7 @@ export class ProfileAuthController {
   }
 
   @Post('profile/avatar')
+  @RateLimit('avatar')
   @HttpCode(200)
   async uploadAvatar(@Req() request: FastifyRequest) {
     if (request.session.kind !== 'user') throw new UnauthorizedException()
@@ -185,6 +189,8 @@ export class PublicAvatarController {
   async avatar(@Param('userId', new ZodValidationPipe(z.uuid())) id: string, @Res() reply: FastifyReply) {
     const image = await this.profiles.avatar(id)
     if (!image) throw new NotFoundException()
-    return reply.header('Cache-Control', 'public, max-age=86400').header('X-Content-Type-Options', 'nosniff').type('image/webp').send(image)
+    return reply.header('Cache-Control', 'private, max-age=86400')
+      .header('Cross-Origin-Resource-Policy', 'same-site')
+      .header('X-Content-Type-Options', 'nosniff').type('image/webp').send(image)
   }
 }

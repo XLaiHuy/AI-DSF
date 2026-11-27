@@ -82,7 +82,7 @@ export class ProfileAuthService {
       const webp = input.toString('ascii', 0, 4) === 'RIFF' && input.toString('ascii', 8, 12) === 'WEBP'
       if (!jpeg && !png && !webp) throw new BadRequestException('Ảnh phải là JPEG, PNG hoặc WebP.')
       try {
-        image = await sharp(input, { limitInputPixels: 40000000 }).rotate().resize(256, 256, { fit: 'cover' }).webp({ quality: 80 }).toBuffer()
+        image = await sharp(input, { limitInputPixels: 40000000 }).rotate().resize(256, 256, { fit: 'cover', position: 'attention' }).webp({ quality: 80 }).toBuffer()
       } catch { throw new BadRequestException('Không thể đọc ảnh chân dung.') }
       return await this.setAvatar(id, image.toString('base64'))
     } finally { input.fill(0); image?.fill(0) }

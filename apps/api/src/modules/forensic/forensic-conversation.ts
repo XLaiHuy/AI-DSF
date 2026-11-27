@@ -1,4 +1,7 @@
 import { AI_TASK_SCHEMAS, handoffRoutes, type ForensicAuditFields, type ForensicGuidance } from '@fincopilot/shared-types'
+import { hasInternalIdentifierLeak } from '../../common/untrusted-text'
+import { compressConversationContext } from './context-compressor'
+import type { ConversationSessionState } from './conversation-session.store'
 import type { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { hasSuspiciousContext } from './complexity-router'
 import { findInstitution, normalizeVietnamese } from './data/trusted-institutions'
@@ -13,19 +16,21 @@ type Guidance = Omit<ForensicGuidance, 'type'>
 type Slots = NonNullable<ForensicGuidance['extractedSlots']>
 type SurveyDomain = 'LOAN' | 'INVEST' | 'SAVINGS'
 type History = NonNullable<ForensicAuditFields['preAuditHistory']>
+type ConversationAi = Pick<AiGatewayService, 'generateStructured'> & Partial<Pick<AiGatewayService, 'classifyConversationRoute'>>
 
-const amountToken = /(?<![\p{L}\d.,-])(\d{1,16}(?:[.,]\d{1,3}| \d{3}(?!\d)){0,5})\s*(triệu|trieu|tr|tỷ|tỉ|ty|ti|nghìn|nghin|ngàn|ngan|k|đồng|dong|vnđ|vnd|đ|₫)(?![\p{L}\d])/giu
+const amountToken = /(?<![\p{L}\d.,-])(\d{1,16}(?:[.,]\d{1,3}| \d{3}(?!\d)){0,5})\s*(triệu|trieu|tr|tỷ|tỉ|ty|ti|nghìn|nghin|ngàn|ngan|k|đồng|dong|vnđ|vnd|đ|₫)(?![\p{L}\d])(?:\s*(?:đồng|dong|vnđ|vnd|đ|₫)(?![\p{L}\d]))?/giu
+const rateToken = /\d+(?:[.,]\d+)?\s*%(?:\s*\/\s*(?:tháng|năm|thang|nam))?/giu
 const termToken = /(?<![\p{L}\d.,-])(\d{1,3})\s*(tháng|thang|năm|nam)(?![\p{L}\d])/giu
 const loanGoal = /^(?:(?:toi|minh|em|anh|chi) )?(?:(?:muon|can|tu van|hoi ve|tim hieu) )*vay(?: tien| von(?: kinh doanh)?| kinh doanh| mua nha| mua xe| tieu dung| tra gop| the chap| tin chap)?$/
 const investmentGoal = /^(?:(?:toi|minh|em|anh|chi) )?(?:(?:muon|can|nen|tu van|tim hieu) )*(?:dau tu(?: gi| the nao)?|quy mo)$/
 const savingsGoal = /^(?:(?:toi|minh|em|anh|chi) )?(?:(?:muon|can|nen|tu van|tim hieu) )*(?:gui tiet kiem|tiet kiem|tich luy)$/
-const question = /[?？]\s*$/
+const question = /[?？]/u
 const interrogative = /\b(?:bao nhieu|the nao|duoc khong|co nen|nen dau tu gi|lai gi|an toan khong|thi sao)\b/
 const profileQuestion = /^(?:(?:toi|minh|em|can|muon) )*(?:kiem tra suc khoe tai chinh|danh gia tai chinh ca nhan|suc khoe tai chinh)$|^(?:(?:toi|minh|em) )?luong\b.*\bchi\b.*\bvay duoc khong$/
 const genericScam = /^(?:(?:nguoi la goi (?:keu|bao|yeu cau) chuyen tien|app vay(?: tien)? (?:online|truc tuyen)|loi moi dau tu|tin nhan la) )?(?:co phai lua dao khong|co lua dao khong|lua dao khong|co uy tin khong|co an toan khong)$/
 const evidenceInvitation = /^toi muon gui (?:noi dung tin nhan dang ngo|anh sao ke da che thong tin rieng de lap ho so va luu pdf trinh bao)$/
-const emergency = /\b(?:vua bi lua(?: dao)?|lo (?:tay )?(?:chuyen tien|chuyen khoan|nhap (?:ma )?otp|bam link|cai app)|cai (?:dat )?app la roi|da (?:gui|nhap|doc) (?:ma )?otp)\b/
-const requestHelp = /\b(?:phai lam sao|lam gi|xu ly|cach nao|cuu minh|cuu toi|giup minh|giup toi|ung cuu)\b/
+const emergency = /\b(?:chuyen nham(?: (?:stk|so tai khoan|tien))?|vua bi lua(?: dao)?|lo (?:tay )?(?:chuyen tien|chuyen khoan|nhap (?:ma )?otp|bam link|cai app)|cai (?:dat )?app la roi|da (?:gui|nhap|doc) (?:ma )?otp)\b/
+const requestHelp = /\b(?:phai lam sao|lam sao|lam gi|xu ly|cach nao|cuu minh|cuu toi|giup minh|giup toi|ung cuu)\b/
 const loanComparison = /^(?:(?:toi|minh|em) )?(?:(?:muon|can|tu van) )*(?:so sanh lai suat(?: vay)?|so sanh (?:cac )?khoan vay)$/
 const surveyLabels: Record<SurveyDomain, string> = { LOAN: 'vay', INVEST: 'đầu tư', SAVINGS: 'tích lũy' }
 
@@ -47,22 +52,24 @@ export function educationGuide(raw: string) {
   return matching.length ? matching.map(([, answer]) => answer).join(' ') : null
 }
 
+const emergencyRecovery = {
+  intent: 'EMERGENCY_SCAM_RECOVERY',
+  message: 'Hãy liên hệ ngân hàng ngay bằng một thiết bị an toàn. Bạn có thể làm theo các bước sau.',
+  checklist: [
+    'Nếu đã cài ứng dụng lạ, ngắt mạng thiết bị đó và gỡ ứng dụng. Dùng một thiết bị an toàn để liên hệ ngân hàng.',
+    'Gọi tổng đài trên thẻ hoặc kênh chính thức của ngân hàng. Yêu cầu khóa thẻ hoặc tài khoản và tra soát giao dịch.',
+    'Giữ nguyên biên lai, tin nhắn và mã giao dịch để làm bằng chứng.',
+    'Trình báo cơ quan Công an gần nhất hoặc gửi phản ánh qua VNeID chính thức.',
+    'Cảnh giác với người hứa “thu hồi vốn”. Không đưa thêm tiền, mật khẩu hoặc mã OTP.',
+  ],
+  suggestedPrompts: ['Tôi muốn gửi ảnh sao kê đã che thông tin riêng để lập hồ sơ và lưu PDF trình báo'],
+} satisfies Guidance
+
 export function emergencyGuide(raw: string): Guidance | null {
   const plain = normalizeVietnamese(raw)
   const disclosure = /^(?:(?:toi|minh|em) )?(?:vua bi lua(?: dao)?|lo (?:chuyen tien|chuyen khoan|nhap (?:ma )?otp|bam link|cai app)|cai (?:dat )?app la roi)(?: roi)?$/
   if (!disclosure.test(plain) && !(emergency.test(plain) && requestHelp.test(plain))) return null
-  return {
-    intent: 'EMERGENCY_SCAM_RECOVERY',
-    message: 'Hãy liên hệ ngân hàng ngay bằng một thiết bị an toàn. Bạn có thể làm theo các bước sau.',
-    checklist: [
-      'Nếu đã cài ứng dụng lạ, ngắt mạng thiết bị đó và gỡ ứng dụng. Dùng một thiết bị an toàn để liên hệ ngân hàng.',
-      'Gọi tổng đài trên thẻ hoặc kênh chính thức của ngân hàng. Yêu cầu khóa thẻ hoặc tài khoản và tra soát giao dịch.',
-      'Giữ nguyên biên lai, tin nhắn và mã giao dịch để làm bằng chứng.',
-      'Trình báo cơ quan Công an gần nhất hoặc gửi phản ánh qua VNeID chính thức.',
-      'Cảnh giác với người hứa “thu hồi vốn”. Không đưa thêm tiền, mật khẩu hoặc mã OTP.',
-    ],
-    suggestedPrompts: ['Tôi muốn gửi ảnh sao kê đã che thông tin riêng để lập hồ sơ và lưu PDF trình báo'],
-  }
+  return emergencyRecovery
 }
 
 export function surveyDomain(raw: string): SurveyDomain | undefined {
@@ -72,16 +79,24 @@ export function surveyDomain(raw: string): SurveyDomain | undefined {
     loanGoal.test(remainder.replace(/(?: trong| ky han)? (?:co )?duoc khong$/, '')) ||
     loanGoal.test(remainder.replace(/ (?:trong|ky han)$/, ''))) return 'LOAN'
   if (investmentGoal.test(plain) || /^(?:(?:toi|minh|em) )?co .*\bnen dau tu gi$/.test(plain)) return 'INVEST'
-  if (savingsGoal.test(plain) || savingsGoal.test(remainder.replace(/ (?:trong|ky han)$/, ''))) return 'SAVINGS'
+  if (savingsGoal.test(plain) || savingsGoal.test(remainder.replace(/ (?:trong|ky han)$/, '')) ||
+    /\b(?:muon|can|nen) (?:gui tiet kiem|tiet kiem|tich luy)\b/.test(plain)) return 'SAVINGS'
 }
 
-function explicitSlots(raw: string): Pick<Slots, 'amountVnd' | 'termMonths'> {
+function isAssertion(raw: string) {
   const plain = normalizeVietnamese(raw)
-  if (question.test(raw) || interrogative.test(plain) || /^neu\b/.test(plain) ||
-    /\b(?:khong (?:phai|qua|den|it hon|nhieu hon)|toi da|toi thieu|it nhat|nhieu nhat)\b/.test(plain)) return {}
-  const amounts = [...raw.matchAll(amountToken)]
+  return !question.test(raw) && !interrogative.test(plain) && !/\b(?:neu|gia su|khong|chua|chang|toi da|toi thieu|it nhat|nhieu nhat)\b/.test(plain)
+}
+
+function explicitSlots(raw: string, suggestedAmount?: string): Pick<Slots, 'amountVnd' | 'termMonths'> {
+  if (!isAssertion(raw)) return {}
+  const amounts = [...raw.matchAll(amountToken)].map(match => ({
+    value: parseVnd(match),
+    prefix: normalizeVietnamese(raw.slice(0, match.index)),
+  })).filter(({ prefix }) => !/\b(?:luong|thu nhap|chi tieu|chi phi|tra no|tien nha)(?: (?:thuc nhan|co dinh|hang|moi|thang|hien tai|khoang|cua|toi|minh|em|la|duoc))*$/.test(prefix))
   const terms = [...raw.matchAll(termToken)]
-  const amountVnd = amounts.length === 1 ? parseVnd(amounts[0]) : null
+  const amountVnd = amounts.length === 1 ? amounts[0].value : amounts.find(({ value, prefix }) =>
+    value === suggestedAmount && /\b(?:so tien ban dau|von|ngan sach)(?: (?:ban dau|hien co|cua|toi|minh|em|la|khoang))*$/.test(prefix))?.value
   const months = terms.length === 1 ? Number(terms[0][1]) * (normalizeVietnamese(terms[0][2]) === 'nam' ? 12 : 1) : 0
   return { ...(amountVnd && { amountVnd }), ...(months > 0 && months <= 600 && { termMonths: months }) }
 }
@@ -107,7 +122,7 @@ function surveyContext(history: History) {
     const domain = surveyDomain(content)
     if (domain) {
       slots = { ...(slots.domain === domain ? slots : {}), domain, ...explicitSlots(content) }
-    } else if (slots.domain && updatesSurveySlots(content)) {
+    } else if ((slots.domain && updatesSurveySlots(content)) || personalCapital.test(stripVietnameseParticles(content))) {
       slots = { ...slots, ...explicitSlots(content) }
     }
   }
@@ -128,8 +143,9 @@ function surveyGuide(domain: SurveyDomain, slots: Slots): Guidance {
   const nextQuestion = loan
     ? !amountLabel && !termLabel ? 'Bạn dự định vay bao nhiêu và trả trong bao lâu?' : !amountLabel ? 'Bạn dự định vay bao nhiêu?' : !termLabel ? 'Bạn muốn trả trong bao lâu?' : 'Bạn có thể dùng Khảo sát để ước tính khoản trả.'
     : domain === 'INVEST' ? 'Bạn định đầu tư bao lâu và chấp nhận biến động đến mức nào?' : 'Bạn dự định gửi ban đầu bao nhiêu và tích lũy thêm bao nhiêu mỗi tháng?'
-  const href = loan && slots.amountVnd && /[1-9]/.test(slots.amountVnd) && slots.termMonths
-    ? handoffRoutes.quickSurvey({ amount: slots.amountVnd, term: slots.termMonths })
+  const href = slots.amountVnd && /[1-9]/.test(slots.amountVnd) && slots.termMonths
+    ? loan ? handoffRoutes.quickSurvey({ amount: slots.amountVnd, term: slots.termMonths })
+      : '/survey?' + new URLSearchParams({ mode: 'invest', amount: slots.amountVnd, term: String(slots.termMonths) })
     : loan ? '/survey?mode=loan' : '/survey?mode=invest'
   return {
     intent: 'NEEDS_DETAILS',
@@ -147,11 +163,13 @@ export function guidanceEligible(raw: string, aliases?: readonly TeencodeAlias[]
   if (isOffTopicPrompt(raw) || inspectForensicInput(raw, aliases).strippedControlSpans > 0) return false
   const isCivilLimit = /\b(?:tran lai suat|dieu 468|lai suat dan su)\b/.test(normalizeVietnamese(raw))
   const checked = isCivilLimit ? raw.replace(/(?<![\d.,])20\s*%\s*(?:\/\s*năm)?/giu, ' ') : raw
-  const remainder = checked.replace(amountToken, ' ').replace(termToken, ' ')
+  const remainder = checked.replace(amountToken, ' ').replace(termToken, ' ').replace(rateToken, ' ')
   const plain = expandTeencode(raw, aliases).normalized
+  const termsOffered = Boolean(checked.match(rateToken)) &&
+    Boolean(checked.match(amountToken) || checked.match(termToken)) && !informationSeeking.test(plain)
   return !hasConcreteFinancialEvidence(remainder, aliases) &&
-    !/\b(?:ngan hang|cong ty|to chuc|cong an|ke toan|shipper|hop dong|duong dan|stk|so tai khoan|sdt|so dien thoai|phi giai ngan|loi 102|dong bang von|mao danh|gia mao|cam ket loi nhuan|yeu cau nop|chao lai|bao lai|bao phi|hen giai ngan)\b/.test(plain) &&
-    !/\d\s*%/.test(checked) && !hasSuspiciousContext(plain) &&
+    !/\b(?:ngan hang|cong ty|to chuc|cong an|ke toan|shipper|dien luc|hai quan|sep|hop dong|hoa don|don hang|link la|duong dan|vneid|stk|so tai khoan|sdt|so dien thoai|phi giai ngan|loi 102|dong bang von|mao danh|gia mao|cam ket loi nhuan|yeu cau nop|chao lai|bao lai|bao phi|hen giai ngan|uy thac|bao loi|usdt|btc|eth|crypto)\b/.test(plain) &&
+    !termsOffered && !hasSuspiciousContext(plain) &&
     !findInstitution(plain.replace(/^(?:ben|don vi|ten) /, ''), []) && !/\b(?:vay|gui tiet kiem|dau tu) (?:o|tai|tu|qua) \w/.test(plain) &&
     !/\b(?:vietcombank|vietinbank|techcombank|agribank|bidv|mbbank|vpbank|fe credit|home credit|mcredit)\b/.test(plain)
 }
@@ -180,65 +198,115 @@ export function isSmalltalkAck(raw: string) {
     .test(stripVietnameseParticles(raw)) && !question.test(raw)
 }
 
+const informationSeeking = /\b(?:la gi|khac nhau|giai thich|tim hieu|doc thong tin|khai niem|nghia la gi)\b/
+const planningLanguage = /\b(?:ke hoach|ngan sach|quan ly chi tieu|dong tien|thu nhap|chi phi sinh hoat|de danh|tich luy|dau tu|tiet kiem)\b/
 const ambiguousQuestion = /^(?:(?:toi|minh|em) )?(?:nen|co nen|tu van|huong dan|muon hieu|lam sao de|cach)\b/
+const personalCapital = /\b(?:so tien ban dau|von (?:ban dau|hien co)|ngan sach|(?:toi|minh|em|anh|chi) (?:dang |hien )?co|(?:hien |dang )?co san)\b/
 const guidance = (result: Guidance): ForensicGuidance => ({ type: 'guidance', ...result })
 
 export async function routeForensicConversation(
-  fields: ForensicAuditFields, hasFiles: boolean, ai: Pick<AiGatewayService, 'generateStructured'>, aliases?: readonly TeencodeAlias[],
+  fields: ForensicAuditFields, hasFiles: boolean, ai: ConversationAi, aliases?: readonly TeencodeAlias[],
+  loadSession?: () => Promise<ConversationSessionState | undefined>,
 ) {
   const { rawText, rawQrString, sourceAlertId, claimedEntityName, preAuditHistory = [] } = fields
   if (hasFiles || rawQrString || !rawText) return null
 
   const inspection = inspectForensicInput(rawText, aliases)
   if (inspection.refuseDirect) return forensicRefusal
-  if (inspection.hasIndirectInjection || isOffTopicPrompt(rawText) || claimedEntityName || sourceAlertId) return null
+  if (inspection.hasIndirectInjection || isOffTopicPrompt(rawText)) {
+    const evidence = inspection.sanitizedText.replace(amountToken, ' ').replace(termToken, ' ').replace(rateToken, ' ')
+    const describedCase = /\b(?:hop dong|giao dich|hoa don|yeu cau chuyen|bao phi|loi 102)\b/.test(expandTeencode(evidence, aliases).normalized)
+    return hasConcreteFinancialEvidence(evidence, aliases) || describedCase ? null : forensicRefusal
+  }
+  if (claimedEntityName || sourceAlertId) return null
   const plain = stripVietnameseParticles(rawText)
   if (assistantIntro(rawText)) return guidance(assistantGuide)
   if (isSmalltalkAck(rawText)) return guidance({ intent: 'ACK_SMALLTALK', message: 'Mình luôn sẵn sàng nếu bạn có câu hỏi tài chính khác.' })
 
-  // A loss amount alone does not identify a transaction to audit.
   const recovery = emergencyGuide(rawText)
   if (recovery && !hasConcreteFinancialEvidence(rawText.replace(amountToken, ' '), aliases) &&
-    !/\b(?:so tai khoan|stk|bien lai|ma giao dich)\b/.test(plain)) return guidance(recovery)
+    (/\bchuyen nham\b/.test(plain) || !/\b(?:so tai khoan|stk|bien lai|ma giao dich)\b/.test(plain))) return guidance(recovery)
 
   if (genericScam.test(plain) || evidenceInvitation.test(plain)) return guidance(recoveryCheck)
-  const eligible = guidanceEligible(rawText, aliases)
-  if (eligible && profileQuestion.test(plain)) return guidance(profileGuide)
+  const education = educationGuide(rawText)
+  const lookingUp = informationSeeking.test(plain)
+  const remainder = rawText.replace(amountToken, ' ').replace(termToken, ' ').replace(rateToken, ' ')
+  const generalEducation = lookingUp && !hasConcreteFinancialEvidence(remainder, aliases) &&
+    !hasSuspiciousContext(expandTeencode(rawText, aliases).normalized)
+  const eligible = guidanceEligible(rawText, aliases) || generalEducation
   if (!eligible) return null
+  if (profileQuestion.test(plain)) return guidance(profileGuide)
 
-  const previous = surveyContext(preAuditHistory)
+  const session = await loadSession?.()
+  const previous = session ? { ...session.slots, domain: session.domain } : surveyContext(preAuditHistory)
   const newDomain = surveyDomain(rawText)
   const domain = newDomain ?? (updatesSurveySlots(rawText) ? previous.domain : undefined)
-  if (domain) {
-    const priorSlots = previous.domain === domain ? previous : {}
-    return guidance(surveyGuide(domain, { ...priorSlots, ...explicitSlots(rawText) }))
-  }
-  const education = educationGuide(rawText)
-  if (!education && !(hasFinancialDomain(rawText, aliases) && ambiguousQuestion.test(plain))) {
-    return hasFinancialDomain(rawText, aliases) || hasConcreteFinancialEvidence(rawText, aliases) ? null : forensicRefusal
+  const stated = explicitSlots(rawText)
+  if (domain === 'LOAN' || domain === 'INVEST' || domain === 'SAVINGS') {
+    const priorSlots = previous.domain === domain || (!previous.domain && domain !== 'LOAN') ? previous : {}
+    return guidance(surveyGuide(domain, { ...priorSlots, ...stated }))
   }
 
-  const fallback: Guidance = education ? { intent: 'FINANCIAL_EDUCATION', message: education }
-    : { intent: 'NEEDS_DETAILS', message: 'Bạn muốn tìm hiểu khái niệm nào hoặc đang cân nhắc quyết định tài chính gì?' }
+  if (!previous.domain && updatesSurveySlots(rawText) && rawText.match(amountToken) && rawText.match(termToken) &&
+    !personalCapital.test(plain)) return null
+  const hasCapital = Boolean(stated.amountVnd) && (personalCapital.test(plain) || updatesSurveySlots(rawText))
+  const hasFinance = hasFinancialDomain(rawText, aliases)
+  const fallback: Guidance | null = hasCapital ? {
+    intent: 'NEEDS_DETAILS',
+    message: 'Bạn muốn dùng khoản này để tiết kiệm, đầu tư hay lên kế hoạch cho một mục tiêu cụ thể?',
+    suggestedPrompts: ['Tôi muốn tích lũy', 'Tôi muốn tìm hiểu cách đầu tư'],
+    extractedSlots: { ...previous, ...stated },
+  } : education ? { intent: 'FINANCIAL_EDUCATION', message: education }
+    : (hasFinance && (lookingUp || ambiguousQuestion.test(plain))) || planningLanguage.test(plain) || previous.domain
+      ? { intent: 'NEEDS_DETAILS', message: 'Bạn muốn tìm hiểu khái niệm nào hoặc đang cân nhắc quyết định tài chính gì?' }
+      : null
+  if (hasCapital && fallback && !ai.classifyConversationRoute) return guidance(fallback)
+  if (!fallback && !ai.classifyConversationRoute) return hasFinance ? null : forensicRefusal
+  const onUnavailable = () => fallback ? guidance(fallback) : forensicRefusal
+  if (rawText.length > 8_000) return hasFinance ? null : onUnavailable()
+
+  const history = session?.recentTurns ?? compactPreAuditHistory(preAuditHistory)
+  const context = compressConversationContext(history, session?.rollingSummary ?? '')
+  const payload = {
+    current_turn: maskForensicText(rawText),
+    compressedContext: {
+      domain: previous.domain, slots: { amountVnd: previous.amountVnd, termMonths: previous.termMonths, goalNote: previous.goalNote },
+      rollingSummary: context.summary, recentTurns: context.recentTurns,
+    },
+  }
+  const canAudit = !hasCapital && !education && !generalEducation
   try {
-    const guide = await ai.generateStructured('FORENSIC_CONVERSATION_GUIDE', AI_TASK_SCHEMAS.FORENSIC_CONVERSATION_GUIDE, {
-      current_turn: maskForensicText(rawText),
-      history: compactPreAuditHistory(preAuditHistory),
-    })
-    if (guide.route === 'OFF_TOPIC') return education ? guidance(fallback) : forensicRefusal
-    if (guide.route === 'FULL_AUDIT' || guide.route === 'EMERGENCY_SCAM_RECOVERY') return guidance(fallback)
-    // The structured model cannot choose links, assert slots or route a clear educational turn elsewhere.
-    if (education && guide.route !== 'FINANCIAL_EDUCATION') return guidance(fallback)
-    const message = screened(maskForensicText(guide.answer), false)
-    if (!message || !screened(message, true) || /\b(?:chac chan|dam bao|cam ket)\b.{0,40}\b(?:duyet|giai ngan)\b/.test(normalizeVietnamese(message))) {
-      return guidance(fallback)
+    const signals = await ai.classifyConversationRoute?.(payload)
+    if (signals) {
+      if (canAudit && signals.isAuditableCaseProb >= 0.72) return null
+      if (signals.isEmergencyLossProb >= 0.75 && !hasCapital) return guidance(emergencyRecovery)
+      if (signals.isOffTopicProb >= 0.85 && signals.isSocialGreetingOrAckProb < 0.30 && !fallback) return forensicRefusal
     }
-    const suggestedPrompts = guide.suggestedPrompts.map(text => screened(maskForensicText(text), false))
-      .filter(text => text && screened(text, true))
-    const template = guide.route === 'PROFILE_HEALTH_NAV' ? profileGuide : guide.route === 'SCAM_CHECK_INCOMPLETE' ? recoveryCheck : fallback
-    return guidance({ ...template, intent: guide.route, message, suggestedPrompts,
-      ...(guide.domain && { extractedSlots: { domain: guide.domain } }) })
+
+    const guide = await ai.generateStructured('FORENSIC_CONVERSATION_GUIDE', AI_TASK_SCHEMAS.FORENSIC_CONVERSATION_GUIDE,
+      ai.classifyConversationRoute || session ? { ...payload, ...(signals && { classification: signals }) }
+        : { current_turn: payload.current_turn, history })
+    if (guide.route === 'OFF_TOPIC') return onUnavailable()
+    if (guide.route === 'FULL_AUDIT') return canAudit ? null : onUnavailable()
+    if (guide.route === 'EMERGENCY_SCAM_RECOVERY') return hasCapital || education ? onUnavailable() : guidance(emergencyRecovery)
+    if ((education && guide.route !== 'FINANCIAL_EDUCATION') || (hasCapital && guide.route !== 'NEEDS_DETAILS')) return onUnavailable()
+
+    const sanitize = (text: string) => hasInternalIdentifierLeak([text]) ? '' : screened(maskForensicText(text), true)
+    const message = sanitize(guide.answer)
+    if (!message || /\b(?:chac chan|dam bao|cam ket)\b.{0,40}\b(?:duyet|giai ngan)\b/.test(normalizeVietnamese(message))) {
+      return onUnavailable()
+    }
+    const suggestedPrompts = guide.suggestedPrompts.map(sanitize).filter(Boolean)
+    const planning = guide.route === 'NEEDS_DETAILS' && (guide.domain === 'LOAN' || guide.domain === 'INVEST' || guide.domain === 'SAVINGS') ? guide.domain : undefined
+    const goalNote = guide.slots?.goalNote
+    const affirmedGoal = goalNote && isAssertion(rawText) && payload.current_turn.includes(goalNote) && sanitize(goalNote)
+    const template = planning ? surveyGuide(planning, {
+      ...(previous.domain === planning || !previous.domain ? previous : {}),
+      ...explicitSlots(rawText, guide.slots?.amountVnd),
+      ...(affirmedGoal && { goalNote: affirmedGoal }),
+    }) : guide.route === 'PROFILE_HEALTH_NAV' ? profileGuide : guide.route === 'SCAM_CHECK_INCOMPLETE' ? recoveryCheck : fallback
+    return guidance({ ...template, intent: guide.route, message, suggestedPrompts })
   } catch {
-    return guidance(fallback)
+    return onUnavailable()
   }
 }

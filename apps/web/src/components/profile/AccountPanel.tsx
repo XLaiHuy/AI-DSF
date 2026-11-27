@@ -3,7 +3,7 @@
 import { AuthLoginSchema, AuthRegisterSchema, ROUTES, safeReturnTo, type AuthSessionResponse } from '@fincopilot/shared-types'
 import Image from 'next/image'
 import { useQueryClient } from '@tanstack/react-query'
-import { Github, LockKeyhole, LogIn, LogOut } from 'lucide-react'
+import { Camera, Github, LockKeyhole, LogIn, LogOut } from 'lucide-react'
 import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { z } from 'zod'
 import { Badge, Button, buttonVariants, Card, Input, Label } from '@/components/ui'
@@ -136,6 +136,7 @@ function AuthError({ error }: { error: string }) {
 }
 
 export function AccountStatus({ session }: { session: AuthSessionResponse }) {
+  const avatarInput = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -155,6 +156,12 @@ export function AccountStatus({ session }: { session: AuthSessionResponse }) {
     finally { setBusy(false) }
   }
 
+  const user = session.kind === 'user' ? session.user : undefined
+  const name = user?.displayName || user?.email || ''
+  const initials = name.trim().split(/\s+/).map(word => Array.from(word)[0] ?? '').filter(Boolean)
+  const avatarAction = user?.avatarUrl ? 'Đổi ảnh' : 'Tải ảnh chân dung'
+  const selectAvatar = () => avatarInput.current?.click()
+
   async function logout() {
     setBusy(true)
     setError('')
@@ -171,16 +178,25 @@ export function AccountStatus({ session }: { session: AuthSessionResponse }) {
     <Card className="bg-accent/60 p-5 sm:px-6">
       <section aria-labelledby="session-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <LockKeyhole className="mt-0.5 shrink-0 text-primary" size={20} aria-hidden="true" />
             <div className="min-w-0 space-y-1">
               <h2 id="session-heading" className="text-base font-semibold">{session.kind === 'guest' ? 'Bạn đang dùng phiên khách' : 'Tài khoản của bạn'}</h2>
               {session.kind === 'guest' ? (
                 <p className="max-w-[65ch] text-sm leading-relaxed text-accent-foreground">Đăng nhập để gộp lịch sử giám định. Hồ sơ phiên khách được chuyển sang nếu tài khoản chưa có hồ sơ tài chính.</p>
               ) : (
-                <p className="text-sm break-all text-accent-foreground">{session.user.displayName ?? session.user.email}</p>
+                <p className="break-words text-sm text-accent-foreground [overflow-wrap:anywhere]">{name}</p>
               )}
             </div>
+            {user && <div className="relative mr-1 shrink-0">
+              <div className="grid size-14 place-items-center overflow-hidden rounded-full border border-border bg-card" data-testid="account-avatar">
+                {user.avatarUrl ? <Image unoptimized width={56} height={56} className="h-full w-full object-cover" src={user.avatarUrl} alt="Ảnh chân dung của bạn" />
+                  : <span className="font-semibold text-primary" aria-hidden="true">{(initials.length > 1 ? initials[0] + initials.at(-1) : initials[0])?.toLocaleUpperCase('vi-VN')}</span>}
+              </div>
+              <Button type="button" variant="outline" className="absolute -right-1 -bottom-1 size-7 rounded-full p-0" aria-label={avatarAction + ' từ khung ảnh'} aria-describedby="avatar-help" disabled={busy} onClick={selectAvatar}>
+                <Camera size={14} aria-hidden="true" />
+              </Button>
+            </div>}
           </div>
           {session.kind === 'guest' ? (
             <a href="#account-sign-in" className={cn(buttonVariants({ variant: 'outline' }), 'min-h-11')}>
@@ -197,15 +213,14 @@ export function AccountStatus({ session }: { session: AuthSessionResponse }) {
         </div>
         {session.kind === 'guest' ? <p className="mt-3 text-sm">Đăng nhập để lưu ảnh chân dung.</p> :
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            {session.user.avatarUrl && <Image unoptimized width={64} height={64} className="rounded-full" src={session.user.avatarUrl} alt="Ảnh chân dung của bạn" />}
-            <label className="grid gap-1 text-sm">Tải ảnh chân dung
-              <input type="file" disabled={busy} accept="image/jpeg,image/png,image/webp" onChange={event => {
-                const file = event.target.files?.[0]
-                event.target.value = ''
-                if (file) void changeAvatar(file)
-              }} />
-            </label>
-            {session.user.avatarUrl && <Button type="button" disabled={busy} variant="outline" onClick={() => void changeAvatar()}>Xóa ảnh</Button>}
+            <input ref={avatarInput} name="avatar" className="sr-only" hidden type="file" disabled={busy} accept="image/jpeg,image/png,image/webp" onChange={event => {
+              const file = event.target.files?.[0]
+              event.target.value = ''
+              if (file) void changeAvatar(file)
+            }} />
+            <Button type="button" variant="outline" className="min-h-11" disabled={busy} aria-describedby="avatar-help" onClick={selectAvatar}>{avatarAction}</Button>
+            {session.user.avatarUrl && <Button type="button" className="min-h-11" disabled={busy} variant="outline" onClick={() => void changeAvatar()}>Xóa ảnh</Button>}
+            <p className="text-sm text-muted-foreground" id="avatar-help">JPG, PNG, WebP · tối đa 5 MB</p>
           </div>}
         <AuthError error={error} />
       </section>

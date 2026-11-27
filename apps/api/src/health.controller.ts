@@ -1,23 +1,10 @@
-import { Controller, Get, HttpException, HttpStatus, OnModuleDestroy } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
-import Redis from 'ioredis'
+import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common'
 import { PrismaService } from './common/prisma.service'
+import { RedisService } from './common/redis.service'
 
 @Controller('health')
-export class HealthController implements OnModuleDestroy {
-  private readonly redis: Redis
-
-  constructor(private readonly prisma: PrismaService, config: ConfigService) {
-    this.redis = new Redis(config.getOrThrow<string>('REDIS_URL'), {
-      lazyConnect: true,
-      connectTimeout: 1500,
-      commandTimeout: 1500,
-      maxRetriesPerRequest: 0,
-    })
-    this.redis.on('error', () => {
-      // The readiness response reports connection failures without leaking connection details.
-    })
-  }
+export class HealthController {
+  constructor(private readonly prisma: PrismaService, private readonly redis: RedisService) {}
 
   @Get()
   async check() {
@@ -45,7 +32,4 @@ export class HealthController implements OnModuleDestroy {
     }
   }
 
-  onModuleDestroy() {
-    this.redis.disconnect()
-  }
 }

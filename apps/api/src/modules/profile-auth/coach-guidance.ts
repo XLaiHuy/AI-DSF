@@ -78,6 +78,7 @@ export function formatCoachAdviceNumbers(text: string) {
       const compact = value.replace(/[ \u00a0\u202f]/gu, '').replace(/[.,](?=\d{3}(?:\D|$))/g, '').replace(',', '.')
       return moneyText(new Precise(compact).toFixed())
     })
+    .replace(/(?<![\d.,])(\d+)\.(\d{1,2})(?=\s*tháng(?!\p{L}))/gu, '$1,$2')
 }
 
 export function fallbackAdvice(context: Context) {
@@ -92,11 +93,11 @@ export function fallbackAdvice(context: Context) {
     actions: ['Xếp các hóa đơn thiết yếu và kỳ trả nợ theo ngày đến hạn.', 'Hoãn chi tiêu linh hoạt cho đến khi ngân sách có phần dư.', 'Nếu có nguy cơ trễ hạn, hỏi bên cho vay về phương án xử lý trước ngày đến hạn.'],
   }
   const surplusText = `Bạn còn ${moneyText(surplus)}/tháng sau các khoản bắt buộc.`
-  const headroom = context.availableForNewEmiVnd === null ? '' : ' Dư địa trả góp thêm tối đa là ' + moneyText(context.availableForNewEmiVnd) + '/tháng.'
+  const headroom = context.availableForNewEmiVnd === null ? '' : ' Mức trả góp thêm an toàn tối đa là ' + moneyText(context.availableForNewEmiVnd) + '/tháng.'
   const allocation = goal === 'OPTIMIZE_DEBT'
     ? 'So sánh lãi và phí trả trước hạn của từng khoản nợ rồi ưu tiên khoản tốn kém nhất nếu có.'
     : goal === 'BORROW_SAFE'
-      ? 'Mô phỏng khoản vay và đối chiếu số trả thêm hằng tháng với phần tiền dư trước khi quyết định.'
+      ? 'Tính thử khoản vay rồi đối chiếu số tiền trả thêm mỗi tháng với khoản còn dư trước khi quyết định.'
       : risk === 'CONSERVATIVE'
         ? 'Ưu tiên mục tiêu ngắn hạn và giữ phần chưa cần đầu tư ở nơi dễ rút, ít biến động.'
         : risk === 'GROWTH'
