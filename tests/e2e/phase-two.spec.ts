@@ -56,10 +56,14 @@ for (const [name, viewport] of Object.entries(viewports)) {
     })
 
     await page.goto('/', { waitUntil: 'networkidle' })
-    await expect(page.getByRole('heading', { name: 'Tổng quan tài chính' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Khảo sát nhanh khoản vay' })).toBeVisible()
+    const nav = page.getByRole('navigation', { name: 'Điều hướng chính' })
+    await expect(nav).toBeVisible()
     await verifyLayout(page, info, 'home')
-    await page.getByRole('button', { name: 'Khảo sát khoản vay' }).click()
+    if (name === 'mobile') await nav.getByRole('button', { name: 'Menu điều hướng' }).click()
+    await nav.getByRole('button', { name: 'Khảo sát nhanh' }).click()
+    const quickDialog = page.getByRole('dialog', { name: 'Khảo sát nhanh' })
+    await expect(quickDialog.getByRole('heading', { name: 'Khảo sát nhanh khoản vay' })).toBeVisible()
+    await quickDialog.getByRole('button', { name: 'Khảo sát khoản vay' }).click()
     await expect(page).toHaveURL(/\/survey\?.*amount=50000000.*term=24/)
 
     await page.goto('/profile')
