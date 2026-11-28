@@ -69,6 +69,34 @@ function numberValue(raw: string, unit?: string) {
   return /^[+-]?\d+(?:\.\d+)?$/.test(decimal) ? new Numeric(decimal).mul(multipliers[unit ?? ''] ?? 1) : null
 }
 
+export function financialNumericGrounding(values: readonly unknown[], evidence: readonly string[] = []) {
+  const allowed = { money: new Set<string>(), rate: new Set<string>() }
+  const add = (kind: keyof typeof allowed, value: Decimal) => {
+    allowed[kind].add(value.toFixed())
+    if (kind === 'rate') allowed.rate.add(value.toDecimalPlaces(2).toFixed())
+  }
+  const claims = (text: string) => Array.from(normalizeNumbers(text).matchAll(numberTokens)).flatMap(([, raw, unit]) => {
+    const kind = unit === '%' || unit === 'phần trăm' || unit?.startsWith('điểm') ? 'rate'
+      : unit && (unit in multipliers || /^(?:đồng|vnd|đ|₫)$/.test(unit)) ? 'money' : undefined
+    const value = kind && numberValue(raw, unit)
+    return kind && value ? [{ kind, value } as const] : []
+  })
+  const collect = (record: unknown) => {
+    if (!record || typeof record !== 'object') return
+    for (const [key, value] of Object.entries(record)) {
+      if (value && typeof value === 'object') collect(value)
+      else if (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value)) {
+        if (/Vnd$/.test(key)) add('money', new Numeric(value))
+        if (/Pct$/.test(key)) add('rate', new Numeric(value))
+      }
+    }
+  }
+  values.forEach(collect)
+  for (const text of evidence) for (const { kind, value } of claims(text)) add(kind, value)
+  return (text: string) => !/\b(?:mot|hai|ba|bon|nam|sau|bay|tam|chin|muoi|tram)(?: (?:mot|hai|ba|bon|nam|lam|sau|bay|tam|chin|muoi|tram|linh|le))* (?:trieu|ty|nghin|ngan|phan tram)\b/.test(normalizeVietnamese(text)) &&
+    claims(text).every(({ kind, value }) => allowed[kind].has(value.toFixed()))
+}
+
 export function contradictsHighRisk(text: string) {
   const normal = normalizeVietnamese(text.replace(/(?:không|đừng|chớ)\s+(?:nên\s+)?(?:yên tâm|cứ|hãy|tiếp tục)?\s*chuyển tiền/giu, ' '))
   return /\b(?:yen tam (?:chuyen|gui tien|thanh toan|thuc hien giao dich)|giao dich (?:nay )?(?:la )?an toan|tiep tuc chuyen|chuyen tien ngay|(?:cu|hay|nen|co the|vui long) (?:chuyen|thanh toan|nap tien|gui tien)|khong co rui ro|bo qua canh bao|khong can kiem tra)\b/.test(normal)

@@ -117,6 +117,21 @@ describe('Forensic SSE route', () => {
     }) })
   }, 15_000)
 
+  it('blocks invented rates and money on both follow-up endpoints', async () => {
+    const grounded = 'Khoản vay ghi 100 triệu đồng với lãi 12%/năm.'
+    const ungrounded = 'Lãi vay chắc chắn là 37% và còn phải trả 91 triệu đồng.'
+    const { inject, ai } = await setup(true, [grounded + ' ', ungrounded], {
+      ...audit, privacyProof: { ...audit.privacyProof, rawTextMasked: grounded },
+    })
+    vi.spyOn(ai, 'generateWithProvider').mockResolvedValue({
+      provider: 'openai', output: { narrative: ungrounded, immediateActions: [] },
+    })
+    const response = await inject('Giải thích lãi suất giúp tôi.')
+    expect(response.body).toContain('12%/năm')
+    expect(response.body).not.toMatch(/37%|91 triệu/)
+    expect((await inject('Giải thích lãi suất giúp tôi.', true)).json().answer).not.toMatch(/37%|91 triệu/)
+  })
+
   it('returns 404 before SSE headers or model calls for another owner', async () => {
     const { inject, databaseRead, stream } = await setup(false, [])
     const response = await inject('Tôi nên làm gì?')

@@ -66,7 +66,7 @@ export type RefinanceInput = {
   newLaterRate?: NonNullable<Parameters<typeof amortizeLoan>[4]>['laterRate']
 }
 
-export function simulateRefinanceBreakEven(input: RefinanceInput) {
+export function simulateRefinanceBreakEven(input: RefinanceInput, options?: { verify?: boolean }) {
   const { remainingTermMonths, earlySettlementFeePct, newUpfrontFeeRatePct = '0', newTermMonths = remainingTermMonths } = input
   const principal = new Decimal(money(input.remainingPrincipalVnd))
   const decimals = [input.currentAnnualRatePct, input.newAnnualRatePct, earlySettlementFeePct, newUpfrontFeeRatePct,
@@ -104,13 +104,14 @@ export function simulateRefinanceBreakEven(input: RefinanceInput) {
   }
 
   const recommendation = netSavings.lte(0) ? 'KEEP_CURRENT' : netSavings.lt(principal.div(100)) ? 'MARGINAL' : 'WORTH_REFINANCING'
-  return {
+  const result = {
     currentMonthlyPaymentVnd: current.monthlyPaymentVnd, currentTotalRemainingPayableVnd: current.totalPayableVnd,
     earlySettlementPenaltyVnd: money(earlyPenalty), newUpfrontFeeVnd: money(newUpfrontFee), totalSwitchCostVnd: money(switchCost),
     newMonthlyPaymentVnd: next.monthlyPaymentVnd, newTotalPayableVnd: next.totalPayableVnd,
     monthlySavingsVnd: money(new Decimal(current.monthlyPaymentVnd).sub(next.monthlyPaymentVnd)),
     breakEvenMonth, netSavingsVnd: money(netSavings), recommendation, comparisonPoints,
   } as const
+  return { ...result, ...(options?.verify && { verificationReceipt: verifyRefinanceCalculation(principal, current, next, result) }) }
 }
 
 function scheduledPayment(balance: Decimal, monthlyRate: Decimal, months: number) {
@@ -263,4 +264,89 @@ export function openFundScenarioBands(
     base: calculate(base),
     optimistic: calculate(base.add('3.5')),
   }
+}
+
+export const civilLoanAnnualRateCapPct = '20'
+export const criminalLoanAnnualRateScreenPct = new Decimal(civilLoanAnnualRateCapPct).mul(5).toFixed()
+
+export function actual365Interest(principalVnd: Decimal.Value, annualRatePct: Decimal.Value, days: number) {
+  return money(new Decimal(principalVnd).mul(annualRatePct).mul(days).div(36500))
+}
+
+export function exceedsOverdueInterestCap(inTermRatePct: Decimal.Value, overdueRatePct: Decimal.Value) {
+  const rate = new Decimal(inTermRatePct)
+  return rate.gte(0) && new Decimal(overdueRatePct).gt(rate.mul('1.5'))
+}
+
+export type VerificationReceipt = { verified: boolean; checksPassed: string[]; dayCountNote: string }
+export const monthlyDayCountNote = 'Mô phỏng theo kỳ tháng với lãi suất năm chia 12. Thông tư 14/2017/TT-NHNN quy đổi lãi theo số ngày thực tế trên cơ sở 365 ngày.'
+
+function receipt(checks: [string, boolean][]): VerificationReceipt {
+  return { verified: checks.every(([, ok]) => ok), checksPassed: checks.filter(([, ok]) => ok).map(([label]) => label),
+    dayCountNote: monthlyDayCountNote }
+}
+
+export function verifyLoanCalculation(
+  principal: Decimal.Value, netPrincipal: Decimal.Value, schedule: readonly ScheduleRow[],
+  effectiveAprPct: Decimal.Value, effectiveEarPct: Decimal.Value,
+): VerificationReceipt {
+  const net = new Decimal(netPrincipal)
+  const apr = new Decimal(effectiveAprPct)
+  const ear = new Decimal(effectiveEarPct)
+  const factor = apr.div(1200).plus(1)
+  let balance = new Decimal(principal)
+  let discount = new Decimal(1)
+  let npv = new Decimal(0)
+  const cashflowsMatch = schedule.every((row, index) => {
+    const payment = new Decimal(row.paymentVnd)
+    const paid = new Decimal(row.principalVnd)
+    const interest = new Decimal(row.interestVnd)
+    const fee = new Decimal(row.feeVnd ?? '0')
+    discount = discount.mul(factor)
+    npv = npv.plus(payment.div(discount))
+    balance = balance.minus(paid)
+    return row.month === index + 1 && paid.gte(0) && interest.gte(0) && fee.gte(0) && balance.gte(0)
+      && balance.eq(row.remainingBalanceVnd) && payment.eq(paid.plus(interest).plus(fee))
+  })
+  return receipt([
+    ['Dòng tiền từng kỳ khớp gốc, lãi và phí', cashflowsMatch],
+    ['Tổng tiền gốc trả đúng số tiền vay', cashflowsMatch && balance.isZero()],
+    ['Dư nợ kỳ cuối bằng 0 đồng', schedule.at(-1)?.remainingBalanceVnd === '0'],
+    ['Giá trị hiện tại khớp tiền thực nhận trong sai số 0,01%', net.gt(0) && npv.minus(net).abs().lte(net.times('0.0001'))],
+    ['EAR khớp lãi suất ghép tháng và không thấp hơn APR', apr.gte(0) && ear.gte(apr) && ear.eq(effectiveLoanEarFromApr(apr))],
+  ])
+}
+
+export function verifyInvestmentCalculation(result: FundCalculation): VerificationReceipt {
+  const gross = new Decimal(result.grossValueVnd)
+  const fee = new Decimal(result.sellFeeVnd)
+  const tax = new Decimal(result.taxVnd)
+  const net = new Decimal(result.netValueVnd)
+  const contributed = new Decimal(result.totalContributedVnd)
+  return receipt([
+    ['Phí và thuế không âm', fee.gte(0) && tax.gte(0)],
+    ['Giá trị ròng bằng giá trị gộp trừ phí và thuế', net.gte(0) && net.eq(gross.minus(fee).minus(tax))],
+    ['Lãi ròng bằng giá trị ròng trừ vốn góp', contributed.gte(0) && net.minus(contributed).eq(result.netProfitVnd)],
+  ])
+}
+
+export function verifyRefinanceCalculation(
+  principalVnd: Decimal.Value, current: LoanCalculation, next: LoanCalculation,
+  result: { totalSwitchCostVnd: string; netSavingsVnd: string; comparisonPoints: { currentCumulativeVnd: string; refinanceCumulativeVnd: string }[] },
+): VerificationReceipt {
+  const verifySchedule = (calc: LoanCalculation) => {
+    const apr = effectiveLoanApr(principalVnd, calc.schedule)
+    return verifyLoanCalculation(principalVnd, principalVnd, calc.schedule, apr, effectiveLoanEarFromApr(apr)).verified
+  }
+  const closing = result.comparisonPoints.at(-1)
+  const nextCost = new Decimal(next.totalPayableVnd).plus(result.totalSwitchCostVnd)
+  return receipt([
+    ['Lịch trả nợ hiện tại đã được đối chiếu', verifySchedule(current)],
+    ['Lịch trả nợ mới đã được đối chiếu', verifySchedule(next)],
+    ['Dòng tiền cuối kỳ khớp tổng chi phí hai phương án',
+      closing != null && new Decimal(closing.currentCumulativeVnd).eq(current.totalPayableVnd)
+        && nextCost.eq(closing.refinanceCumulativeVnd)],
+    ['Tiết kiệm ròng đã tính cả chi phí chuyển',
+      new Decimal(current.totalPayableVnd).minus(nextCost).eq(result.netSavingsVnd)],
+  ])
 }

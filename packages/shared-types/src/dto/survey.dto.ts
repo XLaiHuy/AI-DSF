@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { CalcMethod, DataProvenance, DtiRiskBand, InvestmentCategory, LoanCategory, LoanUseCase, RateType } from '../enums'
 import { decimalString, nonnegativeDecimal, positiveDecimal } from './decimal'
+import { ProductFreshnessSchema, VerificationReceiptSchema } from './verification.dto'
 
 const dtiOverrideSchema = z.strictObject({
   monthlyIncomeVnd: nonnegativeDecimal.max(64),
@@ -45,6 +46,8 @@ const offerSource = {
   dataProvenance: DataProvenance,
   sourceUrl: z.url(),
   effectiveDate: z.iso.date(),
+  freshnessTier: ProductFreshnessSchema.optional(),
+  verificationReceipt: VerificationReceiptSchema.optional(),
 }
 
 const loanSchedule = z.array(z.strictObject({
@@ -131,7 +134,8 @@ export const SurveyInvestResponseSchema = z.strictObject({
       base: investmentScenarioSchema,
       optimistic: investmentScenarioSchema,
     }).optional(),
-    projection: z.array(z.strictObject({
+    rateNote: z.string().max(800).optional(),
+  projection: z.array(z.strictObject({
       month: z.number().int().nonnegative(),
       contributedVnd: nonnegativeDecimal,
       baseVnd: nonnegativeDecimal,
@@ -164,6 +168,7 @@ export const ManualCompareResponseSchema = z.strictObject({
   sessionId: z.guid(),
   offers: z.array(z.strictObject({
     label: z.string(),
+    verificationReceipt: VerificationReceiptSchema.optional(),
     monthlyPaymentVnd: nonnegativeDecimal,
     totalInterestVnd: nonnegativeDecimal,
     totalPayableVnd: nonnegativeDecimal,

@@ -64,7 +64,7 @@ describe('Verified Copilot tools', () => {
     const loan = vi.spyOn(survey, 'loan')
     const result = await run('Lương 18 triệu, chi 8 triệu, muốn vay 100 triệu trong 36 tháng có ổn không?')
     expect(result.toolTrace?.map(item => [item.tool, item.status])).toEqual([['PROFILE_HEALTH', 'done'], ['LOAN_SURVEY', 'done']])
-    expect(loan).toHaveBeenCalledWith(expect.objectContaining({ enableWebFallback: false, dtiOverride: {
+    expect(loan).toHaveBeenCalledWith(expect.objectContaining({ enableWebFallback: true, dtiOverride: {
       monthlyIncomeVnd: '18000000', monthlyExpenseVnd: '8000000', existingDebtPaymentVnd: '1000000',
     } }), session, { verifiedBanksOnly: true, deterministic: true, persistDtiOverride: false })
     expect(prisma.financialProfile.findUnique.mock.invocationCallOrder[0]).toBeLessThan(loan.mock.invocationCallOrder[0])
@@ -72,11 +72,12 @@ describe('Verified Copilot tools', () => {
     expect(prisma.calculationSession.create.mock.calls[0][0].data.inputParamsJson.dtiOverride).toBeUndefined()
     expect(prisma.financialProduct.findMany.mock.calls[0][0].where).toMatchObject({
       institution: { trustStatus: 'LICENSED', licenseIssuer: 'NHNN', institutionType: 'BANK' },
-      dataProvenance: { in: ['CATALOG_VERIFIED'] },
+      dataProvenance: { in: ['CATALOG_VERIFIED', 'WEB_REFERENCE'] },
     })
     expect(result.richCard).toMatchObject({
       kind: 'LOAN_PLAN', principalVnd: '100000000', termMonths: 36, profileUsed: true, dtiPct: expect.any(String),
-      topOffers: [{ institutionName: bank.institution.name, effectiveAprPct: '12.0000' }],
+      topOffers: [{ institutionName: bank.institution.name, effectiveAprPct: '12.0000', dataProvenance: 'CATALOG_VERIFIED',
+        sourceLabel: 'Danh mục đã xác minh', effectiveDate: '2025-01-01', freshnessTier: 'STALE', verificationReceipt: { verified: true } }],
       openSurveyHref: expect.stringMatching(/^\/survey\?mode=loan&sessionId=/),
     })
   })
@@ -96,6 +97,8 @@ describe('Verified Copilot tools', () => {
     prisma.financialProduct.findMany.mockResolvedValue([
       { ...bank, productCategory: 'SAVING', calcMethod: 'COMPOUND_DCA', productName: 'Tiết kiệm thấp', nominalRateMin: decimal('2') },
       { ...bank, productCategory: 'SAVING', calcMethod: 'COMPOUND_DCA', productName: 'Tiết kiệm cao', nominalRateMin: decimal('5') },
+      { ...bank, productCategory: 'SAVING', calcMethod: 'COMPOUND_DCA', productName: 'Mức tham khảo',
+        nominalRateMin: decimal('9'), dataProvenance: 'WEB_REFERENCE', effectiveDate: new Date() },
       { ...bank, productCategory: 'ACCUMULATION', calcMethod: 'COMPOUND_DCA', nominalRateMin: decimal('4') },
       { ...bank, productCategory: 'OPEN_FUND', calcMethod: 'COMPOUND_DCA', rateType: 'VARIABLE_NAV' },
     ])

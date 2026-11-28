@@ -10,6 +10,7 @@ import { hasInternalIdentifierLeak } from '../../common/untrusted-text'
 import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { calculateFinancialHealth } from '../profile-auth/financial-health.engine'
 import { readThreatTrends } from '../radar/threat-trends'
+import { compareCatalogQuality } from '../survey-calc/product-catalog'
 import { SurveyCalcService } from '../survey-calc/survey-calc.service'
 import { copilotAmounts, copilotIntent, copilotLoanGoal, copilotLoanUseCase, copilotProfileAmounts, copilotRefinanceRates, type CopilotInput } from './copilot-input'
 import { normalizeVietnamese } from './data/trusted-institutions'
@@ -36,6 +37,17 @@ const safeText = (input: string, fallback: string, max = 200) => {
 const offerNames = (offer: { institutionName: string; productName: string }) => ({
   institutionName: safeText(offer.institutionName, 'Tổ chức trong danh mục'),
   productName: safeText(offer.productName, 'Sản phẩm trong danh mục'),
+})
+const offerProvenance = (offer: {
+  dataProvenance: 'CATALOG_VERIFIED' | 'WEB_REFERENCE'
+  sourceLabel: string
+  effectiveDate: string
+  freshnessTier?: NonNullable<SurveyInvestResponse['offers'][number]['freshnessTier']>
+  verificationReceipt?: SurveyInvestResponse['offers'][number]['verificationReceipt']
+}) => ({
+  dataProvenance: offer.dataProvenance,
+  sourceLabel: safeText(offer.sourceLabel, 'Nguồn công bố', 120),
+  effectiveDate: offer.effectiveDate, freshnessTier: offer.freshnessTier, verificationReceipt: offer.verificationReceipt,
 })
 const safeResult = (trace: CopilotToolTraceItem[], result: Guidance): Guidance => {
   const parsed = ForensicGuidanceSchema.safeParse({ type: 'guidance', ...result, toolTrace: trace })
@@ -113,7 +125,7 @@ export class CopilotToolsService {
     const secured = (loanUseCase && loanUseCase !== 'UNSECURED_SALARY') || /\bthe chap\b/.test(normalizeVietnamese(input.rawText))
     const checked = SurveyLoanRequestSchema.safeParse({
       principalVnd: amount, termMonths: term, loanUseCase, productCategory: secured ? 'SECURED_LOAN' : 'UNSECURED_LOAN',
-      priority: 'LOWEST_APR', enableWebFallback: false,
+      priority: 'LOWEST_APR', enableWebFallback: true,
     })
     if (!checked.success || new Precise(checked.data.principalVnd).lt(1)) return undefined
     const terms = checked.data
@@ -129,7 +141,7 @@ export class CopilotToolsService {
       })
       if (data.meta?.catalogStatus === 'CATALOG_UNAVAILABLE') throw new Error('Catalog unavailable')
       return { data, empty: !data.offers.length, summary: data.offers.length
-        ? 'Đã xếp hạng gói từ ngân hàng có giấy phép, ưu tiên APR thấp.'
+        ? 'Đã đối chiếu gói của ngân hàng có giấy phép và phân loại nguồn lãi suất.'
         : 'Chưa tìm thấy gói phù hợp với số tiền và kỳ hạn đã nhập.' }
     })
     const openSurveyHref = result?.meta?.savedToHistory
@@ -143,7 +155,7 @@ export class CopilotToolsService {
       dtiRiskBand: dti?.riskBand ?? profile?.baseline?.riskBand ?? 'UNAVAILABLE' as const,
       disposableCashflowVnd: dti?.disposableCashflowVnd ?? profile?.baseline?.disposableVnd ?? null, openSurveyHref,
       topOffers: result.offers.slice(0, 3).map(offer => ({
-        ...offerNames(offer), monthlyPaymentFirstVnd: offer.monthlyPaymentFirstVnd, effectiveAprPct: offer.effectiveAprPct,
+        ...offerNames(offer), ...offerProvenance(offer), monthlyPaymentFirstVnd: offer.monthlyPaymentFirstVnd, effectiveAprPct: offer.effectiveAprPct,
         totalInterestAndFeesVnd: offer.totalInterestAndFeesVnd, trustScore: offer.trustScore,
       })),
     }
@@ -163,7 +175,7 @@ export class CopilotToolsService {
   private async investment(input: CopilotInput, domain: 'INVEST' | 'SAVINGS', trace: CopilotToolTraceItem[]): Promise<Guidance | undefined> {
     const { amount, contribution, term } = copilotAmounts(input.rawText, domain, input.slots)
     const checked = SurveyInvestRequestSchema.safeParse({
-      initialVnd: amount ?? '0', monthlyContributionVnd: contribution ?? '0', termMonths: term, enableWebFallback: false,
+      initialVnd: amount ?? '0', monthlyContributionVnd: contribution ?? '0', termMonths: term, enableWebFallback: true,
     })
     if (!checked.success || ![checked.data.initialVnd, checked.data.monthlyContributionVnd].some(value => new Precise(value).gte(1))) return undefined
     const terms = checked.data
@@ -177,7 +189,7 @@ export class CopilotToolsService {
     const bestByCategory = new Map<string, SurveyInvestResponse['offers'][number]>()
     for (const offer of result?.offers ?? []) {
       const previous = bestByCategory.get(offer.productCategory)
-      if (!previous || new Precise(offer.scenario.netValueVnd).gt(previous.scenario.netValueVnd)) bestByCategory.set(offer.productCategory, offer)
+      if (!previous || (compareCatalogQuality(offer, previous) || new Precise(previous.scenario.netValueVnd).cmp(offer.scenario.netValueVnd)) < 0) bestByCategory.set(offer.productCategory, offer)
     }
     const openSurveyHref = result?.meta?.savedToHistory
       ? handoffRoutes.surveySession({ sessionId: result.sessionId, mode: 'invest' })
@@ -186,7 +198,7 @@ export class CopilotToolsService {
       kind: 'INVESTMENT_PLAN' as const, initialVnd: terms.initialVnd, monthlyContributionVnd: terms.monthlyContributionVnd,
       termMonths: terms.termMonths, openSurveyHref,
       topOffers: [...bestByCategory.values()].map(({ scenario, ...offer }) => ({
-        ...offerNames(offer), categoryLabel: investmentCategories[offer.productCategory], annualReturnPct: scenario.annualReturnPct,
+        ...offerNames(offer), ...offerProvenance(offer), categoryLabel: investmentCategories[offer.productCategory], annualReturnPct: scenario.annualReturnPct,
         totalContributedVnd: scenario.totalContributedVnd, netValueVnd: scenario.netValueVnd, netProfitVnd: scenario.netProfitVnd,
       })),
     }
@@ -228,7 +240,7 @@ export class CopilotToolsService {
       remainingTermMonths: checked.data.remainingTermMonths, currentAnnualRatePct: checked.data.currentAnnualRatePct,
       bestBankName: best ? offerNames(best).institutionName : null, monthlySavingsVnd: best?.result.monthlySavingsVnd ?? null,
       totalSwitchCostVnd: best?.result.totalSwitchCostVnd ?? null, breakEvenMonth: best?.result.breakEvenMonth ?? null,
-      netSavingsVnd: best?.result.netSavingsVnd ?? null, recommendation: best?.result.recommendation ?? null, openSurveyHref,
+      netSavingsVnd: best?.result.netSavingsVnd ?? null, recommendation: best?.result.recommendation ?? null, verificationReceipt: best?.verificationReceipt, openSurveyHref,
     }
     return { intent: 'FINANCIAL_EDUCATION', richCard, cta: { ...cta, href: openSurveyHref },
       message: safeText(result.bestOptionSummary, 'Đã đối chiếu chi phí giữ và đổi khoản vay.') +
@@ -246,7 +258,7 @@ export class CopilotToolsService {
           select: { id: true, tacticSummary: true, vnAisCode: true, publishedAt: true },
         }),
         this.prisma.financialProduct.findMany({
-          where: { isActive: true, effectiveDate: { lte: now }, dataProvenance: 'CATALOG_VERIFIED',
+          where: { isActive: true, effectiveDate: { lte: now }, dataProvenance: { in: ['CATALOG_VERIFIED', 'WEB_REFERENCE'] },
             productCategory: { in: Object.keys(marketCategories) },
             institution: { trustStatus: 'LICENSED', institutionType: 'BANK', licenseIssuer: 'NHNN' } },
           select: { productCategory: true, nominalRateMin: true, nominalRateMax: true },

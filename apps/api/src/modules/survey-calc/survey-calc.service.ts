@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Optional, Logger, NotFoundException, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common'
+import { BadRequestException, Injectable, Optional, Logger, InternalServerErrorException, NotFoundException, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common'
 import { Prisma, type FinancialProduct } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
 import {
@@ -8,14 +8,16 @@ import {
   type SurveyInvestRequest, type SurveyInvestResponse, type SurveyLoanRequest, type SurveyLoanResponse, type SurveySessionDetailResponse,
   type SurveyRefinanceContract, type SurveyRefinanceRequest, type SurveyRefinanceResponse,
 } from '@fincopilot/shared-types'
-import { amortizeLoan, assessDti, compoundDca, effectiveLoanApr, openFundScenarioBands, simulateEarlySettlement, simulateRefinanceBreakEven } from '@fincopilot/financial-math'
+import { amortizeLoan, assessDti, compoundDca, effectiveLoanApr, effectiveLoanEarFromApr, openFundScenarioBands, simulateEarlySettlement, simulateRefinanceBreakEven,
+  verifyInvestmentCalculation, verifyLoanCalculation, type VerificationReceipt, type ScheduleRow } from '@fincopilot/financial-math'
 import { z } from 'zod'
 import { PrismaService } from '../../common/prisma.service'
 import { homeMarketCacheKey } from '../../common/public-cache-keys'
 import { RedisService } from '../../common/redis.service'
 import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { normalizeVietnamese } from '../forensic/data/trusted-institutions'
-import { redemptionFeeTiers, syncProductCatalog } from './product-catalog'
+import { classifyProductFreshness, compareCatalogQuality, redemptionFeeTiers, syncProductCatalog } from './product-catalog'
+import { isGroundedSurveyExplanation } from './survey-grounding'
 
 const D = Prisma.Decimal
 const sessionIdSchema = z.guid()
@@ -63,9 +65,22 @@ function offerSource(product: FinancialProduct & { institution: { name: string }
   return {
     productId: product.id, institutionName: product.institution.name, productName: product.productName,
     dataProvenance, sourceUrl: product.sourceUrl, effectiveDate: product.effectiveDate.toISOString().slice(0, 10),
+    freshnessTier: classifyProductFreshness(product.effectiveDate),
     rateType: RateType.parse(product.rateType),
     sourceLabel: dataProvenance === 'CATALOG_VERIFIED' ? 'Danh mục đã xác minh' : 'Tham khảo từ nguồn công bố',
   }
+}
+
+function requireVerification(result: VerificationReceipt) {
+  if (!result.verified) throw new InternalServerErrorException('Không thể xác nhận phép tính tài chính.')
+  return result
+}
+
+function checkedLoan(principal: Prisma.Decimal, net: Prisma.Decimal, schedule: readonly ScheduleRow[]) {
+  const apr = effectiveLoanApr(net, schedule)
+  return { effectiveAprPct: apr, verificationReceipt: requireVerification(verifyLoanCalculation(
+    principal, net, schedule, apr, effectiveLoanEarFromApr(apr),
+  )) }
 }
 
 function dtiAssessment(input: SurveyLoanRequest['dtiOverride'], payment: string) {
@@ -245,6 +260,7 @@ export class SurveyCalcService {
       const stressSchedule = amortizeLoan(principal, recipe.annualRatePct, input.termMonths, calcMethod, {
         monthlyFeeVnd: monthlyFee, laterRate: recipe.laterRate,
       }).schedule
+      checkedLoan(principal, net, stressSchedule)
       const stressPaymentFirstVnd = laterRate
         ? D.max(...calculation.schedule.slice(laterRate.afterMonths).map(({ paymentVnd }) => paymentVnd)).toFixed(0)
         : stressSchedule[0].paymentVnd
@@ -256,7 +272,7 @@ export class SurveyCalcService {
         loanUseCase: LoanUseCase.safeParse(product.loanUseCase).data ?? null,
         nominalRatePct: product.nominalRateMin.toFixed(), stressPaymentFirstVnd, stressSchedule,
         principalNetVnd: net.toFixed(0), monthlyPaymentFirstVnd: calculation.monthlyPaymentVnd,
-        effectiveAprPct: effectiveLoanApr(net, calculation.schedule), totalPayableVnd: calculation.totalPayableVnd,
+        ...checkedLoan(principal, net, calculation.schedule), totalPayableVnd: calculation.totalPayableVnd,
         totalInterestAndFeesVnd: new D(calculation.totalPayableVnd).sub(net).toFixed(0),
         trustScore: source.dataProvenance === 'CATALOG_VERIFIED' ? 94 : 78, fitScore,
         dtiPct: dti?.bestOfferDtiPct ?? null, dtiAssessment: dti, schedule: calculation.schedule,
@@ -268,17 +284,20 @@ export class SurveyCalcService {
       LOWEST_APR: 'effectiveAprPct', LOWEST_MONTHLY_PAYMENT: 'monthlyPaymentFirstVnd', LOWEST_TOTAL_COST: 'totalInterestAndFeesVnd',
     } as const
     const field = priorityField[input.priority]
-    offers.sort((a, b) => b.trustScore - a.trustScore || new D(a[field]).cmp(b[field]) || (b.fitScore ?? 0) - (a.fitScore ?? 0))
+    offers.sort((a, b) => compareCatalogQuality(a, b) || new D(a[field]).cmp(b[field]) || (b.fitScore ?? 0) - (a.fitScore ?? 0))
     let aiExplanation: SurveyLoanResponse['aiExplanation'] = offers.length ? fallbackExplanation : null
     let degradedMode = false
     if (offers.length && !options.deterministic) {
       try {
-        aiExplanation = await this.ai.generateStructured('SURVEY_EXPLAIN', AI_TASK_SCHEMAS.SURVEY_EXPLAIN, {
+        const computed = { ...input, offers: offers.slice(0, 5).map(
+          ({ monthlyPaymentFirstVnd, totalInterestAndFeesVnd, effectiveAprPct, rateType }) =>
+            ({ monthlyPaymentFirstVnd, totalInterestAndFeesVnd, effectiveAprPct, rateType })) }
+        const proposed = await this.ai.generateStructured('SURVEY_EXPLAIN', AI_TASK_SCHEMAS.SURVEY_EXPLAIN, {
           instruction: 'Giải thích bằng tiếng Việt sự đánh đổi giữa khoản trả tháng và tổng chi phí. Không tính lại, sửa số liệu, nhắc thông tin định danh hay khuyên chọn một gói.',
-          termMonths: input.termMonths,
-          offers: offers.slice(0, 5).map(({ monthlyPaymentFirstVnd, totalInterestAndFeesVnd, effectiveAprPct, rateType }) =>
-            ({ monthlyPaymentFirstVnd, totalInterestAndFeesVnd, effectiveAprPct, rateType })),
+          termMonths: computed.termMonths, offers: computed.offers,
         })
+        if (!isGroundedSurveyExplanation(proposed, [computed, offers])) throw new Error('Unverified survey narrative')
+        aiExplanation = proposed
       } catch {
         degradedMode = true
       }
@@ -327,6 +346,11 @@ export class SurveyCalcService {
         return { base, bands }
       }
       const { base: scenario, bands: scenarios } = project(input.termMonths)
+      const verificationReceipt = requireVerification(verifyInvestmentCalculation(scenario))
+      if (scenarios) {
+        requireVerification(verifyInvestmentCalculation(scenarios.conservative))
+        requireVerification(verifyInvestmentCalculation(scenarios.optimistic))
+      }
       const step = Math.max(1, Math.ceil(input.termMonths / 24))
       const months = Array.from({ length: Math.ceil(input.termMonths / step) }, (_, index) => index * step)
       const projection = [...months, input.termMonths].map((month) => {
@@ -338,10 +362,10 @@ export class SurveyCalcService {
       })
       return {
         ...source, productCategory,
-        sourceLabel: product.rateNote ?? source.sourceLabel,
-        scenario, scenarios, projection,
+        rateNote: product.rateNote ?? undefined,
+        scenario, scenarios, projection, verificationReceipt,
       }
-    })
+    }).sort(compareCatalogQuality)
     const result = { sessionId: randomUUID(), offers, meta: { catalogStatus: catalog.catalogStatus, savedToHistory: true } }
     const savedToHistory = await this.saveSession(session, 'INVESTMENT_SURVEY', input, result, { profileId: profile?.id })
     return { ...result, meta: { catalogStatus: catalog.catalogStatus, savedToHistory } }
@@ -367,7 +391,7 @@ export class SurveyCalcService {
       const calc = amortizeLoan(principal, validateRate(new D(item.annualRatePct)), termMonths, calcMethod, { monthlyFeeVnd, laterRate })
       return {
         label: item.label, monthlyPaymentVnd: calc.monthlyPaymentVnd, totalInterestVnd: calc.totalInterestVnd,
-        totalPayableVnd: calc.totalPayableVnd, effectiveAprPct: effectiveLoanApr(net, calc.schedule),
+        totalPayableVnd: calc.totalPayableVnd, ...checkedLoan(principal, net, calc.schedule),
         principalNetVnd: net.toFixed(0), upfrontFeeVnd: fee.toFixed(0),
         calcMethod, monthlyFeeVnd, schedule: calc.schedule,
         earlySettlement: earlySettlementMonth != null
@@ -440,12 +464,13 @@ export class SurveyCalcService {
       const initialRate = product.rateType === 'FIXED' || promo ? product.nominalRateMin : product.nominalRateMax
       const newLaterRate = promo && promo < term ? { afterMonths: promo, annualRatePct: product.nominalRateMax.toFixed() } : undefined
       const newAnnualRatePct = initialRate.toFixed()
-      const result = simulateRefinanceBreakEven({
+      const { verificationReceipt, ...result } = simulateRefinanceBreakEven({
         ...currentContract, newAnnualRatePct, newCalcMethod: calcMethod, newLaterRate,
         newUpfrontFeeRatePct: product.upfrontFeeRate?.toFixed(), newMonthlyFeeVnd: product.monthlyFeeVnd?.toFixed(),
-      })
+      }, { verify: true })
       return [{ institutionId: product.institutionId, offer: {
         ...offerSource(product), newAnnualRatePct, calcMethod, newTermMonths: term, newLaterRate, result,
+        verificationReceipt: requireVerification(verificationReceipt!),
       } }]
     }).sort((a, b) => new D(b.offer.result.netSavingsVnd).cmp(a.offer.result.netSavingsVnd))
     const institutions = new Set<string>()

@@ -19,9 +19,9 @@ const qr = {
 }
 
 describe('Vietnamese legal registry', () => {
-  it('contains nine official, dated legal references', () => {
+  it('contains thirteen official, dated legal references', () => {
     const entries = Object.values(vnLegalRegistry)
-    expect(new Set(entries.map(({ code }) => code)).size).toBe(9)
+    expect(new Set(entries.map(({ code }) => code)).size).toBe(13)
     for (const entry of entries) {
       expect(LegalCitationItemSchema.safeParse(entry).success).toBe(true)
       expect(entry.effectiveDate).toMatch(/^\d{2}\/\d{2}\/\d{4}$/)
@@ -52,6 +52,18 @@ describe('Vietnamese legal registry', () => {
     expect(citations[0].caseRelevance).toContain('53,36%/năm')
     expect(citations[1].caseRelevance).toContain('trừ vào nợ gốc')
     expect(citations[2].caseRelevance).toContain(clause.replace(/\.$/, ''))
+  })
+
+  it('adds the overdue interest citation only when the clause exceeds the cap', () => {
+    const exact = ['Lãi suất trong hạn 10%/năm, lãi suất quá hạn 15%/năm.']
+    const high = ['Lãi suất quá hạn 1,26%/tháng, lãi suất trong hạn 10%/năm.']
+    const ratio = ['Lãi suất quá hạn 151% lãi suất trong hạn.']
+    expect(selectLegalCitations({ ...base, maskedEvidence: exact })).toEqual([])
+    for (const maskedEvidence of [high, ratio]) {
+      expect(selectLegalCitations({ ...base, maskedEvidence })).toMatchObject([
+        { code: '39/2016/TT-NHNN', articleRef: 'Điểm c khoản 4 Điều 13' },
+      ])
+    }
   })
 
   it('selects civil, consumer and usury provisions by scenario', () => {

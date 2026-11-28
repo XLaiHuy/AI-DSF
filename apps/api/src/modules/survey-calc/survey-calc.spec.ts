@@ -151,6 +151,15 @@ describe('Survey API contracts', () => {
     expect(data.meta).toMatchObject({ degradedMode: false, savedToHistory: true })
   })
 
+  it('falls back when the explanation invents an amount or interest rate', async () => {
+    const { service, generateStructured } = setup()
+    generateStructured.mockResolvedValue({ summary: 'Lãi là 37% và phải trả 91 triệu đồng.', tradeoffs: [] })
+    const result = await service.loan(loan, session)
+    expect(result.meta?.degradedMode).toBe(true)
+    expect(result.aiExplanation?.summary).not.toMatch(/37%|91 triệu/)
+    expect(result.offers[0].verificationReceipt?.verified).toBe(true)
+  })
+
   it('rejects a handoff to an audit owned by another session', async () => {
     const { service, prisma } = setup()
     prisma.forensicAudit.findFirst.mockResolvedValue(null)
@@ -302,7 +311,7 @@ describe('Survey API contracts', () => {
     const prisma = { $transaction: (run: (value: typeof transaction) => unknown) => run(transaction) }
     const service = new SurveyCalcService(prisma as unknown as PrismaService, {} as AiGatewayService)
     const initial = AdminProductSyncResultSchema.parse(await service.syncTrustedProducts())
-    expect(initial.productsActivated).toBe(21)
+    expect(initial.productsActivated).toBe(34)
     expect(initial.sourcesReachable).toBe(0)
     const first = [...catalog.values()][0]
     first.catalogSyncFingerprint = null

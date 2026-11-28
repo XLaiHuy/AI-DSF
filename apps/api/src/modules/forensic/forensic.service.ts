@@ -326,7 +326,8 @@ export class ForensicService {
     if (shouldReason) stage('REASONING', 'done')
     const { verdictLevel, riskScore } = elevateVerdict(baseline, reasoningFindings)
     const claimedEntityName = evidence.claimedEntityName ? redact(evidence.claimedEntityName) : null
-    const legalCitations = selectLegalCitations({ verdictLevel, mathBreakdown, findings, qrPayloads, entityLicense: rules.entityLicense, claimedEntityName })
+    const legalCitations = selectLegalCitations({ verdictLevel, mathBreakdown, findings, qrPayloads, entityLicense: rules.entityLicense, claimedEntityName,
+      maskedEvidence: shouldReason ? maskedEvidence : [...evidence.evidence, ...evidence.visionQuotes].map(redact) })
     const dossier = buildForensicDossier({
       verdictLevel, riskScore, claimedEntityName, entityLicense: rules.entityLicense, qrPayloads,
       mathBreakdown, personalImpact, findings, reasoningFindings, legalCitations,
@@ -453,7 +454,7 @@ export class ForensicService {
 
     const task = 'FORENSIC_VERDICT_NARRATIVE'
     const result = await this.ai.generateWithProvider(task, AI_TASK_SCHEMAS[task], reply.modelInput).catch(() => null)
-    const narrative = result && screened(result.output.narrative, reply.guard)
+    const narrative = result && reply.isGrounded(result.output.narrative) && screened(result.output.narrative, reply.guard)
     return ForensicFollowUpResponseSchema.parse({
       answer: [reply.prefix, narrative || reply.fallback].filter(Boolean).join('\n\n'),
       meta: { llmProvider: narrative ? result.provider : null, degradedMode: !narrative, ...reply.meta },

@@ -2,7 +2,7 @@ import Decimal from 'decimal.js'
 import type { FinancialHealthRequest, ForensicAuditResponse, ForensicFollowUpRequest, ForensicFollowUpResponse } from '@fincopilot/shared-types'
 import { normalizeVietnamese } from './data/trusted-institutions'
 import { educationGuide, emergencyGuide, guidanceEligible, isSmalltalkAck, surveyDomain } from './forensic-conversation'
-import { buildForensicDossier, followUpAnchor } from './forensic-narrative'
+import { buildForensicDossier, financialNumericGrounding, followUpAnchor } from './forensic-narrative'
 import { evaluateHardRules, parseVnd } from './hard-rules.engine'
 import { formatCaseAmount } from './payment-qr-description'
 import { evaluatePersonalImpact } from './personal-impact.engine'
@@ -105,6 +105,9 @@ export function prepareFollowUp(audit: ForensicAuditResponse, input: ForensicFol
     : 'Bạn có thể đối chiếu thông tin trên báo cáo với ứng dụng hoặc hỏi lại người nhận qua kênh chính thức.'
   return {
     directAnswer, prefix, guard, fallback,
+    isGrounded: financialNumericGrounding([audit.mathBreakdown, audit.personalImpact, audit.qrPayloads, newContext], [
+      question, audit.privacyProof.rawTextMasked ?? '', ...audit.findings.map(({ evidenceQuote }) => evidenceQuote),
+    ]),
     meta: { intent, ...(newContext ? { suggestReaudit: true, reAuditAppendText: question.slice(0, 2000) } : {}) },
     modelInput: {
       text: JSON.stringify({

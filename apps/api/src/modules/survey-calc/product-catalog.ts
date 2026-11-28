@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { Prisma } from '@prisma/client'
 import {
-  AdminProductSyncResultSchema, CalcMethod, DataProvenance, LoanCategory, LoanUseCase, ProductCategory, RateType, SurveyTermMonthsSchema,
+  AdminProductSyncResultSchema, CalcMethod, DataProvenance, LoanCategory, LoanUseCase, ProductCategory, RateType, SurveyTermMonthsSchema, type ProductFreshness,
 } from '@fincopilot/shared-types'
 import { parse } from 'yaml'
 import { z } from 'zod'
@@ -39,28 +39,61 @@ const productSchema = z.strictObject({
 }).refine((entry) => {
   const institution = catalogInstitutions.find(({ code }) => code === entry.institutionCode)
   if (!institution) return false
+  const isLoan = LoanCategory.safeParse(entry.productCategory).success
+  const cashDeposit = entry.productCategory === 'SAVING' || entry.productCategory === 'ACCUMULATION'
+  const maxRate = new Prisma.Decimal(entry.nominalRateMax)
+  if ((cashDeposit || isLoan) && new Prisma.Decimal(entry.nominalRateMin).lt(0)) return false
+  if ((cashDeposit && maxRate.gt(20)) || (isLoan && institution.institutionType === 'BANK' && maxRate.gt(60))) return false
+  if (entry.promoMonths && entry.promoMonths > entry.maxTermMonths) return false
   return (!entry.loanUseCase || LoanCategory.safeParse(entry.productCategory).success) &&
     isCatalogSource(institution, new URL(entry.sourceUrl)) &&
     new Prisma.Decimal(entry.nominalRateMin).lte(entry.nominalRateMax) &&
     new Prisma.Decimal(entry.minAmountVnd).lte(entry.maxAmountVnd) && entry.minTermMonths <= entry.maxTermMonths
 })
-const snapshotSchema = z.strictObject({ products: z.array(productSchema).min(1) }).refine(
+export const productSnapshotSchema = z.strictObject({ products: z.array(productSchema).min(1) }).refine(
   ({ products }) => new Set(products.map(({ key }) => key)).size === products.length,
 )
 const sourcesSchema = z.object({
   sources: z.array(z.object({ endpointUrl: httpsUrl, isTrustedForRates: z.boolean() })),
 })
 const configDir = resolve(__dirname, '../../../../../config')
+const dayMs = 86_400_000
+
+export function catalogProductAgeDays(effectiveDate: Date | string, now = new Date()) {
+  return Math.max(0, Math.floor(now.getTime() / dayMs) - Math.floor(new Date(effectiveDate).getTime() / dayMs))
+}
+
+export function classifyProductFreshness(effectiveDate: Date | string, now = new Date()): ProductFreshness {
+  const age = catalogProductAgeDays(effectiveDate, now)
+  return age <= 30 ? 'FRESH' : age <= 60 ? 'AGING' : 'STALE'
+}
+
+export function compareCatalogQuality(
+  a: { dataProvenance: string; freshnessTier?: ProductFreshness },
+  b: { dataProvenance: string; freshnessTier?: ProductFreshness },
+) {
+  return Number(b.dataProvenance === 'CATALOG_VERIFIED') - Number(a.dataProvenance === 'CATALOG_VERIFIED')
+    || Number(a.freshnessTier === 'STALE') - Number(b.freshnessTier === 'STALE')
+}
+
+const sourceChecks = new Map<string, { until: number; ready: Promise<boolean> }>()
+function checkSource(url: string) {
+  const cached = sourceChecks.get(url)
+  if (cached && cached.until > Date.now()) return cached.ready
+  const ready = fetchPublicDocument(url, { timeoutMs: 3500, method: 'HEAD' }).then(() => true, () => false)
+  sourceChecks.set(url, { until: Date.now() + 5 * 60_000, ready })
+  return ready
+}
 
 export async function syncProductCatalog(prisma: PrismaService) {
   const [snapshotText, sourcesText] = await Promise.all([
     readFile(resolve(configDir, 'loan-rate-snapshot.json'), 'utf8'),
     readFile(resolve(configDir, 'loan-rate-sources.yaml'), 'utf8'),
   ])
-  const { products } = snapshotSchema.parse(JSON.parse(snapshotText))
+  const { products } = productSnapshotSchema.parse(JSON.parse(snapshotText))
   const { sources } = sourcesSchema.parse(parse(sourcesText))
   const endpoints = [...new Set(sources.filter(({ isTrustedForRates }) => isTrustedForRates).map(({ endpointUrl }) => endpointUrl))]
-  const checks = await Promise.allSettled(endpoints.map((url) => fetchPublicDocument(url, { timeoutMs: 5000, method: 'HEAD' })))
+  const checks = await Promise.all(endpoints.map(checkSource))
 
   const result = await prisma.$transaction(async (tx) => {
     let productsUpserted = 0
@@ -109,7 +142,7 @@ export async function syncProductCatalog(prisma: PrismaService) {
   }, { timeout: 15000 })
 
   return AdminProductSyncResultSchema.parse({
-    ...result, sourcesChecked: endpoints.length, sourcesReachable: checks.filter(({ status }) => status === 'fulfilled').length,
+    ...result, sourcesChecked: endpoints.length, sourcesReachable: checks.filter(Boolean).length,
     syncedAt: new Date().toISOString(),
   })
 }

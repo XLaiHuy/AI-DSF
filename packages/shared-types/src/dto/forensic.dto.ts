@@ -1,6 +1,7 @@
 import { z } from 'zod'
-import { DtiRiskBand, FindingSeverity, QrScheme, QrServiceCode, RuleCode, VerdictLevel } from '../enums'
+import { DataProvenance, DtiRiskBand, FindingSeverity, QrScheme, QrServiceCode, RuleCode, VerdictLevel } from '../enums'
 import { decimalString, nonnegativeDecimal } from './decimal'
+import { ProductFreshnessSchema, VerificationReceiptSchema } from './verification.dto'
 
 export const LearningTraceSchema = z.strictObject({
   retrievalMode: z.enum(['hybrid_rrf', 'lexical', 'exact_only']),
@@ -18,7 +19,12 @@ const count = z.number().int().nonnegative()
 const months = z.number().int().min(1).max(600)
 const copilotHref = (route: 'survey' | 'profile' | 'radar' | 'forensic') =>
   z.string().regex(new RegExp('^/' + route + '(?:[?][^\\s#]*)?$'))
-const offerName = { institutionName: z.string().max(200), productName: z.string().max(200) }
+const offerName = {
+  institutionName: z.string().max(200), productName: z.string().max(200),
+  dataProvenance: DataProvenance.optional(), sourceLabel: z.string().max(120).optional(),
+  effectiveDate: z.string().max(32).optional(), freshnessTier: ProductFreshnessSchema.optional(),
+  verificationReceipt: VerificationReceiptSchema.optional(),
+}
 
 export const CopilotToolTraceItemSchema = z.strictObject({
   tool: z.enum(['PROFILE_HEALTH', 'LOAN_SURVEY', 'INVESTMENT_SURVEY', 'REFINANCE_SIM', 'RADAR_ALERTS']),
@@ -53,6 +59,7 @@ export const CopilotRichCardSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('REFINANCE_PLAN'),
     remainingPrincipalVnd: nonnegativeDecimal, remainingTermMonths: months, currentAnnualRatePct: nonnegativeDecimal,
+    verificationReceipt: VerificationReceiptSchema.optional(),
     bestBankName: z.string().max(200).nullable(), monthlySavingsVnd: decimalString.nullable(),
     totalSwitchCostVnd: nonnegativeDecimal.nullable(), breakEvenMonth: months.nullable(), netSavingsVnd: decimalString.nullable(),
     recommendation: z.enum(['WORTH_REFINANCING', 'MARGINAL', 'KEEP_CURRENT']).nullable(),

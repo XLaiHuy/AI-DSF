@@ -1,5 +1,6 @@
 'use client'
 
+import { formatCatalogDate, freshnessLabels } from '@/lib/catalog-provenance'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   handoffRoutes, LoanUseCase, ManualCompareRequestSchema, ManualCompareResponseSchema, SurveyInvestResponseSchema, SurveyLoanResponseSchema,
@@ -415,12 +416,14 @@ function LoanResults({ result }: { result: Extract<Result, { tab: 'loan' }> }) {
           <span>APR <TermInfo term="APR" /> <strong>{percent(item.effectiveAprPct)}%</strong></span>
           <span>Tổng trả {formatVnd(item.totalPayableVnd)}</span><span>Tổng chi phí {formatVnd(item.totalInterestAndFeesVnd)}</span>
           <Badge variant="outline">{rateLabels[item.rateType]}</Badge>
-          <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="text-primary underline">{item.sourceLabel}</a>
+          <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="text-primary underline">{item.sourceLabel} · {formatCatalogDate(item.effectiveDate)}</a>
+          {item.freshnessTier && <Badge variant="outline">{freshnessLabels[item.freshnessTier]}</Badge>}
         </div>
         {item.rateAssumption && <p className="mt-2 text-xs text-muted-foreground">{item.rateAssumption}</p>}
         <HighAprLink apr={item.effectiveAprPct} amount={amount} term={term} label={item.productName} />
       </div>)}</CardContent>
     </Card>
+    {offer.verificationReceipt && <p className="text-sm text-muted-foreground">{offer.verificationReceipt.dayCountNote}</p>}
     <LoanAprDtiChart offers={data.offers.map((item) => ({ label: item.productName, ...item }))}
       dtiPct={offer.dtiPct} selectedOffer={offer.productName} />
     <LoanAmortizationChart schedule={offer.schedule} stressSchedule={offer.stressSchedule} />
@@ -484,6 +487,7 @@ function InvestmentResults({ result, filter }: { result: Extract<Result, { tab: 
   const offers = data.offers.filter(({ productCategory }) => filter === 'ALL' || productCategory === filter)
   if (!offers.length) return <p role="status" className="rounded-xl border border-border bg-card p-5 text-sm">Chưa có phương án trong nhóm đầu tư đã chọn.</p>
   return <div className="min-w-0 space-y-4">
+    <p className="text-sm text-muted-foreground">Lãi tiền gửi cá nhân được miễn thuế. Khi bán chứng chỉ quỹ mở, thuế thường là 0,1% giá bán. Phần nắm giữ đủ hai năm được miễn nếu đáp ứng điều kiện.</p>
     <InvestmentGrowthChart offers={offers} initial={initial} term={term} />
     <Card><CardHeader><CardTitle>So sánh đầu tư và tích lũy</CardTitle></CardHeader>
       <CardContent className="min-w-0 space-y-3">
@@ -508,7 +512,7 @@ function InvestmentResults({ result, filter }: { result: Extract<Result, { tab: 
             </tbody>
           </table>
         </div>
-        {offers.map(({ productId, productName, productCategory, sourceLabel, sourceUrl, scenario, scenarios }) =>
+        {offers.map(({ productId, productName, productCategory, sourceLabel, sourceUrl, effectiveDate, freshnessTier, rateNote, scenario, scenarios }) =>
         <article key={productId} className="space-y-3 rounded-xl border p-4">
           <Badge variant="outline">{investmentLabels[productCategory]}</Badge>
           <h3 className="font-semibold">{productName} · {percent(scenario.annualReturnPct)}%/năm</h3>
@@ -530,7 +534,8 @@ function InvestmentResults({ result, filter }: { result: Extract<Result, { tab: 
               </div>
             })}
           </dl>}
-          <p className="text-sm text-muted-foreground">{sourceLabel} <a href={sourceUrl} target="_blank" rel="noreferrer" className="text-primary underline">Xem nguồn</a></p>
+          <p className="text-sm text-muted-foreground">{sourceLabel} {formatCatalogDate(effectiveDate)}{freshnessTier && ' · ' + freshnessLabels[freshnessTier]} <a href={sourceUrl} target="_blank" rel="noreferrer" className="text-primary underline">Xem nguồn</a></p>
+          {rateNote && <p className="text-xs text-muted-foreground">{rateNote}</p>}
         </article>)}</CardContent>
     </Card>
   </div>

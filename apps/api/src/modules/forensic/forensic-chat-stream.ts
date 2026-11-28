@@ -1,5 +1,6 @@
 import { setTimeout as pause } from 'node:timers/promises'
 import type { ForensicFollowUpResponse } from '@fincopilot/shared-types'
+import { hasInternalIdentifierLeak } from '../../common/untrusted-text'
 import type { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { normalizeVietnamese } from './data/trusted-institutions'
 import type { prepareFollowUp } from './forensic-follow-up'
@@ -73,7 +74,7 @@ function hasRiskyAdvice(sentence: string) {
 export function screened(sentence: string, guarded: boolean) {
   const text = maskForensicText(sentence.normalize('NFKC').replace(/\p{Cf}/gu, '')).trim()
   if (!text) return ''
-  if (leaksInternalText(text)) return ''
+  if (leaksInternalText(text) || hasInternalIdentifierLeak([text])) return ''
   if (guarded && (/(?:https?:|www\.)/i.test(text) || hasRiskyAdvice(text))) return ''
   return text
 }
@@ -113,7 +114,7 @@ export async function* followUpEvents(
     if (leaksInternalText(sentence.normalize('NFKC').replace(/\p{Cf}/gu, ''))) leaked = true
     if (leaked) { blocked = true; return }
     const safe = screened(sentence, reply.guard)
-    if (!safe) { blocked = true; return }
+    if (!safe || !reply.isGrounded(safe)) { blocked = true; return }
     yield* deltas((sent ? ' ' : '') + safe, signal)
     sent = true
   }

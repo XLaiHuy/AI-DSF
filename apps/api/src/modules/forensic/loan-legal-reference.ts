@@ -1,3 +1,4 @@
+import { civilLoanAnnualRateCapPct, criminalLoanAnnualRateScreenPct } from '@fincopilot/financial-math'
 import type Decimal from 'decimal.js'
 import type { ForensicAuditResponse } from '@fincopilot/shared-types'
 
@@ -15,7 +16,7 @@ export function loanLegalReference(apr: Decimal, license: EntityLicense): NonNul
     plainSummary: 'Khoản cấp tín dụng của tổ chức tín dụng được NHNN cấp phép áp dụng quy định chuyên ngành về lãi suất và phí. Cần xác minh bên cho vay và yêu cầu họ cung cấp biểu phí, cách tính và lãi suất quy đổi theo năm. ' + note,
   }
 
-  const ceiling = 20
+  const ceiling = civilLoanAnnualRateCapPct
   // Strip numerical noise from IRR convergence at the exact statutory thresholds.
   const comparisonApr = apr.toDecimalPlaces(20)
   const excess = comparisonApr.minus(ceiling).toFixed(2)
@@ -23,7 +24,7 @@ export function loanLegalReference(apr: Decimal, license: EntityLicense): NonNul
   const civil = 'Khoản 1 Điều 468 Bộ luật Dân sự 2015'
   const civilRule = 'Với khoản vay dân sự thuộc Điều 468, phần lãi suất thỏa thuận vượt mức 20%/năm không có hiệu lực, trừ trường hợp luật khác quy định.'
   const aprNote = 'APR tính cả phí và dùng để sàng lọc. Cần đối chiếu lãi suất thỏa thuận và khoản thu thực tế.'
-  const criminal = comparisonApr.gte(100)
+  const criminal = comparisonApr.gte(criminalLoanAnnualRateScreenPct)
   const aboveCeiling = comparisonApr.gt(ceiling)
   const comparison = aboveCeiling
     ? `APR cao hơn mốc dân sự ${excess.replace('.', ',')} điểm phần trăm, tương đương ${multiple.replace('.', ',')} lần.`

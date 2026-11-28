@@ -2,6 +2,7 @@ import type { CopilotRichCard as CardData, CopilotToolTraceItem } from '@fincopi
 import { ArrowUpRight } from 'lucide-react'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { formatCatalogDate, freshnessLabels } from '@/lib/catalog-provenance'
 import { formatRate } from '@/lib/financial-format'
 import { formatVietnamTime, formatVnd } from '@/lib/workspace-data'
 
@@ -60,6 +61,15 @@ export function CopilotRichCard({ card, trace, surveyActionLabel }: {
   </div>
 }
 
+function OfferProvenance({ offer }: { offer: Extract<CardData, { kind: 'LOAN_PLAN' | 'INVESTMENT_PLAN' }>['topOffers'][number] }) {
+  if (!offer.sourceLabel) return null
+  const date = formatCatalogDate(offer.effectiveDate)
+  return <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-muted-foreground">
+    <span>{offer.sourceLabel}{date && ' · ' + date}</span>
+    {offer.freshnessTier && <span className="rounded bg-muted px-1.5 py-0.5 font-medium">{freshnessLabels[offer.freshnessTier]}</span>}
+  </p>
+}
+
 function CardBody({ card, surveyActionLabel }: { card: CardData; surveyActionLabel?: string }) {
   switch (card.kind) {
     case 'LOAN_PLAN':
@@ -76,6 +86,7 @@ function CardBody({ card, surveyActionLabel }: { card: CardData; surveyActionLab
             <p className="font-semibold">{offer.institutionName} · {offer.productName}</p>
             <p>Tháng đầu {amount(offer.monthlyPaymentFirstVnd)} · APR {formatRate(offer.effectiveAprPct)}</p>
             <p className="text-muted-foreground">Lãi và phí {amount(offer.totalInterestAndFeesVnd)} · Uy tín {offer.trustScore}/100</p>
+            <OfferProvenance offer={offer} />
           </li>)}
         </ul>}
         <CardAction href={card.openSurveyHref}>{surveyActionLabel ?? 'Mở bảng trả nợ trong Khảo sát'}</CardAction>
@@ -91,6 +102,7 @@ function CardBody({ card, surveyActionLabel }: { card: CardData; surveyActionLab
             <p>{offer.productName} · {formatRate(offer.annualReturnPct)}/năm</p>
             <p>Cuối kỳ <strong>{amount(offer.netValueVnd)}</strong></p>
             <p className="text-muted-foreground">Vốn {amount(offer.totalContributedVnd)} · Lãi ròng {amount(offer.netProfitVnd)}</p>
+            <OfferProvenance offer={offer} />
           </li>)}
         </ul>}
         <CardAction href={card.openSurveyHref}>{surveyActionLabel ?? 'Mở Khảo sát đầu tư và tích lũy'}</CardAction>
