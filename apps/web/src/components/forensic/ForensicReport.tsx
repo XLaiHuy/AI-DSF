@@ -80,7 +80,7 @@ const reputationBadges = {
   FLAGGED_SCAM: { tone: 'danger', label: 'Cảnh báo rủi ro cao' },
   HIGH_RISK_ANONYMOUS: { tone: 'warning', label: 'Cần xác minh thêm' },
   CLEAN_PUBLIC: { tone: 'info', label: 'Chưa có cảnh báo công khai' },
-  UNVERIFIABLE_PRIVATE_BANK: { tone: 'outline', label: 'Bảo mật ngân hàng' },
+  UNVERIFIABLE_PRIVATE_BANK: { tone: 'outline', label: 'Cần xác minh người nhận qua ngân hàng' },
 } as const
 
 function QrTable({ qr, index, suspiciousLink }: {
@@ -94,11 +94,11 @@ function QrTable({ qr, index, suspiciousLink }: {
   ]
   if (qr.providerLabel) values.push(['Nhà cung cấp', qr.providerLabel])
   if (qr.merchantCategoryCode) values.push(['Mã ngành (MCC)', qr.merchantCategoryCode])
-  if (qr.bankName || qr.acqBin) values.push(['Ngân hàng / BIN', <>{qr.bankName} {qr.acqBin && <span className="font-numeric whitespace-nowrap text-muted-foreground">({qr.acqBin})</span>}</>])
+  if (qr.bankName || qr.acqBin) values.push(['Ngân hàng nhận tiền (BIN)', <>{qr.bankName} {qr.acqBin && <span className="font-numeric whitespace-nowrap text-muted-foreground">({qr.acqBin})</span>}</>])
   if (qr.accountNumberMasked) values.push([scheme === 'CRYPTO_WALLET' ? 'Địa chỉ ví đã che' : 'Tài khoản nhận', <span className="font-numeric">{qr.accountNumberMasked}</span>])
   if (qr.serviceCode) values.push(
     ['Loại mã', qr.serviceCode === 'QRIBFTTA'
-      ? <><Badge variant={qr.entityMismatchFlag ? 'warning' : 'info'} className="whitespace-normal">QRIBFTTA · Chuyển theo số tài khoản</Badge> <TermInfo term="QRIBFTTA" /></>
+      ? <><Badge variant={qr.entityMismatchFlag ? 'warning' : 'info'} className="whitespace-normal">Chuyển theo số tài khoản (QRIBFTTA)</Badge> <TermInfo term="QRIBFTTA" /></>
       : qr.serviceCode],
   )
   if (qr.amount != null || qr.qrAmountVnd != null) {

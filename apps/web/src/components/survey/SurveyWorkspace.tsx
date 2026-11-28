@@ -45,7 +45,7 @@ const manualPresets = [
   },
 ]
 const priorities: Record<SurveyLoanRequest['priority'], string> = {
-  LOWEST_APR: 'APR thấp nhất',
+  LOWEST_APR: 'Chi phí vay mỗi năm thấp nhất (APR)',
   LOWEST_MONTHLY_PAYMENT: 'Trả tháng thấp nhất',
   LOWEST_TOTAL_COST: 'Tổng chi phí thấp nhất',
 }
@@ -205,7 +205,7 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
       return
     }
     if (tab === 'loan' && [income, expense, debt].some(Boolean) && ![income, expense, debt].every(Boolean)) {
-      setError('Nhập đủ thu nhập, chi phí và khoản trả nợ để tính DTI. Nhập 0 nếu không phát sinh.')
+      setError('Nhập đủ thu nhập, chi phí và khoản trả nợ để tính tỷ lệ trả nợ trên thu nhập (DTI). Nhập 0 nếu không phát sinh.')
       return
     }
     const controller = new AbortController()
@@ -359,8 +359,8 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
         </Card><Card className="bg-accent/50">
         <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck aria-hidden="true" size={19} className="text-primary" />Cách đọc nhanh</CardTitle></CardHeader>
         <CardContent className="space-y-3 text-sm leading-relaxed text-muted-foreground">
-          <p><strong className="text-foreground">APR</strong> tính chi phí theo số tiền thực nhận và toàn bộ lịch trả.</p>
-          <p><strong className="text-foreground">DTI</strong> cho biết phần thu nhập dùng trả nợ mỗi tháng. Đối chiếu cả khoản trả sau ưu đãi.</p>
+          <p><strong className="text-foreground">Chi phí vay mỗi năm (APR)</strong> dựa trên tiền thực nhận và các khoản phải trả.</p>
+          <p><strong className="text-foreground">Tỷ lệ trả nợ trên thu nhập (DTI)</strong> cho biết mỗi tháng bạn dùng bao nhiêu phần thu nhập để trả nợ.</p>
           <p><strong className="text-foreground">Uy tín</strong> phản ánh độ tin cậy của nguồn. Mở <Link className="font-semibold text-primary underline" href="/forensic">Giám định</Link> để kiểm tra một hợp đồng cụ thể.</p>
         </CardContent>
       </Card></aside>
@@ -414,7 +414,7 @@ function LoanResults({ result }: { result: Extract<Result, { tab: 'loan' }> }) {
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
           <Badge variant={item.trustScore >= 90 ? 'safe' : 'warning'}>Uy tín {item.trustScore}/100</Badge>
           {item.fitScore != null && <Badge variant="outline">Phù hợp hồ sơ {item.fitScore}/100</Badge>}
-          <span>APR <TermInfo term="APR" /> <strong>{percent(item.effectiveAprPct)}%</strong></span>
+          <span>Chi phí vay mỗi năm (APR) <TermInfo term="APR" /> <strong>{percent(item.effectiveAprPct)}%</strong></span>
           <span>Tổng trả {formatVnd(item.totalPayableVnd)}</span><span>Tổng chi phí {formatVnd(item.totalInterestAndFeesVnd)}</span>
           <Badge variant="outline">{rateLabels[item.rateType]}</Badge>
           <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="text-primary underline">{item.sourceLabel} · {formatCatalogDate(item.effectiveDate)}</a>

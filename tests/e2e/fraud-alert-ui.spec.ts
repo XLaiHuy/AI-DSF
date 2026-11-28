@@ -34,7 +34,7 @@ test('Bài cảnh báo công bố tách trạng thái, nguồn và lối xem chi
   await expect(card).toHaveCount(1)
   await expect(card.first()).toContainText('Đã xác minh')
   await expect(card.first().locator('.radar-alert-status')).toContainText('Đã xác minh cảnh báo')
-  await expect(page.getByText('“Đã xác minh” là trạng thái cảnh báo; mở nguồn để tự đối chiếu trường hợp của bạn.')).toBeVisible()
+  await expect(page.getByText('Mở nguồn của cảnh báo đã xác minh để so sánh dấu hiệu với trường hợp của bạn.')).toBeVisible()
   await expect(card.first().locator('.radar-alert-published time')).toHaveText('20/11/2026 · 15:00')
   await expect(card.first()).toContainText('Nguồn thử nghiệm A')
   await expect(card.first().locator('.radar-alert-evidence a')).toHaveAttribute('href', 'https://example.test/evidence-a')

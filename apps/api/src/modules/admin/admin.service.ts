@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../common/prisma.service'
 import { RadarService } from '../radar/radar.service'
 import { SurveyCalcService } from '../survey-calc/survey-calc.service'
+import { catalogProductAgeDays, classifyProductFreshness } from '../survey-calc/product-catalog'
 import { ProductCategory, CalcMethod, RateType } from '@fincopilot/shared-types'
 import { z } from 'zod'
 import Decimal from 'decimal.js'
@@ -65,7 +66,18 @@ export class AdminService {
   async job(jobId: string) { return this.radar.getJob(jobId) }
 
   async products() {
-    return this.prisma.financialProduct.findMany({ orderBy: [{ institution: { name: 'asc' } }, { productName: 'asc' }], include: { institution: true } })
+    const now = new Date()
+    const rows = await this.prisma.financialProduct.findMany({
+      orderBy: [{ institution: { name: 'asc' } }, { productName: 'asc' }], include: { institution: true },
+    })
+    const counts = { FRESH: 0, AGING: 0, STALE: 0 }
+    const products = rows.map(product => {
+      const ageDays = catalogProductAgeDays(product.effectiveDate, now)
+      const freshnessTier = classifyProductFreshness(product.effectiveDate, now)
+      if (product.isActive) counts[freshnessTier] += 1
+      return { ...product, ageDays, freshnessTier }
+    })
+    return { products, freshness: { freshCount: counts.FRESH, agingCount: counts.AGING, staleCount: counts.STALE } }
   }
 
   async institutions() {

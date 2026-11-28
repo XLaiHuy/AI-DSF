@@ -167,5 +167,6 @@ describe('reverse loan and contribution plans', () => {
     expect(value(new Decimal(contribution).minus(1)).lt('300000000')).toBe(true)
     expect(requiredMonthlyContribution('1000000', '1000000', 12, '0')).toBe('0')
     expect(requiredMonthlyContribution('100', '0', 3, '0')).toBe('34')
+    expect(() => requiredMonthlyContribution('1e50', '0', 1, '0')).toThrow(RangeError)
   })
 })

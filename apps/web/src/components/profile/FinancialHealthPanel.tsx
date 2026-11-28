@@ -21,7 +21,7 @@ export function FinancialHealthPanel({ health, coach, coachRevision, goalLabel, 
     ['Điểm sức khỏe tài chính', health.score === null ? '—' : `${health.score}/100`],
     ['Quỹ dự phòng', decimalText(health.emergencyMonths, ' tháng')],
     ['Tỷ lệ tiết kiệm ước tính', decimalText(health.savingsRatePct, '%')],
-    ['Trả nợ / thu nhập thực nhận (DTI)', decimalText(health.dtiPct, '%')],
+    ['Áp lực trả nợ mỗi tháng (DTI)', decimalText(health.dtiPct, '%')],
     ['Mức trả góp thêm an toàn', formatVnd(health.maxSafeEmiVnd)],
   ] : []
 

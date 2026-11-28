@@ -77,14 +77,14 @@ function CardBody({ card, surveyActionLabel }: { card: CardData; surveyActionLab
         <h3 className="font-semibold">Kế hoạch vay · {card.categoryLabel}</h3>
         <Metrics items={[
           ['Khoản vay', amount(card.principalVnd)], ['Kỳ hạn', card.termMonths + ' tháng'],
-          [card.topOffers.length ? 'Tỷ lệ trả nợ (DTI)' : 'Tỷ lệ trả nợ hiện tại (DTI)', optionalRate(card.dtiPct)],
+          [card.topOffers.length ? 'Tỷ lệ trả nợ trên thu nhập (DTI)' : 'Tỷ lệ trả nợ hiện tại trên thu nhập (DTI)', optionalRate(card.dtiPct)],
           [card.topOffers.length ? 'Dòng tiền còn lại' : 'Dòng tiền dư hiện tại', amount(card.disposableCashflowVnd)],
         ]} />
         <p className="text-xs text-muted-foreground">{riskLabels[card.dtiRiskBand]} · {card.profileUsed ? 'Có dùng dữ liệu tài chính' : 'Chưa có đủ dữ liệu tài chính'}</p>
         {!!card.topOffers.length && <ul className="divide-y divide-border text-xs [overflow-wrap:anywhere]">
           {card.topOffers.map((offer, index) => <li key={index} className="space-y-0.5 py-2">
             <p className="font-semibold">{offer.institutionName} · {offer.productName}</p>
-            <p>Tháng đầu {amount(offer.monthlyPaymentFirstVnd)} · APR {formatRate(offer.effectiveAprPct)}</p>
+            <p>Tháng đầu {amount(offer.monthlyPaymentFirstVnd)} · Chi phí vay mỗi năm (APR) {formatRate(offer.effectiveAprPct)}</p>
             <p className="text-muted-foreground">Lãi và phí {amount(offer.totalInterestAndFeesVnd)} · Uy tín {offer.trustScore}/100</p>
             <OfferProvenance offer={offer} />
           </li>)}
@@ -167,7 +167,7 @@ function CardBody({ card, surveyActionLabel }: { card: CardData; surveyActionLab
         <h3 className="font-semibold">Sức khỏe tài chính</h3>
         <p className="text-xs text-muted-foreground">{card.summary}</p>
         <Metrics items={[
-          ['Điểm sức khỏe', card.score == null ? '—' : card.score + '/100'], ['Tỷ lệ trả nợ (DTI)', optionalRate(card.dtiPct)],
+          ['Điểm sức khỏe', card.score == null ? '—' : card.score + '/100'], ['Tỷ lệ trả nợ trên thu nhập (DTI)', optionalRate(card.dtiPct)],
           ['Quỹ dự phòng', card.emergencyMonths == null ? '—' : card.emergencyMonths.replace('.', ',') + ' tháng'],
           ['Khoản trả nợ thêm tối đa', amount(card.maxSafeEmiVnd)], ['Dòng tiền dư mỗi tháng', amount(card.monthlySurplusVnd)],
         ]} />

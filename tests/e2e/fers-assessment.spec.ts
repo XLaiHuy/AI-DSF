@@ -24,7 +24,7 @@ for (const width of [1280, 390, 320]) {
     await expect(help.locator('..').getByRole('listitem')).toHaveCount(4)
     const ledger = page.getByText('Sổ bằng chứng & Chuẩn đối chiếu', { exact: true })
     await ledger.click()
-    await expect(page.getByRole('table', { name: 'Chuỗi bằng chứng' })).toBeVisible()
+    await expect(page.getByRole('table', { name: 'Dữ kiện dẫn đến đánh giá' })).toBeVisible()
     await expect(page.getByText('FERS-v1 · T3', { exact: false })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.locator('[data-verdict-heading]').locator('xpath=ancestor::header[1]').screenshot({ path: info.outputPath('fers-hero.png') })

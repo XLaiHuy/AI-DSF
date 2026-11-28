@@ -52,8 +52,8 @@ export function LoanAprDtiChart({ offers, dtiPct, selectedOffer, manual = false 
             return <div className="max-w-52 break-words rounded-md border p-2" style={chartTooltip}>
               <p className="mb-1 font-semibold">{point.name || point.label}</p>
               {point.originalNominal != null && <p>{series[0].label} · {formatRate(point.originalNominal)}</p>}
-              <p>APR thực tế · {formatRate(point.originalApr)}</p>
-              <p>EAR hiệu dụng · {formatRate(point.ear)}</p>
+              <p>Chi phí vay mỗi năm (APR) · {formatRate(point.originalApr)}</p>
+              <p>Lãi năm khi ghép lãi từng tháng (EAR) · {formatRate(point.ear)}</p>
             </div>
           }} />
           {series.map(({ key, label, color }) => <Bar key={key} name={label} dataKey={key} fill={color}

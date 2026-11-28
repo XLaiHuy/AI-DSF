@@ -215,7 +215,7 @@ const server = createServer(async (request, response) => {
     return
   }
   if (request.method === 'GET' && request.url === '/api/v1/admin/products') {
-    response.end(JSON.stringify([]))
+    response.end(JSON.stringify({ products: [], freshness: { freshCount: 0, agingCount: 0, staleCount: 0 } }))
     return
   }
   if (request.method === 'POST' && request.url === '/api/v1/admin/products') {

@@ -62,10 +62,10 @@ export function FersEvidenceLedger({ audit }: { audit: ForensicAuditResponse }) 
     </ul>}
     {assessment.evidenceChain.length ? <div className="mt-4 max-w-full">
       <table role="table" className="block w-full table-fixed border-collapse text-left text-sm [overflow-wrap:anywhere] sm:table">
-        <caption className="block pb-2 text-left font-semibold sm:table-caption">Chuỗi bằng chứng</caption>
+        <caption className="block pb-2 text-left font-semibold sm:table-caption">Dữ kiện dẫn đến đánh giá</caption>
         <thead role="rowgroup" className="sr-only sm:not-sr-only sm:table-header-group"><tr role="row" className="border-b text-muted-foreground">
           <th scope="col" className="py-2 pe-2">Hạng bằng chứng</th>
-          <th scope="col" className="w-[36%] py-2 pe-2">Trích dẫn / Dữ liệu giải mã</th>
+          <th scope="col" className="w-[36%] py-2 pe-2">Nội dung đọc được</th>
           <th scope="col" className="py-2 pe-2">Quy định / Chuẩn đối chiếu</th>
           <th scope="col" className="py-2">Tác động tài chính</th>
         </tr></thead>

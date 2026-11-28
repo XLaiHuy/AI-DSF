@@ -245,13 +245,16 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 320, height: 844 
       await expect(page.getByRole('heading', { name: 'Đơn trình báo A05' })).toBeVisible()
       await expect(page.getByRole('heading', { name: 'Yêu cầu tra soát ngân hàng' })).toBeVisible()
       await expect(page.getByText(/Đọc từ mã QR: .*BIN 970422/)).toBeVisible()
+      await expect(page.getByRole('link', { name: /Tổng đài MBBank/ })).toHaveAttribute('href', 'tel:1900545426')
       const requests: string[] = []
       page.on('request', request => {
         if (request.url().includes('/api/v1/')) requests.push(request.url() + (request.postData() ?? ''))
       })
-      await title.evaluate(element => element.scrollIntoView({ block: 'start', behavior: 'instant' }))
+      const kit = title.locator('xpath=ancestor::*[@aria-labelledby][1]')
+      await kit.evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }))
       await checkLayout(page)
       await page.screenshot({ path: resolve(masterScreenshots, 'incident-kit-' + viewport.width + '.png') })
+      await page.getByText('Điền thông tin vào mẫu (không bắt buộc)', { exact: true }).click()
       const privateName = 'Private Canary'
       const privatePhone = '0987654329'
       const privateDate = '2026-11-11T02:17'
@@ -271,6 +274,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 320, height: 844 
       const printed = await page.evaluate(() => document.body.dataset.testPrint)
       expect(printed).toMatch(/TRA SOÁT VÀ HỖ TRỢ PHONG TỎA/)
       expect(printed).toContain('BIN 970422')
+      expect(printed).toContain('1900 545426')
       const browserState = await page.evaluate(() => [location.href, JSON.stringify(localStorage), JSON.stringify(sessionStorage)].join('|'))
       for (const value of [privateName, privatePhone, privateDate, privateAmount, privateReference]) {
         expect(copied).toContain(value)
@@ -279,6 +283,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 320, height: 844 
         expect(requests.join('|')).not.toContain(value)
       }
       await page.reload()
+      await page.getByText('Điền thông tin vào mẫu (không bắt buộc)', { exact: true }).click()
       await expect(page.getByLabel('Họ tên người trình báo')).toHaveValue('')
     })
 

@@ -293,6 +293,7 @@ export function requiredMonthlyContribution(targetVnd: Decimal.Value, initialVnd
   }
   while (high.minus(low).gt(1)) {
     const mid = high.plus(low).div(2).floor()
+    if (mid.eq(low) || mid.eq(high)) throw new RangeError('Contribution exceeds whole-VND precision')
     if (reachesGoal(mid)) high = mid
     else low = mid
   }

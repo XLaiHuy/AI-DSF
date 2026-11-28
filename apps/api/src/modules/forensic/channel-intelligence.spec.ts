@@ -37,14 +37,46 @@ describe('channel intelligence', () => {
 
   it('matches a URL against the public feed without contacting the URL', async () => {
     const url = 'https://example.test/auth?private=secret'
-    const fetch = vi.fn(async () => new Response(url + '\n'))
+    const fetch = vi.fn(async (endpoint: string) => new Response(endpoint.includes('openphish') ? url + '\n' : '', { status: 200 }))
     vi.stubGlobal('fetch', fetch)
     const qr = await inspect(url)
-    expect(fetch).toHaveBeenCalledOnce()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch.mock.calls.every(([endpoint]) => !String(endpoint).includes('example.test'))).toBe(true)
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('raw.githubusercontent.com/openphish/'), expect.anything())
     expect(qr.channelIntelligence).toMatchObject({ reputationStatus: 'FLAGGED_SCAM', checkedLive: true })
     expect(JSON.stringify(qr.channelIntelligence)).not.toContain('secret')
     expect(rules(qr).findings).toContainEqual(expect.objectContaining({ severity: 'CRITICAL' }))
+  })
+
+  it('checks URLhaus by full hostname and exact path and caches the download', async () => {
+    const fetch = vi.fn(async (endpoint: string) => {
+      if (endpoint.includes('openphish')) return new Response('https://other.test/one\n')
+      return new Response('# Source: URLhaus\n"host","path","message","updated"\n' +
+        '"example.test","/download","URLhaus","2026-11-28"\n"example.test","/*","URLhaus","2026-11-28"\n')
+    })
+    vi.stubGlobal('fetch', fetch)
+    const service = new ChannelIntelligenceService()
+    const [hit, otherPath, subdomain] = await service.inspect([
+      parseAnyQr('https://example.test/download?ref=private')!, parseAnyQr('https://example.test/download-other')!,
+      parseAnyQr('https://www.example.test/download')!,
+    ], [])
+    expect(hit.channelIntelligence).toMatchObject({ reputationStatus: 'FLAGGED_SCAM', sourceName: expect.stringContaining('URLhaus') })
+    expect(otherPath.channelIntelligence.reputationStatus).toBe('CLEAN_PUBLIC')
+    expect(subdomain.channelIntelligence.reputationStatus).toBe('CLEAN_PUBLIC')
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('urlhaus-filter-splunk-online.csv'),
+      expect.objectContaining({ redirect: 'error', signal: expect.any(AbortSignal) }))
+  })
+
+  it('falls back without treating unavailable feeds as clean and caches transient failures', async () => {
+    const fetch = vi.fn().mockRejectedValue(new DOMException('Timed out', 'TimeoutError'))
+    vi.stubGlobal('fetch', fetch)
+    const service = new ChannelIntelligenceService()
+    const qr = parseAnyQr('https://example.test/download')!
+    const [result] = await service.inspect([qr], [])
+    await service.inspect([qr], [])
+    expect(result.channelIntelligence).toMatchObject({ reputationStatus: 'HIGH_RISK_ANONYMOUS', checkedLive: false })
+    expect(fetch).toHaveBeenCalledTimes(2)
   })
 
   it.each(['7995', '6051'])('reports MCC %s and foreign currency', async (merchantCategoryCode) => {

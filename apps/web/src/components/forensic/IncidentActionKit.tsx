@@ -1,6 +1,6 @@
 'use client'
 
-import type { ForensicAuditResponse, RiskTier } from '@fincopilot/shared-types'
+import { bankSupportForBin, walletSupportForProvider, type ForensicAuditResponse, type RiskTier } from '@fincopilot/shared-types'
 import { Copy, Printer } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 import { createPortal, flushSync } from 'react-dom'
@@ -37,11 +37,12 @@ function reportContext(audit: ForensicAuditResponse, riskTier: RiskTier) {
   ].filter(Boolean))].slice(0, 6)
   const taxonomy = audit.riskAssessment?.taxonomy.map(item => item.vnAisCode + ' · ' + item.vnAisLabel) ?? []
   const domains = hostnames([...evidence, ...audit.qrPayloads.flatMap(item => item.targetUrl ?? []), audit.privacyProof.rawTextMasked ?? ''])
-  const channel = qr?.bankName ?? qr?.providerLabel
+  const support = bankSupportForBin(qr?.acqBin) ?? walletSupportForProvider(qr?.providerLabel)
+  const channel = support?.name ?? qr?.bankName ?? qr?.providerLabel
   const qrLine = [channel, qr?.acqBin && 'BIN ' + qr.acqBin, qr?.accountNumberMasked && 'Tài khoản ' + qr.accountNumberMasked,
     qr?.qrAmountVnd && 'Số tiền trong mã ' + formatVnd(qr.qrAmountVnd)].filter(Boolean).join(' · ')
   const citations = audit.legalCitations?.map(item => item.title + ' (' + item.code + '), ' + item.articleRef + '\n' + item.sourceUrl) ?? []
-  return { channel, qrLine, lines: [
+  return { channel, qrLine, support, lines: [
     'Mã hồ sơ đối chiếu: ' + audit.auditId,
     'Mức rủi ro trong báo cáo: ' + riskTier + (audit.riskAssessment?.actionLabelVi ? ' · ' + audit.riskAssessment.actionLabelVi : ''),
     ...(taxonomy.length ? ['Dấu hiệu: ' + taxonomy.join(' · ')] : []),
@@ -58,7 +59,7 @@ export function IncidentActionKit({ audit, riskTier }: { audit: ForensicAuditRes
   const [details, setDetails] = useState<Partial<Record<typeof fields[number]['key'], string>>>({})
   const [copyStatus, setCopyStatus] = useState('')
   const [printDocument, setPrintDocument] = useState<string | null>(null)
-  const { channel, qrLine, lines } = reportContext(audit, riskTier)
+  const { channel, qrLine, support, lines } = reportContext(audit, riskTier)
 
   useEffect(() => {
     const clearPrint = () => setPrintDocument(null)
@@ -79,6 +80,7 @@ export function IncidentActionKit({ audit, riskTier }: { audit: ForensicAuditRes
       '', ...lines, '',
       police ? 'Kênh trình báo: Công an địa phương hoặc mục tố giác tội phạm trên VNeID. Gọi 113 trong tình huống khẩn cấp.\nPhản ánh tên miền nghi vấn: ' + officialPortal
         : 'Liên hệ ngay tổng đài chính thức của ngân hàng chuyển tiền. Dùng thông tin trên biên lai để xác nhận ngân hàng nhận tiền, số tiền và thời điểm giao dịch.',
+      ...(!police && support ? ['Tổng đài ' + support.name + ': ' + support.hotline + ' · ' + support.websiteUrl] : []),
       'Tài liệu đính kèm: Biên lai chuyển tiền, tin nhắn, hợp đồng hoặc bản gốc chứng cứ mà tôi đang giữ.',
       '', 'Ngày ' + blank, 'Người trình báo ký và ghi rõ họ tên',
     ].join('\n')
@@ -98,20 +100,26 @@ export function IncidentActionKit({ audit, riskTier }: { audit: ForensicAuditRes
     window.print()
   }
 
-  return <Card className="print-hidden min-w-0 space-y-4 p-4 sm:p-6" aria-labelledby={titleId}>
+  return <Card className="print-hidden min-w-0 scroll-mt-16 space-y-3 p-4 sm:scroll-mt-4 sm:space-y-4 sm:p-6" aria-labelledby={titleId}>
     <div className="space-y-1">
       <h2 id={titleId} className="text-lg font-semibold tracking-tight">Mẫu trình báo và tra soát</h2>
       <p className="text-sm text-muted-foreground">Nếu đã chuyển tiền, hãy gọi ngay ngân hàng chuyển tiền và giữ lại biên lai.</p>
       {qrLine && <p className="text-sm [overflow-wrap:anywhere]">Đọc từ mã QR: {qrLine}</p>}
+      {support && <p className="flex flex-wrap gap-x-2 text-sm">
+        <a className="font-semibold text-primary underline underline-offset-2" href={'tel:' + support.hotline.replace(/\s/g, '')}>
+          Tổng đài {support.name} {support.hotline}
+        </a>
+        <a className="text-muted-foreground underline underline-offset-2" href={support.websiteUrl} target="_blank" rel="noreferrer">Nguồn chính thức</a>
+      </p>}
     </div>
     <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
       <a className="text-primary underline underline-offset-2" href={policeInstructions} target="_blank" rel="noreferrer">Cách trình báo với Công an</a>
       <a className="text-primary underline underline-offset-2" href={officialPortal} target="_blank" rel="noreferrer">Cổng cảnh báo an toàn thông tin</a>
     </div>
-    <fieldset aria-describedby={privacyId} className="min-w-0 space-y-2">
-      <legend className="text-sm font-semibold">Thông tin điền vào mẫu (không bắt buộc)</legend>
-      <p id={privacyId} className="text-sm text-muted-foreground">Thông tin cá nhân chỉ xử lý trên trình duyệt, không gửi về máy chủ</p>
-      <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+    <details className="min-w-0 rounded-lg border border-border px-3 py-1.5">
+      <summary className="min-h-9 cursor-pointer py-2 text-sm font-semibold">Điền thông tin vào mẫu (không bắt buộc)</summary>
+      <fieldset aria-describedby={privacyId} className="grid min-w-0 gap-3 pb-2 sm:grid-cols-2">
+        <legend className="sr-only">Thông tin cá nhân và giao dịch</legend>
         {fields.map(({ key, label, type, limit }) => <Label key={key} className="grid min-w-0 gap-1.5 text-sm">
           {label}
           <Input className="min-w-0" type={type} maxLength={limit} inputMode={key === 'amount' ? 'numeric' : undefined}
@@ -120,17 +128,18 @@ export function IncidentActionKit({ audit, riskTier }: { audit: ForensicAuditRes
               setDetails(current => ({ ...current, [key]: value }))
             }} />
         </Label>)}
-      </div>
-    </fieldset>
+      </fieldset>
+    </details>
+    <p id={privacyId} className="text-xs text-muted-foreground">Thông tin cá nhân chỉ xử lý trên trình duyệt, không gửi về máy chủ</p>
     <div className="grid min-w-0 gap-3 sm:grid-cols-2">
       {templates.map(template => <section key={template.key} className="min-w-0 space-y-2 rounded-lg border border-border bg-muted/40 p-3">
         <h3 className="text-sm font-semibold">{template.label}</h3>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" aria-label={'Sao chép ' + template.label} onClick={() => void copy(template)}>
-            <Copy size={15} aria-hidden="true" /> Sao chép
+          <Button type="button" size="sm" variant="outline" aria-label={'Sao chép ' + template.label} onClick={() => void copy(template)}>
+            <Copy size={15} aria-hidden="true" className="hidden min-[390px]:inline" /> Sao chép
           </Button>
-          <Button type="button" variant="outline" aria-label={'In / Lưu PDF ' + template.label} onClick={() => print(template)}>
-            <Printer size={15} aria-hidden="true" /> In / Lưu PDF
+          <Button type="button" size="sm" variant="outline" aria-label={'In / Lưu PDF ' + template.label} onClick={() => print(template)}>
+            <Printer size={15} aria-hidden="true" className="hidden min-[390px]:inline" /> In / Lưu PDF
           </Button>
         </div>
       </section>)}

@@ -72,13 +72,24 @@ test('Vận hành hiển thị bốn lịch và kết quả chạy từng luồn
     const json = path.endsWith('/schedulers') ? schedulerNames.map((name, i) => ({ name, intervalLabel: i === 0 ? '15 phút' : '24 giờ', scheduled: true, nextAt: '2026-11-28T00:00:00Z' })) :
       path.endsWith('/hot-crawl-all') ? names.map((name, i) => ({ name, summary: ['Đã xếp hàng', null, 'Hoàn tất'][i], status: ['QUEUED', 'ERROR', 'SUCCESS'][i] })) :
       path.endsWith('/rnd/summary') ? { total: 0, active: 0, byCategory: {} } :
-      path.endsWith('/crawl-status') ? { scheduled: true, nextAt: null } : []
+      path.endsWith('/crawl-status') ? { scheduled: true, nextAt: null } :
+      path.endsWith('/products') ? {
+        products: [{ id: 'catalog-fixture', productName: 'Tiết kiệm 24 tháng', institution: { name: 'Ngân hàng mẫu' },
+          nominalRateMin: '5.5', nominalRateMax: '5.5', effectiveDate: '2026-09-12T00:00:00Z', isActive: true,
+          freshnessTier: 'STALE', ageDays: 77 }],
+        freshness: { freshCount: 0, agingCount: 0, staleCount: 1 },
+      } : []
     return route.fulfill({ json })
   })
   await page.goto('/admin')
   await page.getByRole('tab', { name: 'Nguồn dữ liệu & Kho sản phẩm' }).click()
   await expect(page.getByRole('table', { name: 'Lịch tự động' }).getByRole('row')).toHaveCount(5)
   await expect(page.getByRole('rowheader', { name: 'Bảo trì dữ liệu' })).toBeVisible()
+  const freshness = page.getByRole('region', { name: 'Sức khỏe & Độ tươi kho sản phẩm' })
+  await expect(freshness.getByText('> 60 ngày')).toBeVisible()
+  const product = page.getByRole('table', { name: 'Kho sản phẩm' }).getByRole('row', { name: /Tiết kiệm 24 tháng/ })
+  await expect(product.getByText('Quá 60 ngày', { exact: true })).toBeVisible()
+  await expect(product.getByText('77 ngày', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Thu thập ngay từ mọi nguồn' }).click()
   await expect(page.getByText('Tin thị trường · Đã xếp hàng')).toBeVisible()
   await expect(page.getByText('Cảnh báo lừa đảo · Lỗi')).toBeVisible()

@@ -485,7 +485,7 @@ function RadarWorkspace() {
             {(category || search || period !== 'all') && <button type="button" onClick={clearFilters}>Xóa bộ lọc</button>}
           </div>}
         </div> : tab === 'alerts' ? <div className="radar-alert-feed" aria-label="Cảnh báo lừa đảo">
-          <header className="radar-alert-intro"><p className="radar-alert-eyebrow">RADAR / AN TOÀN TÀI CHÍNH</p><h1>Cảnh báo lừa đảo</h1><p>“Đã xác minh” là trạng thái cảnh báo; mở nguồn để tự đối chiếu trường hợp của bạn.</p></header>
+          <header className="radar-alert-intro"><h1>Cảnh báo lừa đảo</h1><p>Mở nguồn của cảnh báo đã xác minh để so sánh dấu hiệu với trường hợp của bạn.</p></header>
           <ThreatTrendBoard />
           {alertsQuery.isPending && <p role="status" className="radar-state-message">Đang tải cảnh báo…</p>}
           {alertsQuery.isError && <div className="radar-state-message radar-error-state"><p role="alert">Không tải được cảnh báo.</p><Button variant="outline" size="sm" onClick={() => void alertsQuery.refetch()}><RefreshCw size={14} aria-hidden="true"/> Thử lại</Button></div>}

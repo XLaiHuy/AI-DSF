@@ -1,10 +1,11 @@
 'use client'
 
-import { AdminProductSyncResultSchema, CalcMethod, ProductCategory, RateType, ThreatCrawlStatsSchema } from '@fincopilot/shared-types'
+import { AdminProductSyncResultSchema, CalcMethod, ProductCategory, RateType, ThreatCrawlStatsSchema, type ProductFreshness } from '@fincopilot/shared-types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, RefreshCw } from 'lucide-react'
 import { useRef, useState, type ReactNode } from 'react'
 import { Badge, Button } from '@/components/ui'
+import { formatCatalogDate } from '@/lib/catalog-provenance'
 import { formatVietnamTime, requestError } from '@/lib/workspace-data'
 import { adminClient, adminField, type AdminCredentials } from './admin-client'
 
@@ -17,8 +18,10 @@ type Product = {
   nominalRateMin: string; nominalRateMax: string; promoMonths: number | null; floatingMargin: string | null;
   upfrontFeeRate: string; monthlyFeeVnd: string; earlySettlementFeeRate: string;
   minAmountVnd: string; maxAmountVnd: string; minTermMonths: number; maxTermMonths: number;
+  ageDays: number; freshnessTier: ProductFreshness;
   effectiveDate: string; isActive: boolean; sourceUrl: string; dataProvenance: string; institution: { name: string }
 }
+type Catalog = { products: Product[]; freshness: { freshCount: number; agingCount: number; staleCount: number } }
 type Institution = { id: string; name: string }
 
 function CatalogTable({ title, headers, children }: { title: string; headers: string[]; children: ReactNode }) {
@@ -31,6 +34,30 @@ function CatalogTable({ title, headers, children }: { title: string; headers: st
   </div>
 }
 const cell = 'border-b border-border px-3 py-2.5 align-middle'
+const freshness = [
+  { tier: 'FRESH', field: 'freshCount', label: 'Trong 30 ngày', range: '≤ 30 ngày', variant: 'safe', color: 'bg-verdict-safe' },
+  { tier: 'AGING', field: 'agingCount', label: 'Cần đối chiếu lại', range: '31–60 ngày', variant: 'warning', color: 'bg-verdict-warning' },
+  { tier: 'STALE', field: 'staleCount', label: 'Quá 60 ngày', range: '> 60 ngày', variant: 'danger', color: 'bg-verdict-danger' },
+] as const
+
+function CatalogFreshness({ counts }: { counts: Catalog['freshness'] }) {
+  return <section className="min-w-0 space-y-3 rounded-xl border border-border bg-card p-4" aria-labelledby="catalog-freshness">
+    <div className="space-y-0.5">
+      <h3 id="catalog-freshness" className="font-semibold">Sức khỏe &amp; Độ tươi kho sản phẩm</h3>
+      <p className="text-xs text-muted-foreground">Tính từ ngày hiệu lực của các sản phẩm đang dùng.</p>
+    </div>
+    <dl className="grid min-w-0 gap-2 min-[390px]:grid-cols-3">
+      {freshness.map(item => <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 rounded-md bg-muted px-2.5 py-1.5" key={item.tier}>
+        <dt className="text-xs">{item.range}</dt>
+        <dd className="font-semibold tabular-nums">{counts[item.field]}</dd>
+      </div>)}
+    </dl>
+    {freshness.some(item => counts[item.field] > 0) && <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
+      {freshness.filter(item => counts[item.field] > 0).map(item =>
+        <span key={item.tier} className={item.color} style={{ flexGrow: counts[item.field] }} />)}
+    </div>}
+  </section>
+}
 
 export function DataCatalogPanel({ credentials }: { credentials: AdminCredentials }) {
   const client = adminClient(credentials)
@@ -43,7 +70,7 @@ export function DataCatalogPanel({ credentials }: { credentials: AdminCredential
   const all = useMutation({ mutationFn: client.hotCrawlAll,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: stem }) })
   const sources = useQuery({ queryKey: [...stem, 'sources'], queryFn: () => client.get<Source[]>('/radar/sources'), retry: false, gcTime: 0 })
-  const products = useQuery({ queryKey: [...stem, 'products'], queryFn: () => client.get<Product[]>('/products'), retry: false, gcTime: 0 })
+  const products = useQuery({ queryKey: [...stem, 'products'], queryFn: () => client.get<Catalog>('/products'), retry: false, gcTime: 0 })
   const institutions = useQuery({ queryKey: [...stem, 'institutions'], queryFn: () => client.get<Institution[]>('/institutions'), enabled: editing !== null, retry: false, gcTime: 0 })
   const crawl = useMutation({ mutationFn: (sourceKey: string) => client.post('/crawl-now', { sourceKey }, ThreatCrawlStatsSchema),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: stem }) } })
@@ -107,19 +134,26 @@ export function DataCatalogPanel({ credentials }: { credentials: AdminCredential
       {sync.isError && <p role="alert" className="text-sm text-destructive">{requestError(sync.error, 'Không đồng bộ được danh mục lãi suất.')}</p>}
       {products.isError && <p role="alert" className="text-sm text-destructive">{requestError(products.error, 'Không đọc được kho sản phẩm.')}</p>}
       {products.isPending && <p role="status" className="text-sm text-muted-foreground">Đang tải sản phẩm…</p>}
-      {products.data?.length === 0 && <p className="text-sm text-muted-foreground">Kho sản phẩm đang trống.</p>}
-      {products.data && products.data.length > 0 && <CatalogTable title="Kho sản phẩm" headers={['Sản phẩm', 'Lãi suất', 'Hiệu lực', 'Trạng thái', 'Thao tác']}>
-        {products.data.map((product) => <tr key={product.id}>
-          <th scope="row" className={cell + ' font-medium'}><span className="block">{product.productName}</span>
-            <span className="text-xs font-normal text-muted-foreground">{product.institution.name}</span></th>
-          <td className={cell + ' whitespace-nowrap tabular-nums'}>{product.nominalRateMin}%–{product.nominalRateMax}%</td>
-          <td className={cell + ' whitespace-nowrap'}>{product.effectiveDate.slice(0, 10).split('-').reverse().join('/')}</td>
-          <td className={cell}><Badge variant={product.isActive ? 'safe' : 'secondary'}>{product.isActive ? 'Đang dùng' : 'Đã tắt'}</Badge></td>
-          <td className={cell}><div className="flex gap-2">
-            <Button type="button" size="sm" variant="outline" disabled={toggle.isPending} onClick={() => toggle.mutate(product)}>{product.isActive ? 'Tắt' : 'Bật'}</Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => openEditor(product)}>Sửa</Button>
-          </div></td>
-        </tr>)}
+      {products.data && <CatalogFreshness counts={products.data.freshness} />}
+      {products.data?.products.length === 0 && <p className="text-sm text-muted-foreground">Kho sản phẩm đang trống.</p>}
+      {products.data && products.data.products.length > 0 && <CatalogTable title="Kho sản phẩm" headers={['Sản phẩm', 'Lãi suất', 'Hiệu lực', 'Độ tươi', 'Trạng thái', 'Thao tác']}>
+        {products.data.products.map((product) => {
+          const age = freshness.find(item => item.tier === product.freshnessTier)
+          return <tr key={product.id}>
+            <th scope="row" className={cell + ' font-medium'}><span className="block">{product.productName}</span>
+              <span className="text-xs font-normal text-muted-foreground">{product.institution.name}</span></th>
+            <td className={cell + ' whitespace-nowrap tabular-nums'}>{product.nominalRateMin}%–{product.nominalRateMax}%</td>
+            <td className={cell + ' whitespace-nowrap'}>{formatCatalogDate(product.effectiveDate)}</td>
+            <td className={cell + ' whitespace-nowrap'}>{age && <Badge variant={age.variant}>{age.label}</Badge>}
+              <span className="block text-xs text-muted-foreground">{product.ageDays} ngày</span>
+            </td>
+            <td className={cell}><Badge variant={product.isActive ? 'safe' : 'secondary'}>{product.isActive ? 'Đang dùng' : 'Đã tắt'}</Badge></td>
+            <td className={cell}><div className="flex gap-2">
+              <Button type="button" size="sm" variant="outline" disabled={toggle.isPending} onClick={() => toggle.mutate(product)}>{product.isActive ? 'Tắt' : 'Bật'}</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => openEditor(product)}>Sửa</Button>
+            </div></td>
+          </tr>
+        })}
       </CatalogTable>}
       {toggle.isError && <p role="alert" className="text-sm text-destructive">{requestError(toggle.error, 'Không đổi được trạng thái sản phẩm.')}</p>}
       {editing && <div ref={editor} className="rounded-xl border border-border bg-card p-4">

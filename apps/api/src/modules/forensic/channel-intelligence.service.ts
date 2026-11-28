@@ -24,6 +24,8 @@ const blockscout = z.object({
   is_scam: z.boolean().optional(), is_contract: z.boolean(), coin_balance: z.string().regex(/^\d+$/).nullable(),
 })
 const openPhish = 'https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt'
+// Public distribution of URLhaus's online URL data. The upstream API requires an Auth-Key.
+const urlhaus = 'https://curbengh.github.io/malware-filter/urlhaus-filter-splunk-online.csv'
 const officialDomains = ['vietcombank.com.vn', 'vietinbank.vn', 'agribank.com.vn', 'bidv.com.vn', 'techcombank.com',
   'mbbank.com.vn', 'vpbank.com.vn', 'acb.com.vn', 'momo.vn', 'zalopay.vn', 'vnpay.vn', 'sbv.gov.vn', 'chinhphu.vn',
   'dichvucong.gov.vn', 'bocongan.gov.vn', 'vneid.gov.vn']
@@ -95,11 +97,48 @@ function urlKey(raw: string) {
   return url.href
 }
 
+const urlhausKey = (url: URL) => url.host + url.pathname
+const feedLimit = 32 * 1024 * 1024
+
+async function readUrlhaus(response: Response) {
+  const reader = response.body?.getReader()
+  if (!reader) return null
+  const urls = new Set<string>()
+  const decoder = new TextDecoder()
+  let byteCount = 0
+  let partial = ''
+  let headerFound = false
+  const addRow = (line: string) => {
+    if (!headerFound) {
+      headerFound = line.trim() === '"host","path","message","updated"'
+      return
+    }
+    const row = /^"([^"]+)","((?:[^"]|"")*)",/.exec(line)
+    if (!row || !row[2].startsWith('/') || row[2].includes('*') || /[\/\\@?#\s]/u.test(row[1])) return
+    const url = URL.parse('https://' + row[1] + row[2].replaceAll('""', '"'))
+    if (url) urls.add(urlhausKey(url))
+  }
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    byteCount += value.byteLength
+    if (byteCount > feedLimit) {
+      await reader.cancel()
+      return null
+    }
+    const lines = (partial + decoder.decode(value, { stream: true })).split(/\r?\n/u)
+    partial = lines.pop() ?? ''
+    for (const line of lines) addRow(line)
+  }
+  addRow(partial + decoder.decode())
+  return headerFound ? urls : null
+}
+
 export type EnrichedQr<T extends ParsedQr> = T & { channelIntelligence: ChannelIntelligence; channelIndicatorId: string | null }
 
 export class ChannelIntelligenceService {
   private readonly wallets = new Map<string, { expiresAt: number; value: Promise<PublicCheck[]> }>()
-  private feed?: { expiresAt: number; value: Promise<Set<string> | null> }
+  private readonly feeds = new Map<string, { expiresAt: number; value: Promise<Set<string> | null> }>()
 
   async inspect<T extends ParsedQr>(qrs: readonly T[], indicators: readonly Indicator[]): Promise<EnrichedQr<T>[]> {
     return Promise.all(qrs.map(async (qr) => {
@@ -133,15 +172,21 @@ export class ChannelIntelligenceService {
     return value
   }
 
+  private feed(url: string, read: (response: Response) => Promise<Set<string> | null>) {
+    const cached = this.feeds.get(url)
+    if (cached && cached.expiresAt > Date.now()) return cached.value
+    const value = fetchSource(url, read)
+    const next = { expiresAt: Date.now() + 30 * 60_000, value }
+    this.feeds.set(url, next)
+    void value.then((entries) => { if (!entries) next.expiresAt = Date.now() + 5 * 60_000 })
+    return value
+  }
+
   private openPhishFeed() {
-    if (this.feed && this.feed.expiresAt > Date.now()) return this.feed.value
-    const value = fetchSource(openPhish, async (response) => {
-      const entries = new Set((await response.text()).split(/\r?\n/).map((line) => urlKey(line.trim())).filter((url) => url !== null))
+    return this.feed(openPhish, async response => {
+      const entries = new Set((await response.text()).split(/\r?\n/).map(line => urlKey(line.trim())).filter(url => url !== null))
       return entries.size ? entries : null
     })
-    this.feed = { expiresAt: Date.now() + 30 * 60_000, value }
-    void value.then((entries) => { if (!entries && this.feed?.value === value) this.feed = undefined })
-    return value
   }
 
   private async channel(qr: ParsedQr, matchedDatabase: boolean): Promise<ChannelIntelligence> {
@@ -159,19 +204,23 @@ export class ChannelIntelligenceService {
     if (qr.qrScheme === 'URL_LINK') {
       const url = qr.targetUrl && URL.parse(qr.targetUrl)
       const key = qr.targetUrl && urlKey(qr.targetUrl)
-      const feed = key ? await this.openPhishFeed() : null
-      const listed = Boolean(key && feed?.has(key))
+      const [phishing, malware] = key ? await Promise.all([this.openPhishFeed(), this.feed(urlhaus, readUrlhaus)]) : [null, null]
+      const phishingMatch = Boolean(key && phishing?.has(key))
+      const malwareMatch = Boolean(url && malware?.has(urlhausKey(url)))
+      const listed = phishingMatch || malwareMatch
+      const checkedSources = [phishing && 'OpenPhish', malware && 'URLhaus'].filter(Boolean).join(' · ')
       const flags = [
-        listed ? 'URL trùng danh sách lừa đảo OpenPhish.' : '',
+        phishingMatch ? 'URL trùng danh sách lừa đảo OpenPhish.' : '',
+        malwareMatch ? 'Tên miền và đường dẫn trùng cảnh báo phát tán mã độc của URLhaus.' : '',
         url && suspiciousQrLink(qr.raw, '') ? 'Liên kết chứa tệp APK hoặc thông tin đăng nhập cài trong địa chỉ.' : '',
         url && suspiciousBrand(url) ? 'Tên miền có dấu hiệu mượn tên ngân hàng, ví điện tử hoặc cơ quan nhà nước.' : '',
       ].filter(Boolean)
       return {
-        channelGroup: 'URL_LINK', reputationStatus: listed ? 'FLAGGED_SCAM' : flags.length || !feed ? 'HIGH_RISK_ANONYMOUS' : 'CLEAN_PUBLIC',
-        sourceName: 'OpenPhish · ' + verifiedSource, checkedLive: feed !== null, riskFlags: flags,
-        activitySummary: listed ? 'Liên kết có trong feed cảnh báo công khai.'
-          : feed ? 'Chưa thấy liên kết trong feed OpenPhish. Kết quả có thể thay đổi theo thời điểm cập nhật.'
-            : 'Chưa truy cập được feed OpenPhish. Hãy kiểm tra tên miền qua kênh chính thức.',
+        channelGroup: 'URL_LINK', reputationStatus: listed ? 'FLAGGED_SCAM' : flags.length || !checkedSources ? 'HIGH_RISK_ANONYMOUS' : 'CLEAN_PUBLIC',
+        sourceName: (checkedSources || 'OpenPhish · URLhaus') + ' · ' + verifiedSource, checkedLive: Boolean(checkedSources), riskFlags: flags,
+        activitySummary: listed ? 'Liên kết có trong danh sách cảnh báo công khai.'
+          : checkedSources ? 'Chưa thấy liên kết trong các danh sách vừa đối chiếu. Hãy xác minh qua kênh chính thức.'
+            : 'Chưa truy cập được danh sách cảnh báo công khai. Hãy kiểm tra tên miền qua kênh chính thức.',
       }
     }
     if (qr.qrScheme === 'VIETQR_NAPAS' || qr.qrScheme === 'EWALLET_VN') {

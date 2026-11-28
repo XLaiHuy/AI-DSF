@@ -1,4 +1,5 @@
 import { InstitutionType, LicenseIssuer, TrustStatus } from '@fincopilot/shared-types'
+export { bankSupportDirectory, bankSupportForBin } from '@fincopilot/shared-types'
 
 // NHNN BIN register: https://sbv.gov.vn/documents/d/sbv_portal/566440
 // NAPAS participants: https://www.napas.com.vn/dich-vu-chuyen-tien-nhanh-napas-247
