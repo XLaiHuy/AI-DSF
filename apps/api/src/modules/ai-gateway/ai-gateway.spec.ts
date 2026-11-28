@@ -97,6 +97,28 @@ describe('AI gateway', () => {
     expect(request.mock.calls.map(([route]) => route.provider)).toEqual(['google'])
   })
 
+  it('reports the provider of a structured response after fallback', async () => {
+    mockedRequest.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(sample)
+    const onProvider = vi.fn()
+    const service = gateway({ OPENAI_API_KEY: 'fixture', GOOGLE_GENERATIVE_AI_API_KEY: 'fixture' })
+    await expect(service.generateStructured(task, AI_TASK_SCHEMAS[task], payload, { onProvider })).resolves.toEqual(sample)
+    expect(onProvider).toHaveBeenCalledExactlyOnceWith('google')
+  })
+
+  it('passes cancellation to the active model and does not call the next provider', async () => {
+    const controller = new AbortController()
+    const onProvider = vi.fn()
+    mockedRequest.mockImplementationOnce(async (_route, _key, _schema, _instruction, _input, signal) =>
+      new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })))
+    const service = gateway({ OPENAI_API_KEY: 'fixture', GOOGLE_GENERATIVE_AI_API_KEY: 'fixture' })
+    const request = service.generateStructured(task, AI_TASK_SCHEMAS[task], payload, { signal: controller.signal, onProvider })
+    const checked = expect(request).rejects.toMatchObject({ name: 'AbortError' })
+    controller.abort()
+    await checked
+    expect(mockedRequest).toHaveBeenCalledTimes(1)
+    expect(onProvider).not.toHaveBeenCalled()
+  })
+
   it('preserves multimodal input and PDF text on the public gateway contract', async () => {
     mockedRequest.mockResolvedValue(sample)
     const images = [Buffer.from([1, 2]), 'data:image/png;base64,AA==']

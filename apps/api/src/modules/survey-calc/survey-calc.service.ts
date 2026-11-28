@@ -107,11 +107,12 @@ export class SurveyCalcService {
   }
 
   private async catalog(selection: Pick<Prisma.FinancialProductWhereInput, 'productCategory' | 'loanUseCase'>, input: {
-    enableWebFallback?: boolean; bankOnly?: boolean; termMonths: number; amount: Prisma.Decimal
+    enableWebFallback?: boolean; bankOnly?: boolean; institutionCodes?: readonly string[]; termMonths: number; amount: Prisma.Decimal
   }, calcMethod: Prisma.StringFilter) {
     const base = {
       isActive: true, ...selection, calcMethod,
-      institution: { trustStatus: 'LICENSED', ...(input.bankOnly ? { licenseIssuer: 'NHNN', institutionType: 'BANK' } : {}) },
+      institution: { trustStatus: 'LICENSED', ...(input.bankOnly ? { licenseIssuer: 'NHNN', institutionType: 'BANK' } : {}),
+        ...(input.institutionCodes?.length ? { code: { in: [...input.institutionCodes] } } : {}) },
       effectiveDate: { lte: new Date() },
       dataProvenance: { in: input.enableWebFallback === false ? ['CATALOG_VERIFIED'] : [...DataProvenance.options] },
     } satisfies Prisma.FinancialProductWhereInput
@@ -198,7 +199,7 @@ export class SurveyCalcService {
   }
 
   async loan(input: SurveyLoanRequest, session: SessionContext, options: {
-    verifiedBanksOnly?: boolean; deterministic?: boolean; persistDtiOverride?: boolean
+    verifiedBanksOnly?: boolean; deterministic?: boolean; persistDtiOverride?: boolean; institutionCodes?: readonly string[]
   } = {}): Promise<SurveyLoanResponse> {
     await this.checkTrust(input.checkEntityName)
     const shock = new D(input.rateShockDeltaPct ?? 0).toDecimalPlaces(3)
@@ -208,7 +209,7 @@ export class SurveyCalcService {
     const [links, profile, catalog] = await Promise.all([
       this.sourceLinks(input, session), this.profile(session),
       this.catalog(input.loanUseCase ? { loanUseCase: input.loanUseCase } : { productCategory: input.productCategory },
-        { ...input, amount: principal, bankOnly: options.verifiedBanksOnly }, { in: [...loanMethods] }),
+        { ...input, amount: principal, bankOnly: options.verifiedBanksOnly, institutionCodes: options.institutionCodes }, { in: [...loanMethods] }),
     ])
     const dtiInput = input.dtiOverride ?? (profile?.monthlyIncomeVnd != null && profile.monthlyExpenseVnd != null && profile.existingDebtPaymentVnd != null
       ? { monthlyIncomeVnd: profile.monthlyIncomeVnd.toString(), monthlyExpenseVnd: profile.monthlyExpenseVnd.toString(),

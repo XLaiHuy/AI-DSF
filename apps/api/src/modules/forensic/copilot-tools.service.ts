@@ -1,7 +1,7 @@
 import { assessDti, compoundDca, maxSafeLoanPrincipal, requiredMonthlyContribution } from '@fincopilot/financial-math'
 import { Injectable, Optional } from '@nestjs/common'
 import {
-  ForensicGuidanceSchema, SurveyInvestRequestSchema, SurveyLoanRequestSchema, SurveyRefinanceTermsSchema, handoffRoutes,
+  AI_TASK_SCHEMAS, ForensicGuidanceSchema, SurveyInvestRequestSchema, SurveyLoanRequestSchema, SurveyRefinanceTermsSchema, handoffRoutes,
   type CopilotRichCard, type CopilotToolTraceItem, type FinancialHealthRequest, type ForensicGuidance, type SurveyInvestResponse,
 } from '@fincopilot/shared-types'
 import Decimal from 'decimal.js'
@@ -12,16 +12,19 @@ import { calculateFinancialHealth } from '../profile-auth/financial-health.engin
 import { readThreatTrends } from '../radar/threat-trends'
 import { compareCatalogQuality } from '../survey-calc/product-catalog'
 import { SurveyCalcService } from '../survey-calc/survey-calc.service'
-import { copilotAmounts, copilotGoalAmounts, copilotIntent, copilotLoanGoal, copilotLoanUseCase, copilotProfileAmounts,
+import { copilotAmounts, copilotBankCodes, copilotGoalAmounts, copilotIntent, copilotLoanGoal, copilotLoanUseCase, copilotProfileAmounts,
   copilotRefinanceRates, copilotTerm, type CopilotInput } from './copilot-input'
 import { copilotReferenceRate, decimalMedian } from './copilot-reference-rates'
 import { normalizeVietnamese } from './data/trusted-institutions'
+import { screened } from './forensic-chat-stream'
+import { financialNumericGrounding } from './forensic-narrative'
 import { formatCaseAmount } from './payment-qr-description'
 import { maskForensicText } from './qr-evidence'
 import { publicThreatAlertWhere } from './threat-draft'
 import { vnScamTaxonomy } from './vn-scam-taxonomy'
 
 type Guidance = Omit<ForensicGuidance, 'type'>
+type VoiceOptions = { signal?: AbortSignal; onProvider?: (provider: string) => void }
 type Tool = CopilotToolTraceItem['tool']
 const labels: Record<Tool, string> = {
   PROFILE_HEALTH: 'Hồ sơ DTI', LOAN_SURVEY: 'Kho ngân hàng NHNN', INVESTMENT_SURVEY: 'Danh mục đầu tư đã xác minh',
@@ -64,9 +67,9 @@ const safeResult = (trace: CopilotToolTraceItem[], result: Guidance): Guidance =
 @Injectable()
 export class CopilotToolsService {
   // Verified calculations do not need an AI provider.
-  constructor(private readonly survey: SurveyCalcService, private readonly prisma: PrismaService, @Optional() _ai?: AiGatewayService) {}
+  constructor(private readonly survey: SurveyCalcService, private readonly prisma: PrismaService, @Optional() private readonly ai?: AiGatewayService) {}
 
-  async planAndExecute(input: CopilotInput): Promise<Guidance | undefined> {
+  async planAndExecute(input: CopilotInput, options?: VoiceOptions): Promise<Guidance | undefined> {
     const intent = copilotIntent(input.rawText, input.domain)
     if (!intent) return undefined
     const trace: CopilotToolTraceItem[] = []
@@ -77,7 +80,45 @@ export class CopilotToolsService {
             : intent === 'LOAN' ? await this.loan(input, trace)
               : intent === 'REFINANCE' ? await this.refinance(input, trace)
                 : await this.investment(input, intent, trace)
-    return result ? safeResult(trace, result) : undefined
+    if (!result) return undefined
+    const guidance = safeResult(trace, result)
+    const voice = await this.synthesize(guidance.richCard, input.rawText, options)
+    return voice ? { ...guidance, message: voice } : guidance
+  }
+
+  private async synthesize(card: CopilotRichCard | undefined, rawText: string, options?: VoiceOptions) {
+    if (!this.ai || !card || options?.signal?.aborted) return
+    const question = maskForensicText(rawText)
+    const deadline = new AbortController()
+    const signal = options?.signal ? AbortSignal.any([deadline.signal, options.signal]) : deadline.signal
+    const timeout = setTimeout(() => deadline.abort(), 6_000)
+    let provider: string | undefined
+    try {
+      const task = 'SURVEY_EXPLAIN'
+      const stopped = new Promise<undefined>(resolve => signal.addEventListener('abort', () => resolve(undefined), { once: true }))
+      const verified = JSON.parse(JSON.stringify(card, (key, value: unknown) => key === 'id' || key.endsWith('Href') ? undefined : value)) as unknown
+      const payload = { question, verified, task: 'Giải thích ý nghĩa thực tế của kết quả bằng 2–4 câu tiếng Việt tự nhiên. Chỉ dùng dữ kiện có trong kết quả hoặc câu hỏi đã che, dùng chữ số khi nêu số liệu. Nêu điều nên so sánh hoặc kiểm tra. Không hứa duyệt vay, không chỉ dẫn giao dịch và không lặp tên trường dữ liệu.' }
+      const proposed = await Promise.race([
+        this.ai.generateStructured(task, AI_TASK_SCHEMAS[task], payload, { signal, onProvider: value => { provider = value } }),
+        stopped,
+      ])
+      if (!proposed || signal.aborted) return
+      const text = [proposed.summary, ...proposed.tradeoffs, ...(proposed.warnings ?? [])].join(' ').trim()
+      const sentences = text.split(/(?<=[.!?。！？])\s+/u)
+      const grounded = financialNumericGrounding([card], [question], { allFigures: true })
+      if (text.length > 800 || sentences.length < 2 || sentences.length > 4 ||
+        hasInternalIdentifierLeak([text]) || !grounded(text) ||
+        /\b(?:chac chan|bao dam|dam bao|cam ket|se duoc|chac suat)\b.{0,55}\b(?:duyet|chap thuan|giai ngan|sinh loi|co lai|loi nhuan)\b/.test(normalizeVietnamese(text))) return
+      const safe = screened(text, true)
+      if (!safe || /(?<!khong )\b(?:nen|hay|vui long|cu|can|co the) (?:chuyen|nop|gui|nap|dong|tra) (?:luon |ngay |truoc )?\d/u.test(normalizeVietnamese(safe))) return
+      if (provider) options?.onProvider?.(provider)
+      return safe
+    } catch {
+      return undefined
+    } finally {
+      clearTimeout(timeout)
+      deadline.abort()
+    }
   }
 
   private async step<T>(trace: CopilotToolTraceItem[], tool: Tool, run: () => Promise<{
@@ -199,6 +240,7 @@ export class CopilotToolsService {
     })
     if (!checked.success || new Precise(checked.data.principalVnd).lt(1)) return undefined
     const terms = checked.data
+    const bankCodes = copilotBankCodes(normalizeVietnamese(input.rawText))
     const profile = await this.profile(input, trace)
     const income = profile?.values.monthlyIncomeVnd
     const expense = profile?.values.monthlyExpenseVnd
@@ -208,6 +250,7 @@ export class CopilotToolsService {
     const result = await this.step(trace, 'LOAN_SURVEY', async () => {
       const data = await this.survey.loan({ ...terms, dtiOverride }, input.session, {
         verifiedBanksOnly: true, deterministic: true, persistDtiOverride: !profile?.inline,
+        ...(bankCodes.length ? { institutionCodes: bankCodes } : {}),
       })
       if (data.meta?.catalogStatus === 'CATALOG_UNAVAILABLE') throw new Error('Catalog unavailable')
       return { data, empty: !data.offers.length, summary: data.offers.length
@@ -232,8 +275,9 @@ export class CopilotToolsService {
     const best = result?.offers[0]
     const message = best
       ? 'Với khoản vay ' + formatCaseAmount(terms.principalVnd) + ' trong ' + terms.termMonths +
-        ' tháng, gói đứng đầu có khoản trả tháng đầu ' + formatCaseAmount(best.monthlyPaymentFirstVnd) + '.'
-      : result ? 'Danh mục ngân hàng chưa có gói phù hợp với số tiền và kỳ hạn bạn nhập.'
+        ' tháng, gói đứng đầu của ' + offerNames(best).institutionName + ' có khoản trả tháng đầu ' +
+        formatCaseAmount(best.monthlyPaymentFirstVnd) + '. Bạn nên so cả tổng lãi và phí, rồi xem khoản trả có tăng sau ưu đãi không.'
+      : result ? (bankCodes.length ? 'Chưa tìm thấy gói phù hợp tại ngân hàng bạn nêu.' : 'Danh mục ngân hàng chưa có gói phù hợp với số tiền và kỳ hạn bạn nhập.')
         : 'Chưa đối chiếu được danh mục ngân hàng. Bạn có thể mở Khảo sát để thử lại.'
     return {
       intent: 'FINANCIAL_EDUCATION', message, richCard,

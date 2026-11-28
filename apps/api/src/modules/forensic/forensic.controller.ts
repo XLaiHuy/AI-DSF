@@ -183,9 +183,9 @@ export class ForensicController {
     @Res() reply: FastifyReply,
   ) {
     const controller = new AbortController()
+    reply.raw.once('close', () => controller.abort())
     const events = await this.service.streamFollowUp(request.session, id, body, controller.signal)
     if (reply.raw.destroyed) return
-    reply.raw.once('close', () => controller.abort())
     const frames = async function* () {
       for await (const event of events) yield `data: ${JSON.stringify(event)}\n\n`
     }

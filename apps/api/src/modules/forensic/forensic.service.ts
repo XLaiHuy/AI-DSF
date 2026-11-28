@@ -7,7 +7,7 @@ import type { Prisma } from '@prisma/client'
 import {
   AI_TASK_SCHEMAS, ForensicAuditListResponseSchema, ForensicAuditResponseSchema,
   ForensicFollowUpResponseSchema, ForensicQrMetadataSchema, UserAuditFeedbackResponseSchema, type UserAuditFeedback,
-  type ForensicAuditFields, type ForensicAuditResponse, type ForensicAuditStage, type ForensicFollowUpRequest, type SessionContext,
+  type ForensicAuditFields, type ForensicAuditResponse, type ForensicAuditStage, type ForensicFollowUpRequest, type ForensicFollowUpResponse, type SessionContext,
 } from '@fincopilot/shared-types'
 import { z } from 'zod'
 import { maskAccount } from '../../common/pii-masker'
@@ -21,8 +21,8 @@ import { maskedQrLink, maskForensicText } from './qr-evidence'
 import { threatIndicatorFilters } from './threat-indicator-lookup'
 import { classifyAuditComplexity, hasSuspiciousContext } from './complexity-router'
 import { elevateVerdict, groundReasoningFindings } from './deep-reasoning'
-import { followUpEvents, screened } from './forensic-chat-stream'
-import { classifyFollowUpIntent, prepareFollowUp, statedTransferAmount } from './forensic-follow-up'
+import { copilotFollowUpEvents, followUpEvents, screened } from './forensic-chat-stream'
+import { classifyFollowUpIntent, followUpTool, prepareFollowUp, statedTransferAmount } from './forensic-follow-up'
 import { evaluatePersonalImpact } from './personal-impact.engine'
 import { selectLegalCitations } from './data/vn-legal-registry'
 import { ChannelIntelligenceService } from './channel-intelligence.service'
@@ -441,15 +441,30 @@ export class ForensicService {
     } : null
   }
 
-  private async prepareReply(session: SessionContext, id: string, input: ForensicFollowUpRequest) {
+  private async prepareReply(session: SessionContext, id: string, input: ForensicFollowUpRequest, signal?: AbortSignal) {
     const audit = await this.read(session, id)
     const aliases = this.threatMemory?.cachedAliases()
+    const tool = this.copilotTools && !signal?.aborted ? followUpTool(input.question, audit, aliases) : undefined
+    if (tool && this.copilotTools) {
+      let llmProvider: string | null = null
+      const guidance = await this.copilotTools.planAndExecute({ ...tool, session }, {
+        signal, onProvider: provider => { llmProvider = provider },
+      })
+      if (guidance?.intent === 'NEEDS_DETAILS' || guidance?.intent === 'FINANCIAL_EDUCATION') {
+        const planning: ForensicFollowUpResponse = ForensicFollowUpResponseSchema.parse({
+          answer: guidance.message, toolTrace: guidance.toolTrace, richCard: guidance.richCard, cta: guidance.cta,
+          meta: { llmProvider, degradedMode: false, intent: guidance.intent },
+        })
+        return { planning }
+      }
+    }
     const profile = classifyFollowUpIntent(input.question, audit, aliases) === 'NEW_CONTEXT' ? await this.loadFinancialProfile(session) : null
-    return prepareFollowUp(audit, input, profile, aliases)
+    return { reply: prepareFollowUp(audit, input, profile, aliases) }
   }
 
   async followUp(session: SessionContext, id: string, input: ForensicFollowUpRequest) {
-    const reply = await this.prepareReply(session, id, input)
+    const { planning, reply } = await this.prepareReply(session, id, input)
+    if (planning) return planning
     if (reply.directAnswer) return { answer: reply.directAnswer, meta: { llmProvider: null, degradedMode: false, ...reply.meta } }
 
     const task = 'FORENSIC_VERDICT_NARRATIVE'
@@ -462,8 +477,8 @@ export class ForensicService {
   }
 
   async streamFollowUp(session: SessionContext, id: string, input: ForensicFollowUpRequest, signal: AbortSignal) {
-    const reply = await this.prepareReply(session, id, input)
-    return followUpEvents(this.ai, reply, signal)
+    const { planning, reply } = await this.prepareReply(session, id, input, signal)
+    return planning ? copilotFollowUpEvents(planning, signal) : followUpEvents(this.ai, reply, signal)
   }
 
   async list(session: SessionContext) {

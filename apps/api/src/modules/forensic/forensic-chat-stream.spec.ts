@@ -11,8 +11,11 @@ import { AiGatewayService } from '../ai-gateway/ai-gateway.service'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ForensicController } from './forensic.controller'
 import { ForensicService } from './forensic.service'
+import { SurveyCalcService } from '../survey-calc/survey-calc.service'
+import { CopilotToolsService } from './copilot-tools.service'
+import { ForensicFollowUpResponseSchema } from '@fincopilot/shared-types'
 import type { FastifyInstance } from 'fastify'
-import type { ForensicAuditResponse, SessionContext } from '@fincopilot/shared-types'
+import type { ForensicAuditResponse, ForensicChatTurn, ForensicGuidance, SessionContext } from '@fincopilot/shared-types'
 
 const session = { kind: 'guest', guestSessionId: '6efaf59b-554d-4bd8-80e9-c864ad513ceb' } satisfies SessionContext
 const auditId = 'ce4bfd2d-9104-4ff1-81a9-38297261f01a'
@@ -27,7 +30,7 @@ describe('Forensic SSE route', () => {
   let app: NestFastifyApplication | undefined
   afterEach(async () => { await app?.close() })
 
-  async function setup(owned: boolean, chunks: string[], report = audit) {
+  async function setup(owned: boolean, chunks: string[], report = audit, planning?: Omit<ForensicGuidance, 'type'>, provider?: string) {
     const config = new ConfigService()
     const prisma = new PrismaService()
     const databaseRead = vi.spyOn(prisma.forensicAudit, 'findFirst').mockResolvedValue(null)
@@ -35,7 +38,14 @@ describe('Forensic SSE route', () => {
     const stream = vi.spyOn(ai, 'streamWithProvider').mockImplementation(async function* () {
       for (const delta of chunks) yield { delta, provider: 'openai' as const }
     })
-    const service = new ForensicService(prisma, ai, config)
+    const planAndExecute = vi.fn<CopilotToolsService['planAndExecute']>(async (_input, options) => {
+      if (provider) options?.onProvider?.(provider)
+      return planning
+    })
+    const tools = planning ? new CopilotToolsService(new SurveyCalcService(prisma, ai), prisma) : undefined
+    if (tools) vi.spyOn(tools, 'planAndExecute').mockImplementation(planAndExecute)
+    const service = new ForensicService(prisma, ai, config, undefined, undefined, undefined, tools)
+    vi.spyOn(prisma.financialProfile, 'findFirst').mockResolvedValue(null)
     if (owned) vi.spyOn(service, 'read').mockResolvedValue(report)
     // Vitest's TS transform does not emit metadata for implicit constructor injection.
     Reflect.defineMetadata('design:paramtypes', [ForensicService], ForensicController)
@@ -50,11 +60,11 @@ describe('Forensic SSE route', () => {
     await app.init()
     const server: FastifyInstance = app.getHttpAdapter().getInstance()
     await server.ready()
-    const inject = (question: string, json = false) => server.inject({
-      method: 'POST', url: `/api/v1/forensic/audits/${auditId}/chat${json ? '' : '/stream'}`, payload: { question },
+    const inject = (question: string, json = false, history?: ForensicChatTurn[]) => server.inject({
+      method: 'POST', url: `/api/v1/forensic/audits/${auditId}/chat${json ? '' : '/stream'}`, payload: { question, history },
       cookies: { [guestCookie]: server.signCookie(session.guestSessionId) },
     })
-    return { inject, databaseRead, stream, prisma, ai }
+    return { inject, databaseRead, stream, prisma, ai, planAndExecute }
   }
 
   function frames(body: string): unknown[] {
@@ -62,6 +72,96 @@ describe('Forensic SSE route', () => {
     expect(lines.every((line) => line.startsWith('data: '))).toBe(true)
     return lines.map((line) => JSON.parse(line.slice(6)) as unknown)
   }
+
+  const loanPlanning = {
+    intent: 'FINANCIAL_EDUCATION', message: 'Mình đã đối chiếu các gói có kỳ hạn phù hợp.',
+    toolTrace: [{ tool: 'LOAN_SURVEY', label: 'Kho ngân hàng NHNN', status: 'done', durationMs: 3, summary: 'Đã đối chiếu khoản vay.' }],
+    richCard: { kind: 'LOAN_PLAN', principalVnd: '100000000', termMonths: 36, categoryLabel: 'Vay tín chấp', profileUsed: true,
+      dtiPct: '20.08', dtiRiskBand: 'SAFE', disposableCashflowVnd: '6384760',
+      topOffers: [{ institutionName: 'VPBank', productName: 'Vay tiêu dùng', monthlyPaymentFirstVnd: '3615240',
+        effectiveAprPct: '18', totalInterestAndFeesVnd: '30148120', trustScore: 78 }],
+      openSurveyHref: '/survey?mode=loan&amount=100000000&term=36' },
+    cta: { label: 'Xem bảng trả nợ', href: '/survey?mode=loan&amount=100000000&term=36' },
+  } satisfies Omit<ForensicGuidance, 'type'>
+  const priorWarning: ForensicChatTurn[] = [
+    { role: 'user', content: 'Vì sao nguy hiểm?' },
+    { role: 'assistant', content: 'Mức nguy hiểm cao (95/100). Dừng giao dịch và xác minh lại.' },
+  ]
+
+  it.each([
+    ['Lương 18 triệu, chi 8 triệu, muốn vay 100 triệu trong 36 tháng có ổn không?', 'LOAN', undefined],
+    ['Vay 100 triệu ở VPBank trong 36 tháng mỗi tháng trả bao nhiêu?', 'LOAN', 'openai'],
+    ['Muốn có 300 triệu sau 3 năm cần góp bao nhiêu?', undefined, undefined],
+    ['Đầu tư 20 triệu, góp thêm 3 triệu/tháng trong 24 tháng được bao nhiêu?', 'INVEST', undefined],
+    ['Mình muốn gửi tiết kiệm 50 triệu trong 24 tháng ở ngân hàng BIDV', 'SAVINGS', undefined],
+    ['Có nên chuyển khoản vay? Dư nợ 100 triệu, còn 24 tháng, lãi hiện tại 18%.', undefined, undefined],
+    ['Gần đây có thủ đoạn lừa đảo và lãi suất ngân hàng nào đáng chú ý?', undefined, undefined],
+  ])('returns planning data on JSON and SSE without regrading an audit for %s', async (question, domain, provider) => {
+    const { inject, stream, planAndExecute, ai, prisma } = await setup(true, [], audit, loanPlanning, provider)
+    const normalModel = vi.spyOn(ai, 'generateWithProvider')
+    const response = await inject(question, true, priorWarning)
+    expect(response.statusCode).toBe(200)
+    const json = ForensicFollowUpResponseSchema.parse(response.json())
+    expect(json).toEqual({ answer: loanPlanning.message, meta: { llmProvider: provider ?? null, degradedMode: false, intent: 'FINANCIAL_EDUCATION' },
+      richCard: loanPlanning.richCard, toolTrace: loanPlanning.toolTrace, cta: loanPlanning.cta })
+    const sse = await inject(question, false, priorWarning)
+    expect(sse.statusCode).toBe(200)
+    const { answer, ...details } = json
+    expect(frames(sse.body)).toEqual([{ delta: answer }, { done: true, ...details }])
+    expect(planAndExecute).toHaveBeenCalledTimes(2)
+    for (const [input] of planAndExecute.mock.calls) {
+      expect(input).toMatchObject({ rawText: question, slots: {}, session })
+      expect(input.domain).toBe(domain)
+    }
+    expect(prisma.financialProfile.findFirst).not.toHaveBeenCalled()
+    expect(stream).not.toHaveBeenCalled()
+    expect(normalModel).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    'Bên kia vừa đòi chuyển thêm 5 triệu phí giải ngân',
+    'Họ đòi chuyển 100 triệu vào tài khoản cá nhân để mở khóa',
+    'Mình muốn vay 100 triệu trong 36 tháng, nhưng họ vừa đòi chuyển thêm 5 triệu phí giải ngân.',
+    'Vay 100 triệu ở VPBank trong 36 tháng, nhân viên đòi đóng phí giải ngân 2 triệu.',
+    'Muốn có 300 triệu sau 3 năm cần góp bao nhiêu? Bên kia yêu cầu gửi OTP.',
+    'Muốn vay 100 triệu trong 36 tháng, vừa yêu cầu cài app để xác minh.',
+    'Đầu tư 20 triệu trong 24 tháng. Bên cho vay bắt nộp tiền mở khóa.',
+    'Muốn vay 100 triệu trong 36 tháng, gửi vào tài khoản cá nhân như họ dặn.',
+  ])('keeps mixed planning and new risk in re-audit on both endpoints for %s', async question => {
+    const { inject, planAndExecute, ai } = await setup(true, ['Hãy giữ lại biên lai.'], audit, loanPlanning)
+    vi.spyOn(ai, 'generateWithProvider').mockResolvedValue({ provider: 'openai', output: { narrative: 'Hãy giữ lại biên lai.', immediateActions: [] } })
+    const json = ForensicFollowUpResponseSchema.parse((await inject(question, true, priorWarning)).json())
+    const sse = frames((await inject(question, false, priorWarning)).body)
+    expect(json.meta).toMatchObject({ intent: 'NEW_CONTEXT', suggestReaudit: true })
+    expect(sse.at(-1)).toMatchObject({ done: true, meta: { intent: 'NEW_CONTEXT', suggestReaudit: true } })
+    expect(json.richCard).toBeUndefined()
+    expect(json.answer).toContain('95/100')
+    expect(planAndExecute).not.toHaveBeenCalled()
+  })
+
+  it('omits the repeated anchor but still blocks reassurance with prior assistant history', async () => {
+    const risky = 'Giao dịch này an toàn, bạn có thể chuyển tiền ngay.'
+    const { inject, ai, planAndExecute } = await setup(true, [risky], audit, loanPlanning)
+    vi.spyOn(ai, 'generateWithProvider').mockResolvedValue({ provider: 'openai', output: { narrative: risky, immediateActions: [] } })
+    for (const json of [false, true]) {
+      const repeated = await inject('Vì sao báo cáo nói vậy?', json, priorWarning)
+      const text = json ? ForensicFollowUpResponseSchema.parse(repeated.json()).answer
+        : (frames(repeated.body) as Array<{ delta?: string }>).map(frame => frame.delta ?? '').join('')
+      expect(text).not.toMatch(/95\/100|giao dịch này an toàn|chuyển tiền ngay/i)
+      expect(text).toContain('gọi tổng đài')
+      const userQuote = await inject('Vì sao báo cáo nói vậy?', json, [{ ...priorWarning[1], role: 'user' }])
+      expect(userQuote.body).toContain('95/100')
+    }
+    expect(planAndExecute).not.toHaveBeenCalled()
+  })
+
+  it('does not run planning for an audit outside the session owner', async () => {
+    const { inject, planAndExecute } = await setup(false, [], audit, loanPlanning)
+    for (const json of [false, true]) {
+      expect((await inject('Vay 100 triệu ở VPBank trong 36 tháng trả bao nhiêu?', json)).statusCode).toBe(404)
+    }
+    expect(planAndExecute).not.toHaveBeenCalled()
+  })
 
   it.each([['giải tôi pt bậc 2', 'OFF_TOPIC'], ['ok', 'ACK']])('routes %s without calling AI on either endpoint', async (question, intent) => {
     const { inject, stream, ai } = await setup(true, [], { ...audit, verdictLevel: 'SAFE', riskScore: 0 })

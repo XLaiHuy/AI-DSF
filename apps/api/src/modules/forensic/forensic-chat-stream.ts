@@ -6,7 +6,7 @@ import { normalizeVietnamese } from './data/trusted-institutions'
 import type { prepareFollowUp } from './forensic-follow-up'
 import { maskForensicText } from './qr-evidence'
 
-type Event = { delta: string } | { done: true; meta: ForensicFollowUpResponse['meta'] }
+type Event = { delta: string } | ({ done: true } & Omit<ForensicFollowUpResponse, 'answer'>)
 const riskyAdvice = new RegExp([
   /\b(?:an toan|yen tam|dang tin(?: cay)?|tin cay|hop phap|bo qua canh bao)\b/,
   /\b(?:(?:chuyen|gui|nap|tra) (?:khoan |so )?tien|chuyen khoan|thanh toan|dong phi(?: giai ngan)?|giai ngan|quyet dinh chuyen|(?:thuc hien|tiep tuc|xac nhan|hoan tat) giao dich)\b/,
@@ -86,6 +86,13 @@ async function* deltas(text: string, signal: AbortSignal) {
     yield { delta: words.slice(index, index + 2).join('') }
     if (index + 2 < words.length) await pause(28, undefined, { signal })
   }
+}
+
+export async function* copilotFollowUpEvents({ answer, ...details }: ForensicFollowUpResponse, signal: AbortSignal): AsyncGenerator<Event> {
+  if (signal.aborted) return
+  // The verified answer is already complete, so send the text in one frame.
+  yield { delta: answer }
+  if (!signal.aborted) yield { done: true, ...details }
 }
 
 export async function* followUpEvents(

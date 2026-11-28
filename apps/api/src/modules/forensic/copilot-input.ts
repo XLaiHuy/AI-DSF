@@ -9,6 +9,20 @@ export type SurveyDomain = 'LOAN' | 'INVEST' | 'SAVINGS'
 export type CopilotIntent = SurveyDomain | 'RADAR' | 'REFINANCE' | 'PROFILE' | 'SAFE_LOAN_LIMIT' | 'GOAL_PLANNER'
 export type CopilotInput = { rawText: string; session: SessionContext; slots: ExtractedSlots; domain?: SurveyDomain }
 
+const namedBanks = [
+  ['VPB', /\bvp ?bank\b/], ['VCB', /\b(?:vietcombank|vcb)\b/], ['CTG', /\b(?:vietinbank|ctg)\b/],
+  ['AGR', /\bagribank\b/], ['BIDV', /\bbidv\b/], ['TCB', /\b(?:techcombank|tcb)\b/],
+  ['MBB', /\b(?:mb ?bank|mbb)\b/], ['ACB', /\bacb\b/], ['VIB', /\bvib\b/], ['TPB', /\btp ?bank\b/],
+] as const
+
+export function copilotBankCodes(normalized: string) {
+  return namedBanks.filter(([, name]) => name.test(normalized)).map(([code]) => code)
+}
+
+export function isPlanningIntent(intent?: CopilotIntent): intent is Exclude<CopilotIntent, 'PROFILE'> {
+  return intent !== undefined && intent !== 'PROFILE'
+}
+
 export const amountToken = /(?<![\p{L}\d.,-])(\d{1,16}(?:[.,]\d{1,3}| \d{3}(?!\d)){0,5})\s*(triệu|trieu|tr|tỷ|tỉ|ty|ti|nghìn|nghin|ngàn|ngan|k|đồng|dong|vnđ|vnd|đ|₫)(?![\p{L}\d])(?:\s*(?:đồng|dong|vnđ|vnd|đ|₫)(?![\p{L}\d]))?/giu
 export const rateToken = /\d+(?:[.,]\d+)?\s*%(?:\s*\/\s*(?:tháng|năm|thang|nam))?/giu
 export const termToken = /(?<![\p{L}\d.,-])(\d{1,3})\s*(tháng|thang|năm|nam)(?![\p{L}\d])/giu

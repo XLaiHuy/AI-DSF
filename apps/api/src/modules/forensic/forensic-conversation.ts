@@ -1,6 +1,6 @@
 import { AI_TASK_SCHEMAS, handoffRoutes, type ForensicAuditFields, type ForensicGuidance } from '@fincopilot/shared-types'
 import { hasInternalIdentifierLeak } from '../../common/untrusted-text'
-import { amountToken, rateToken, termToken, copilotIntent, copilotLoanGoal, type CopilotInput, type CopilotIntent, type ExtractedSlots as Slots, type SurveyDomain } from './copilot-input'
+import { amountToken, rateToken, termToken, copilotBankCodes, copilotIntent, copilotLoanGoal, isPlanningIntent, type CopilotInput, type CopilotIntent, type ExtractedSlots as Slots, type SurveyDomain } from './copilot-input'
 import { compressConversationContext } from './context-compressor'
 import type { ConversationSessionState } from './conversation-session.store'
 import type { AiGatewayService } from '../ai-gateway/ai-gateway.service'
@@ -156,21 +156,26 @@ function surveyGuide(domain: SurveyDomain, slots: Slots): Guidance {
 }
 
 export function guidanceEligible(raw: string, aliases?: readonly TeencodeAlias[], copilot?: CopilotIntent) {
-  if (isOffTopicPrompt(raw) || inspectForensicInput(raw, aliases).strippedControlSpans > 0) return false
+  const inspection = inspectForensicInput(raw, aliases)
+  if (isOffTopicPrompt(raw) || inspection.refuseDirect || inspection.hasIndirectInjection || inspection.strippedControlSpans > 0) return false
   const isCivilLimit = /\b(?:tran lai suat|dieu 468|lai suat dan su)\b/.test(normalizeVietnamese(raw))
   const checked = isCivilLimit ? raw.replace(/(?<![\d.,])20\s*%\s*(?:\/\s*năm)?/giu, ' ') : raw
   const remainder = checked.replace(amountToken, ' ').replace(termToken, ' ').replace(rateToken, ' ')
   const plain = expandTeencode(raw, aliases).normalized
   const termsOffered = copilot !== 'REFINANCE' && Boolean(checked.match(rateToken)) &&
     Boolean(checked.match(amountToken) || checked.match(termToken)) && !informationSeeking.test(plain)
-  const genericBankAllowed = copilot === 'RADAR' || copilot === 'REFINANCE'
-  const evidenceContext = genericBankAllowed ? plain.replace(/\bngan hang\b/g, ' ') : plain
-  return !hasConcreteFinancialEvidence(remainder, aliases) &&
-    !(copilot && /\b(?:ben cho vay|nguoi la|loi moi|tin nhan|chao moi|bao giai ngan)\b/.test(plain)) &&
-    !/\b(?:ngan hang|cong ty|to chuc|cong an|ke toan|shipper|dien luc|hai quan|sep|hop dong|hoa don|don hang|link la|duong dan|vneid|stk|so tai khoan|sdt|so dien thoai|phi giai ngan|loi 102|dong bang von|mao danh|gia mao|cam ket loi nhuan|yeu cau nop|chao lai|bao lai|bao phi|hen giai ngan|uy thac|bao loi|usdt|btc|eth|crypto)\b/.test(evidenceContext) &&
-    !termsOffered && !hasSuspiciousContext(plain) &&
-    !findInstitution(plain.replace(/^(?:ben|don vi|ten) /, ''), []) && !/\b(?:vay|gui tiet kiem|dau tu) (?:o|tai|tu|qua) \w/.test(plain) &&
-    !/\b(?:vietcombank|vietinbank|techcombank|agribank|bidv|mbbank|vpbank|fe credit|home credit|mcredit)\b/.test(plain)
+  const names = copilotBankCodes(plain)
+  const mentionsBank = names.length > 0 || /\bngan hang\b/.test(plain)
+  const personalPlan = !isAssertion(raw) || /\b(?:muon|can|du dinh|ke hoach|so sanh|tinh thu|mo phong|tu van)\b/.test(plain)
+  const bankPlanning = isPlanningIntent(copilot) && mentionsBank && (copilot === 'RADAR' || personalPlan)
+  if (hasConcreteFinancialEvidence(remainder, aliases) || termsOffered || hasSuspiciousContext(plain)) return false
+  if (copilot && /\b(?:ben cho vay|ben kia|nguoi la|loi moi|tin nhan|chao moi|bao giai ngan|nguoi nhan|nhan vien|tu xung|phi truoc|phi tra truoc(?! han\b)|phi thu truoc|thu phi truoc|tra truoc phi|phi mo khoa|phi xu ly ho so|phi giu lai|phi bao lanh|phi kich hoat|tien coc|dat coc|otp|gui ma xac thuc|doc ma xac thuc|qr|link|lai phang|ep mua bao hiem|ep bao hiem|yeu cau chuyen|chuyen vao|tai khoan ca nhan|mo khoa)\b/.test(plain)) return false
+  if (copilot && /\b(?:chuyen|nop|dong|tra|gui)\b.{0,60}\b(?:de(?: duoc)?|truoc khi) (?:giai ngan|nhan (?:tien|khoan vay)|mo khoa)\b/.test(plain)) return false
+  if (copilot !== 'RADAR' && bankPlanning && /\b(?:lua dao|scam|kiem tra giup|co uy tin khong)\b/.test(plain)) return false
+  if (/\b(?:cong ty|to chuc|cong an|ke toan|shipper|dien luc|hai quan|sep|hop dong|hoa don|don hang|link la|duong dan|vneid|stk|so tai khoan|sdt|so dien thoai|phi giai ngan|loi 102|dong bang von|mao danh|gia mao|cam ket loi nhuan|yeu cau nop|chao lai|bao lai|bao phi|hen giai ngan|uy thac|bao loi|usdt|btc|eth|crypto|fe credit|home credit|mcredit)\b/.test(plain)) return false
+  if (bankPlanning) return true
+  return !mentionsBank && !findInstitution(plain.replace(/^(?:ben|don vi|ten) /, ''), []) &&
+    !/\b(?:vay|gui tiet kiem|dau tu) (?:o|tai|tu|qua) \w/.test(plain)
 }
 
 const recoveryCheck = {
@@ -238,9 +243,12 @@ export async function routeForensicConversation(
   const education = educationGuide(rawText)
   const lookingUp = informationSeeking.test(plain)
   const remainder = rawText.replace(amountToken, ' ').replace(termToken, ' ').replace(rateToken, ' ')
-  const generalEducation = lookingUp && !hasConcreteFinancialEvidence(remainder, aliases) &&
-    !hasSuspiciousContext(expandTeencode(rawText, aliases).normalized)
-  const eligible = guidanceEligible(rawText, aliases) || generalEducation
+  const normalized = expandTeencode(rawText, aliases).normalized
+  const bankPlanning = toolIntent && isPlanningIntent(toolIntent) &&
+    (copilotBankCodes(normalized).length > 0 || /\bngan hang\b/.test(normalized))
+  const generalEducation = lookingUp && !bankPlanning &&
+    !hasConcreteFinancialEvidence(remainder, aliases) && !hasSuspiciousContext(normalized)
+  const eligible = guidanceEligible(rawText, aliases, toolIntent || undefined) || generalEducation
   if (!eligible) return null
   if (toolIntent !== 'LOAN' && profileQuestion.test(plain)) return guidance(profileGuide)
 

@@ -55,6 +55,7 @@ export function buildNarrativeInput(dossier: Dossier) {
 const Numeric = Decimal.clone({ precision: 40 })
 const multipliers: Record<string, string> = { tỷ: '1000000000', tỉ: '1000000000', triệu: '1000000', nghìn: '1000', ngàn: '1000' }
 const currencies = new Set(['usd', 'eur', 'jpy', 'gbp', 'cny', 'krw', 'thb', 'sgd', 'myr', 'usdt', 'btc', 'eth'])
+const writtenFigure = /\b(?:khong|mot|hai|ba|bon|nam|sau|bay|tam|chin|muoi|tram)(?: (?:khong|mot|hai|ba|bon|nam|lam|sau|bay|tam|chin|muoi|tram|linh|le|phay))* (?:phan tram|dong|trieu|ty|nghin|ngan|thang|ngay|tuan|nam|usd|eur)\b/
 const numberTokens = /(?<![\d.,])([+−-]?(?:\d{1,3}(?:[ .,\u00a0\u202f]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?))(?:[ \t]*(%|phần trăm|điểm(?: phần trăm)?|tháng|ngày|tuần|năm|lần|tỷ|tỉ|triệu|nghìn|ngàn|đồng|vnd|đ|₫|usd|eur|jpy|gbp|cny|krw|thb|sgd|myr|usdt|btc|eth)(?!\p{L}))?/giu
 const normalizeNumbers = (source: string) =>
   source.normalize('NFKC').toLowerCase()
@@ -69,17 +70,18 @@ function numberValue(raw: string, unit?: string) {
   return /^[+-]?\d+(?:\.\d+)?$/.test(decimal) ? new Numeric(decimal).mul(multipliers[unit ?? ''] ?? 1) : null
 }
 
-export function financialNumericGrounding(values: readonly unknown[], evidence: readonly string[] = []) {
-  const allowed = { money: new Set<string>(), rate: new Set<string>() }
+export function financialNumericGrounding(values: readonly unknown[], evidence: readonly string[] = [], options?: { allFigures?: boolean }) {
+  const allowed = { money: new Set<string>(), rate: new Set<string>(), figure: new Set<string>(), foreign: new Set<string>() }
   const add = (kind: keyof typeof allowed, value: Decimal) => {
     allowed[kind].add(value.toFixed())
     if (kind === 'rate') allowed.rate.add(value.toDecimalPlaces(2).toFixed())
   }
   const claims = (text: string) => Array.from(normalizeNumbers(text).matchAll(numberTokens)).flatMap(([, raw, unit]) => {
     const kind = unit === '%' || unit === 'phần trăm' || unit?.startsWith('điểm') ? 'rate'
-      : unit && (unit in multipliers || /^(?:đồng|vnd|đ|₫)$/.test(unit)) ? 'money' : undefined
-    const value = kind && numberValue(raw, unit)
-    return kind && value ? [{ kind, value } as const] : []
+      : unit && (unit in multipliers || /^(?:đồng|vnd|đ|₫)$/.test(unit)) ? 'money'
+        : options?.allFigures ? (currencies.has(unit ?? '') ? 'foreign' : 'figure') : undefined
+    const value = numberValue(raw, unit)
+    return kind && (value || options?.allFigures) ? [{ kind, value } as const] : []
   })
   const collect = (record: unknown) => {
     if (!record || typeof record !== 'object') return
@@ -88,13 +90,16 @@ export function financialNumericGrounding(values: readonly unknown[], evidence: 
       else if (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value)) {
         if (/Vnd$/.test(key)) add('money', new Numeric(value))
         if (/Pct$/.test(key)) add('rate', new Numeric(value))
+      } else if (options?.allFigures && typeof value === 'number' && Number.isSafeInteger(value)) {
+        add('figure', new Numeric(value))
       }
     }
   }
   values.forEach(collect)
-  for (const text of evidence) for (const { kind, value } of claims(text)) add(kind, value)
+  for (const text of evidence) for (const { kind, value } of claims(text)) if (value) add(kind, value)
   return (text: string) => !/\b(?:mot|hai|ba|bon|nam|sau|bay|tam|chin|muoi|tram)(?: (?:mot|hai|ba|bon|nam|lam|sau|bay|tam|chin|muoi|tram|linh|le))* (?:trieu|ty|nghin|ngan|phan tram)\b/.test(normalizeVietnamese(text)) &&
-    claims(text).every(({ kind, value }) => allowed[kind].has(value.toFixed()))
+    (!options?.allFigures || (!/[$€£]/u.test(text) && !writtenFigure.test(normalizeVietnamese(text)))) &&
+    claims(text).every(({ kind, value }) => value && allowed[kind].has(value.toFixed()))
 }
 
 export function contradictsHighRisk(text: string) {

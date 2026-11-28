@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js'
 import type { FinancialHealthRequest, ForensicAuditResponse, ForensicFollowUpRequest, ForensicFollowUpResponse } from '@fincopilot/shared-types'
+import { copilotIntent, isPlanningIntent, type SurveyDomain } from './copilot-input'
 import { normalizeVietnamese } from './data/trusted-institutions'
 import { educationGuide, emergencyGuide, guidanceEligible, isSmalltalkAck, surveyDomain } from './forensic-conversation'
 import { buildForensicDossier, financialNumericGrounding, followUpAnchor } from './forensic-narrative'
@@ -7,7 +8,7 @@ import { evaluateHardRules, parseVnd } from './hard-rules.engine'
 import { formatCaseAmount } from './payment-qr-description'
 import { evaluatePersonalImpact } from './personal-impact.engine'
 import { maskForensicText } from './qr-evidence'
-import { assistantIntro, isOffTopicPrompt, shouldRefuseForensicPrompt, type TeencodeAlias } from './forensic-prompt-guard'
+import { assistantIntro, expandTeencode, isOffTopicPrompt, shouldRefuseForensicPrompt, type TeencodeAlias } from './forensic-prompt-guard'
 
 type Intent = NonNullable<ForensicFollowUpResponse['meta']['intent']>
 const vnd = /(?<![\p{L}\d.,])(\d+(?:[., ]\d+){0,5})\s*(triệu|tr|tỷ|tỉ|nghìn|ngàn|k|đồng|vnd|vnđ|đ|₫)(?![\p{L}\d])/giu
@@ -70,6 +71,7 @@ export function recheckFollowUpContext(question: string, audit: ForensicAuditRes
   const largeTransfer = amountVnd !== null && new Decimal(amountVnd).gte(10_000_000)
   return {
     amountVnd, purposeText: purposeText ? maskForensicText(purposeText) : null, personalImpact, riskFindings, largeTransfer,
+    hasFraudSignal: foreign || additionalSignal || rules.findings.length > 0,
     hasNewMaterialRisk: largeTransfer || foreign || additionalSignal || riskFindings.length > 0 ||
       (personalImpact !== null && personalImpact.status !== 'WITHIN_BUDGET'),
   }
@@ -80,6 +82,17 @@ const directAnswers = {
   ACK: 'Rất vui được hỗ trợ bạn. Nếu có thêm ảnh chụp, số tiền cụ thể hoặc điều khoản mới từ bên kia, bạn cứ gửi vào đây để mình kiểm tra giúp nhé.',
   OFF_TOPIC: 'Mình là trợ lý giám định rủi ro và tài chính cá nhân FinCopilot, nên mình chỉ hỗ trợ phân tích giao dịch, mã QR, hợp đồng và các bước bảo vệ tiền của bạn. Bạn muốn hỏi thêm chi tiết nào trong báo cáo vừa rồi không?',
   NEEDS_DETAILS: 'Bạn muốn vay, đầu tư hay tích lũy trong bao lâu? Bạn có thể mở Khảo sát để mô phỏng theo số tiền và kỳ hạn hoặc gửi điều khoản mới để mình đối chiếu.',
+}
+
+export function followUpTool(question: string, audit: ForensicAuditResponse, aliases?: readonly TeencodeAlias[]) {
+  const intent = copilotIntent(question)
+  if (!isPlanningIntent(intent) || !guidanceEligible(question, aliases, intent)) return
+  const plain = expandTeencode(question, aliases).normalized
+  const context = recheckFollowUpContext(question, audit, null)
+  if (context.hasFraudSignal || newDemand.test(plain) || explicitSignal.test(plain) || newCue.test(plain) ||
+    /\b(?:chuyen khoan(?! vay\b)|chuyen tien|gui tien|nap tien|thanh toan|chuyen vao|chuyen them|chuyen ho|chuyen gium|chuyen giup|tai khoan ca nhan)\b/.test(plain)) return
+  const domain: SurveyDomain | undefined = intent === 'LOAN' || intent === 'INVEST' || intent === 'SAVINGS' ? intent : undefined
+  return { rawText: question, slots: {}, ...(domain && { domain }) }
 }
 
 export function prepareFollowUp(audit: ForensicAuditResponse, input: ForensicFollowUpRequest, profile: FinancialHealthRequest | null, aliases?: readonly TeencodeAlias[]) {
@@ -99,7 +112,11 @@ export function prepareFollowUp(audit: ForensicAuditResponse, input: ForensicFol
     newContext.largeTransfer ? 'Với khoản tiền lớn này, hãy kiểm tra yêu cầu xác thực sinh trắc học và hạn mức trong ứng dụng ngân hàng chính thức.' : '',
     ...newContext.riskFindings.map(({ title }) => title + '.'),
   ].filter(Boolean).join(' ')
-  const prefix = [contextGuidance, highRisk ? followUpAnchor(audit) : ''].filter(Boolean).join('\n\n')
+  const anchor = highRisk ? followUpAnchor(audit) : ''
+  const header = 'Mức nguy hiểm cao (' + audit.riskScore + '/100).'
+  const seenAnchor = highRisk && input.history?.some(({ role, content }) =>
+    role === 'assistant' && content.split(/\n\s*\n/u).some(paragraph => paragraph.trimStart().startsWith(header)))
+  const prefix = [contextGuidance, !seenAnchor || newContext?.hasNewMaterialRisk ? anchor : ''].filter(Boolean).join('\n\n')
   const fallback = guard
     ? 'Nếu đã chuyển tiền, hãy gọi tổng đài chính thức của ngân hàng và giữ lại biên lai. Nếu chưa chuyển, hãy dừng lại để xác minh.'
     : 'Bạn có thể đối chiếu thông tin trên báo cáo với ứng dụng hoặc hỏi lại người nhận qua kênh chính thức.'
@@ -113,8 +130,8 @@ export function prepareFollowUp(audit: ForensicAuditResponse, input: ForensicFol
       text: JSON.stringify({
         task: newContext
           ? 'Trả lời trực tiếp câu hỏi về hồ sơ. Không lặp lại nguyên văn các con số tỷ lệ đã nêu ở đoạn đầu; tập trung hướng dẫn xác minh người nhận, chứng từ và bước xử lý an toàn.'
-          : 'Trả lời trực tiếp câu hỏi về hồ sơ. Dùng phần đối chiếu mới nếu có và chỉ dẫn cách xác minh.',
-        dossier: buildForensicDossier(audit), question, newContext, hasNewMaterialRisk: newContext?.hasNewMaterialRisk ?? false,
+          : 'Trả lời trực tiếp câu hỏi về hồ sơ. Dùng phần đối chiếu mới nếu có và chỉ dẫn cách xác minh. Tránh lặp điểm rủi ro đã nêu trong lịch sử.',
+        dossier: buildForensicDossier(audit), question, newContext: newContext && { ...newContext, hasFraudSignal: undefined }, hasNewMaterialRisk: newContext?.hasNewMaterialRisk ?? false,
         history: input.history?.map(({ role, content }) => ({ role, content: maskForensicText(content) })),
       }),
     },

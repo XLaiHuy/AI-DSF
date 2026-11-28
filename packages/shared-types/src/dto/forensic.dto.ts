@@ -372,6 +372,9 @@ export const ForensicFollowUpRequestSchema = z.strictObject({
 })
 export const ForensicFollowUpResponseSchema = z.strictObject({
   answer: z.string(),
+  toolTrace: z.array(CopilotToolTraceItemSchema).max(3).optional(),
+  richCard: CopilotRichCardSchema.optional(),
+  cta: ForensicGuidanceSchema.shape.cta,
   meta: z.strictObject({
     llmProvider: z.string().nullable(),
     degradedMode: z.boolean(),

@@ -139,14 +139,18 @@ export class AiGatewayService implements IAiGatewayService {
     taskType: T,
     schema: z.ZodType<AiTaskOutput<T>>,
     payload: unknown,
+    options?: { signal?: AbortSignal; onProvider?: (provider: string) => void },
   ): Promise<AiTaskOutput<T>> {
-    return (await this.generateWithProvider(taskType, schema, toInput(payload))).output
+    const result = await this.generateWithProvider(taskType, schema, toInput(payload), options?.signal)
+    options?.onProvider?.(result.provider)
+    return result.output
   }
 
   async generateWithProvider<Output>(
     taskType: AiTaskType,
     schema: z.ZodType<Output>,
     input: AiInput,
+    signal?: AbortSignal,
   ): Promise<{ output: Output; provider: string }> {
     const enabled = enabledProviders(this.env)
     const deadline = taskType === 'FORENSIC_CONVERSATION_GUIDE' ? Date.now() + 5000 : null
@@ -155,9 +159,10 @@ export class AiGatewayService implements IAiGatewayService {
     const boundary = wrapUntrustedPayload(input)
     for (const route of modelRoutes(taskType, this.config.get('aiRouting'), this.env)) {
       if (!enabled.has(route.provider)) continue
+      signal?.throwIfAborted()
       if (deadline && Date.now() >= deadline) break
       const output = await this.tryRoute(
-        route, schema, instructions[taskType] + ' ' + boundary.system, boundary.payload, deadline ? Math.max(1, deadline - Date.now()) : timeout, thinkingLevel,
+        route, schema, instructions[taskType] + ' ' + boundary.system, boundary.payload, deadline ? Math.max(1, deadline - Date.now()) : timeout, thinkingLevel, signal,
       )
       if (output !== null) return { output, provider: route.provider }
     }
@@ -230,10 +235,12 @@ export class AiGatewayService implements IAiGatewayService {
     input: AiInput,
     timeoutMs: number,
     thinkingLevel: ThinkingLevel,
+    parentSignal?: AbortSignal,
   ): Promise<Output | null> {
     const key = this.routeKey(route)
     if (!key) return null
-    const signal = AbortSignal.timeout(timeoutMs)
+    const timeout = AbortSignal.timeout(timeoutMs)
+    const signal = parentSignal ? AbortSignal.any([parentSignal, timeout]) : timeout
     try {
       return await requestObject(route, key, schema, instruction, input, signal, thinkingLevel)
     } catch (error) {

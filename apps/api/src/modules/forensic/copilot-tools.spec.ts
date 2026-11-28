@@ -43,6 +43,7 @@ function setup() {
   }
   const survey = new SurveyCalcService(prisma as unknown as PrismaService, ai as unknown as AiGatewayService)
   const tools = new CopilotToolsService(survey, prisma as unknown as PrismaService)
+  const voiced = new CopilotToolsService(survey, prisma as unknown as PrismaService, ai as unknown as AiGatewayService)
   const route = (rawText: string) => routeForensicConversation({ rawText }, false, ai, undefined, undefined,
     args => tools.planAndExecute({ ...args, session }))
   const run = async (text: string) => {
@@ -55,10 +56,159 @@ function setup() {
     for (const item of result.toolTrace ?? []) expect(item.durationMs).toBeGreaterThanOrEqual(0)
     return result
   }
-  return { prisma, survey, tools, run, ai, taxonomy, publishedAt }
+  return { prisma, survey, tools, voiced, route, run, ai, taxonomy, publishedAt }
 }
 
+const voicedQuestion = 'Vay 100 triệu ở VPBank trong 36 tháng trả bao nhiêu?'
+const voiceInput = { rawText: voicedQuestion, session, slots: {} }
+const goodVoice = { summary: 'Với khoản vay 100 triệu đồng trong 36 tháng, chi phí vay mỗi năm là 12%.',
+  tradeoffs: ['Bạn nên so tổng lãi và phí trước khi chọn kỳ hạn.'] }
+
 describe('Verified Copilot tools', () => {
+  it.each([
+    ['Vay 100 triệu ở VPBank trong 36 tháng trả bao nhiêu?', ['VPB']],
+    ['VAY 100 TRIEU TAI VP BANK TRONG 36 THANG TRA BAO NHIEU', ['VPB']],
+    ['Mình muốn vay 100.000.000 đ trong 36 tháng tại ngân hàng VPBank', ['VPB']],
+    ['So sánh vay 100 triệu ở ACB và VPBank trong 36 tháng giúp mình', ['VPB', 'ACB']],
+    ['Vay 100 triệu tại VIB kỳ hạn 36 tháng, tính thử giúp tôi', ['VIB']],
+    ['Vay 100 triệu ở TPBank trong 3 năm mỗi tháng trả bao nhiêu?', ['TPB']],
+    ['Vay 100 triệu tại ngân hàng trong 36 tháng có ổn không?', []],
+  ])('looks up the correct licensed banks for %s', async (question, codes) => {
+    const { run, prisma } = setup()
+    prisma.financialProduct.findMany.mockResolvedValue([{ ...bank, institution: { name: 'VPBank' } }])
+    const result = await run(question)
+    expect(result.toolTrace?.at(-1)?.tool).toBe('LOAN_SURVEY')
+    expect(result.richCard).toMatchObject({ kind: 'LOAN_PLAN', principalVnd: '100000000', termMonths: 36 })
+    const selection = prisma.financialProduct.findMany.mock.calls[0][0].where.institution
+    expect(selection).toMatchObject({ institutionType: 'BANK', trustStatus: 'LICENSED', licenseIssuer: 'NHNN' })
+    expect(selection.code).toEqual(codes.length ? { in: codes } : undefined)
+  })
+
+  it.each([
+    'Nhân viên VPBank gọi đòi đóng phí giải ngân 2 triệu để nhận vay 100 triệu',
+    'Vay 100 triệu ở VPBank trong 36 tháng, trả trước phí 2 triệu có ổn không?',
+    'Vay 100 triệu ở VPBank trong 36 tháng, họ yêu cầu trả phí xử lý hồ sơ trước?',
+    'Vay 100 triệu ở VPBank trong 36 tháng, có cần đóng 2 triệu để được giải ngân không?',
+    'Vay 100 triệu tại VPBank, phí trả trước 2 triệu trong kỳ hạn 36 tháng?',
+    'Vay 100 triệu ở VPBank trong 36 tháng, đọc mã xác thực cho họ có sao không?',
+    'Vay 100 triệu ở VPBank trong 36 tháng và phải đặt cọc 2 triệu?',
+    'Vay 100 triệu ở VPBank trong 36 tháng với lãi phẳng 2%/tháng?',
+    'Vay 100 triệu ở VPBank trong 36 tháng, lãi phẳng họ ghi là gì?',
+    'Vay 100 triệu ở ngân hàng trong 36 tháng, mã QR họ gửi nghĩa là gì?',
+    'Vay 100 triệu ở VPBank trong 36 tháng, khoản bị ép bảo hiểm là gì?',
+    'Vay 100 triệu ở VPBank trong 36 tháng nhưng bị ép mua bảo hiểm?',
+    'Vay 100 triệu ở VPBank trong 36 tháng, họ yêu cầu nộp thêm tiền.',
+    'Vay 100 triệu ở VPBank trong 36 tháng. Mở khóa lỗi 102 thế nào?',
+    'Vay 100 triệu ở VPBank trong 36 tháng, có người tự xưng nhân viên',
+    'Vay 100 triệu ở VPBank trong 36 tháng, yêu cầu gửi OTP?',
+    'Vay 100 triệu ở VPBank trong 36 tháng qua https://example.test',
+    'Vay 100 triệu ở VPBank trong 36 tháng, mã QR ở đây',
+    'Vay 100 triệu ở VPBank trong 36 tháng, chuyển vào tài khoản cá nhân',
+    'Vay 100 triệu ở VPBank trong 36 tháng. Kiểm tra hợp đồng giúp tôi.',
+    'Vay 100 triệu ở VPBank trong 36 tháng có phải gói giả mạo không?',
+    'VPBank cho vay 100 triệu trong 36 tháng.',
+    'Vay 100 triệu ở FE Credit trong 36 tháng, so với VPBank?',
+  ])('keeps suspicious or unverified bank evidence out of Copilot for %s', async (question) => {
+    const { prisma, route, ai } = setup()
+    expect(await route(question)).toBeNull()
+    expect(prisma.financialProduct.findMany).not.toHaveBeenCalled()
+    expect(ai.generateStructured).not.toHaveBeenCalled()
+  })
+
+  it('accepts natural synthesis grounded in the card and keeps original tool data', async () => {
+    const { ai, voiced, tools } = setup()
+    ai.generateStructured.mockImplementation(async (_task, _schema, _payload, options) => {
+      options.onProvider('openai')
+      return goodVoice
+    })
+    const onProvider = vi.fn()
+    const base = await tools.planAndExecute(voiceInput)
+    const result = await voiced.planAndExecute(voiceInput, { onProvider })
+    expect(result?.message).toBe(goodVoice.summary + ' ' + goodVoice.tradeoffs[0])
+    expect(result?.richCard).toMatchObject({ kind: 'LOAN_PLAN', principalVnd: '100000000', termMonths: 36 })
+    expect(result?.toolTrace?.map(item => item.tool)).toEqual(base?.toolTrace?.map(item => item.tool))
+    expect(onProvider).toHaveBeenCalledExactlyOnceWith('openai')
+    expect(ai.generateStructured).toHaveBeenCalledWith('SURVEY_EXPLAIN', expect.anything(), expect.objectContaining({
+      question: voicedQuestion, verified: expect.not.objectContaining({ openSurveyHref: expect.anything() }),
+    }), expect.objectContaining({ signal: expect.any(AbortSignal) }))
+  })
+
+  it.each([
+    'Lãi suất chính xác là 63,5%/năm.',
+    'Số tiền phải trả là 91 triệu đồng.',
+    'Số tiền phải trả là 91.000.000 ₫.',
+    'Chi phí là chín mươi triệu đồng.',
+    'Lãi suất mỗi năm là 63,5.',
+    'Kỳ hạn là 72 tháng.',
+    'Mỗi kỳ phải trả 91.000.000.',
+    'Khoản phí là 91 USD.',
+    'Tỷ lệ là ba mươi phần trăm.',
+    'Chi phí vay là một phẩy hai phần trăm.',
+    'Kỳ hạn là bảy mươi hai tháng.',
+    'Khoản tiền phải trả là 987,654,321.09 đồng.',
+    'Kết quả có trường monthlyPaymentFirstVnd.',
+    'Kết quả có mã monthly_payment_vnd.',
+    'Bạn có thể chuyển tiền ngay.',
+    'Bạn nên chuyển 100 triệu đồng ngay.',
+    'Bạn có thể nộp ngay 100 triệu đồng.',
+    'Bạn cứ cung cấp mã OTP.',
+    'Ngân hàng chắc chắn sẽ duyệt khoản vay.',
+    'Bạn hãy mở https://example.test để tiếp tục.',
+    'Kết quả có <strong>con số mới</strong>.',
+    'Bạn có thể chọn kỳ hạn. Bạn có thể chọn gói. Bạn có thể cân nhắc. Hãy kiểm tra một lần nữa.',
+  ])('retains the deterministic explanation if synthesis includes %s', async (sentence) => {
+    const { ai, voiced, tools } = setup()
+    ai.generateStructured.mockResolvedValue({ summary: goodVoice.summary, tradeoffs: [sentence] })
+    const onProvider = vi.fn()
+    const expected = await tools.planAndExecute(voiceInput)
+    const result = await voiced.planAndExecute(voiceInput, { onProvider })
+    expect(result?.message).toBe(expected?.message)
+    expect(result?.richCard).toMatchObject({ kind: 'LOAN_PLAN', topOffers: [expect.objectContaining({ effectiveAprPct: '12.0000' })] })
+    expect(onProvider).not.toHaveBeenCalled()
+  })
+
+  it('keeps contact details and navigation identifiers out of the model request', async () => {
+    const { ai, voiced } = setup()
+    ai.generateStructured.mockResolvedValue(goodVoice)
+    const result = await voiced.planAndExecute({ ...voiceInput, rawText: voicedQuestion + ' SĐT 0901234567.' })
+    const request = ai.generateStructured.mock.calls[0]?.[2]
+    expect(result?.richCard?.kind).toBe('LOAN_PLAN')
+    expect(request).toMatchObject({ question: expect.stringContaining('090****567') })
+    expect(JSON.stringify(request)).not.toMatch(/0901234567|sessionId|openSurveyHref/)
+  })
+
+  it('returns the same result when the model is offline', async () => {
+    const { voiced, tools } = setup()
+    expect((await voiced.planAndExecute(voiceInput))?.message).toBe((await tools.planAndExecute(voiceInput))?.message)
+  })
+
+  it('falls back at six seconds even when the model ignores abort', async () => {
+    const { ai, voiced } = setup()
+    vi.useFakeTimers()
+    try {
+      ai.generateStructured.mockImplementation(() => new Promise(() => undefined))
+      const result = voiced.planAndExecute(voiceInput)
+      await vi.advanceTimersByTimeAsync(0)
+      const options = ai.generateStructured.mock.calls[0]?.[3]
+      expect(options?.signal?.aborted).toBe(false)
+      await vi.advanceTimersByTimeAsync(6_000)
+      expect(options?.signal?.aborted).toBe(true)
+      expect((await result)?.richCard?.kind).toBe('LOAN_PLAN')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancels the model after caller abort without discarding the verified result', async () => {
+    const { ai, voiced } = setup()
+    ai.generateStructured.mockImplementation(() => new Promise(() => undefined))
+    const controller = new AbortController()
+    const result = voiced.planAndExecute(voiceInput, { signal: controller.signal })
+    await vi.waitFor(() => expect(ai.generateStructured).toHaveBeenCalled())
+    controller.abort()
+    expect((await result)?.richCard?.kind).toBe('LOAN_PLAN')
+  })
+
   it('loads the profile before ranking loans and uses stated cash flow without saving raw overrides', async () => {
     const { prisma, survey, run } = setup()
     const loan = vi.spyOn(survey, 'loan')
