@@ -1,71 +1,93 @@
 'use client'
 
 import type { SurveyInvestResponse } from '@fincopilot/shared-types'
-import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts'
+import Decimal from 'decimal.js'
+import { useState } from 'react'
+import { Area, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
+import { Button } from '@/components/ui'
+import { formatInvestmentReturn } from '@/lib/financial-format'
 import { formatVnd } from '@/lib/workspace-data'
 import { ChartCard } from './ChartCard'
 import { chartAxis, chartColors, chartTooltip, compactValue, FinancialChartFrame } from './FinancialChartFrame'
 
 type Offer = SurveyInvestResponse['offers'][number]
 type Point = NonNullable<Offer['projection']>[number]
-type Series = { key: string; label: string; color: string; dashed?: boolean; values: ReadonlyMap<number, string> }
+const channels = [
+  { key: 'saving', label: 'Tiết kiệm', color: chartColors.navy, category: 'SAVING' },
+  { key: 'accumulation', label: 'Tích lũy', color: chartColors.amber, category: 'ACCUMULATION' },
+  { key: 'fund', label: 'Quỹ mở', color: chartColors.green, category: 'OPEN_FUND' },
+  { key: 'contributed', label: 'Vốn tự đóng', color: chartColors.slate, category: undefined },
+] as const
+type Channel = typeof channels[number]['key']
 
 export function InvestmentGrowthChart({ offers, initial, term }: { offers: readonly Offer[]; initial: string; term: number }) {
+  const [hidden, setHidden] = useState<Partial<Record<Channel, boolean>>>({})
   if (!offers.length) return null
   const projection = (offer: Offer): Point[] => offer.projection?.length ? offer.projection : [
-    { month: 0, contributedVnd: initial, baseVnd: initial },
+    { month: 0, contributedVnd: initial, baseVnd: initial, conservativeVnd: initial, optimisticVnd: initial },
     { month: term, contributedVnd: offer.scenario.totalContributedVnd, baseVnd: offer.scenario.netValueVnd,
       conservativeVnd: offer.scenarios?.conservative.netValueVnd, optimisticVnd: offer.scenarios?.optimistic.netValueVnd },
   ]
-  const series: Series[] = []
-  const add = (key: string, label: string, color: string, points: Point[], field: Exclude<keyof Point, 'month'>, dashed = false) => {
-    const values = new Map(points.flatMap((point) => {
-      const value = point[field] ?? (point.month === 0 ? initial : undefined)
-      return value === undefined ? [] : [[point.month, value] as const]
-    }))
-    series.push({ key, label, color, values, dashed })
-  }
-  add('contributed', 'Vốn tự đóng', chartColors.slate, projection(offers[0]), 'contributedVnd', true)
-  const saving = offers.find(({ productCategory }) => productCategory === 'SAVING')
-  const accumulation = offers.find(({ productCategory }) => productCategory === 'ACCUMULATION')
-  const fund = offers.find(({ productCategory }) => productCategory === 'OPEN_FUND')
-  if (saving) add('saving', 'Tiết kiệm', chartColors.navy, projection(saving), 'baseVnd')
-  if (accumulation) add('accumulation', 'Tích lũy', chartColors.ink, projection(accumulation), 'baseVnd')
-  if (fund) {
-    const points = projection(fund)
-    if (fund.scenarios) add('conservative', 'Quỹ mở · Thận trọng', chartColors.amber, points, 'conservativeVnd')
-    add('fund', 'Quỹ mở · Cơ sở', chartColors.green, points, 'baseVnd')
-    if (fund.scenarios) add('optimistic', 'Quỹ mở · Tích cực', chartColors.red, points, 'optimisticVnd')
-  }
-  const months = [...new Set(series.flatMap(({ values }) => [...values.keys()]))].sort((a, b) => a - b)
-  const points = months.map((month) => ({
-    month, ...Object.fromEntries(series.flatMap(({ key, values }) => values.has(month) ? [[key, Number(values.get(month))]] : [])),
+  const series = channels.flatMap(channel => {
+    const offer = channel.category ? offers.find(item => item.productCategory === channel.category) : offers[0]
+    if (!offer) return []
+    const points = projection(offer)
+    const values = new Map(points.map(point => [point.month, channel.category ? point.baseVnd : point.contributedVnd]))
+    return [{ ...channel, values, scenario: offer.scenario,
+      range: channel.key === 'fund' && offer.scenarios ? new Map(points.flatMap(point =>
+        point.conservativeVnd != null && point.optimisticVnd != null
+          ? [[point.month, [Number(point.conservativeVnd), Number(point.optimisticVnd)]] as const] : [])) : undefined }]
+  })
+  const visible = series.filter(({ key }) => !hidden[key])
+  const range = visible.find(({ key }) => key === 'fund')?.range
+  const months = [...new Set(visible.flatMap(({ values }) => [...values.keys()]))].sort((a, b) => a - b)
+  // The chart uses numeric coordinates. The tooltip and KPI use the original decimal strings.
+  const points = months.map(month => ({
+    month, range: range?.get(month),
+    ...Object.fromEntries(visible.flatMap(({ key, values }) => values.has(month) ? [[key, Number(values.get(month))]] : [])),
   }))
+
   return <ChartCard title="Dự phóng tăng trưởng tài sản" unit="VNĐ" className="min-w-0"
-    subtitle="Giá trị ròng theo thời gian của phương án đầu tiên mỗi nhóm. Kịch bản quỹ mở thay đổi theo lợi suất NAV.">
-    <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-      <FinancialChartFrame height={255}>
-        <LineChart data={points} accessibilityLayer margin={{ top: 8, right: 16, left: 0, bottom: 3 }}>
-          <CartesianGrid vertical={false} stroke={chartColors.grid} />
-          <XAxis dataKey="month" type="number" domain={[0, term]} tickFormatter={(month: number) => 'T' + month}
-            tick={chartAxis} tickLine={false} minTickGap={20} />
-          <YAxis tick={chartAxis} tickLine={false} axisLine={false} tickFormatter={compactValue} width={55} />
-          <Tooltip contentStyle={chartTooltip} labelFormatter={(month) => 'Tháng ' + month}
-            formatter={(value, name, item) => {
-              const original = series.find(({ label }) => label === name)?.values.get(Number(item.payload?.month))
-              return [formatVnd(original ?? String(value ?? '0')), name]
-            }} />
-          {series.map(({ key, label, color, dashed }) => <Line key={key} name={label} dataKey={key} stroke={color}
-            strokeWidth={1.75} strokeDasharray={dashed ? '5 3' : undefined}
-            dot={false} connectNulls isAnimationActive={false} />)}
-        </LineChart>
-      </FinancialChartFrame>
-      <dl className="flex min-w-0 flex-wrap gap-2 lg:max-w-40 lg:flex-col lg:justify-center">
-        {series.map(({ key, label, values, color }) => <div key={key} className="min-w-0 rounded border px-2 py-1" style={{ borderColor: color }}>
-          <dt className="text-[11px] font-medium" style={{ color }}>{label}</dt>
-          <dd className="text-xs font-semibold tabular-nums [overflow-wrap:anywhere]">{formatVnd(values.get(term) ?? '0')}</dd>
-        </div>)}
-      </dl>
+    subtitle="Vùng tô của quỹ mở thể hiện khoảng từ kịch bản thận trọng đến tích cực.">
+    <div className="flex flex-wrap gap-2" role="group" aria-label="Kênh trên biểu đồ">
+      {series.map(({ key, label, color }) => <Button key={key} size="sm" type="button"
+        variant={hidden[key] ? 'ghost' : 'outline'} aria-pressed={!hidden[key]} className="rounded-full"
+        onClick={() => setHidden(old => ({ ...old, [key]: !old[key] }))}>
+        <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: color, opacity: hidden[key] ? 0.4 : 1 }} />
+        {label}
+      </Button>)}
     </div>
+    {visible.length ? <FinancialChartFrame height={255}>
+      <ComposedChart data={points} accessibilityLayer margin={{ top: 8, right: 16, left: 0, bottom: 3 }}>
+        <CartesianGrid vertical={false} stroke={chartColors.grid} />
+        <XAxis dataKey="month" type="number" domain={[0, term]} tickFormatter={(month: number) => 'T' + month}
+          tick={chartAxis} tickLine={false} minTickGap={20} />
+        <YAxis tick={chartAxis} tickLine={false} axisLine={false} tickFormatter={compactValue} width={55} />
+        <Tooltip cursor={{ stroke: '#94a3b8', strokeDasharray: '3 3' }} content={({ active, label }) => {
+          if (!active || label == null) return null
+          const rows = visible.flatMap(({ values, label: name, color }) => {
+            const value = values.get(Number(label))
+            return value == null ? [] : [{ name, color, value }]
+          }).sort((a, b) => new Decimal(b.value).cmp(a.value))
+          return <div className="max-w-48 rounded-md border p-2" style={chartTooltip}>
+            <p className="mb-1 font-semibold">Tháng {label}</p>
+            <ul className="space-y-1">{rows.map(({ name, color, value }) => <li key={name} style={{ color }}>
+              {name} · <strong>{formatVnd(value)}</strong>
+            </li>)}</ul>
+          </div>
+        }} />
+        {range && <Area name="Kịch bản quỹ mở" dataKey="range" stroke="none" fill={chartColors.green} fillOpacity={0.14} isAnimationActive={false} />}
+        {visible.map(({ key, label, color }) => <Line key={key} name={label} dataKey={key} stroke={color}
+          strokeWidth={key === 'fund' ? 2.25 : 2} strokeDasharray={key === 'contributed' ? '5 3' : undefined}
+          dot={false} connectNulls isAnimationActive={false} />)}
+      </ComposedChart>
+    </FinancialChartFrame> : <p className="py-12 text-center text-sm text-muted-foreground">Bật một kênh để xem đường tăng trưởng.</p>}
+    <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {series.map(({ key, label, values, color, scenario }) => <div key={key} className="min-w-0 rounded-lg bg-muted/60 p-2.5">
+        <dt className="text-xs font-semibold" style={{ color }}>{label}</dt>
+        <dd className="mt-1 text-sm font-bold tabular-nums [overflow-wrap:anywhere]">{formatVnd(values.get(term))}</dd>
+        <dd className="text-xs text-muted-foreground">{key === 'contributed' ? 'Vốn gốc' : formatInvestmentReturn(scenario.netProfitVnd, scenario.totalContributedVnd)}</dd>
+      </div>)}
+    </dl>
   </ChartCard>
 }

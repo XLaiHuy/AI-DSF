@@ -141,6 +141,12 @@ export function effectiveLoanApr(principalNet: Decimal.Value, schedule: readonly
   return pct(low.add(high).mul(600))
 }
 
+/** Effective annual interest rate when the nominal APR compounds monthly. */
+export function effectiveLoanEarFromApr(effectiveAprPct: Decimal.Value): string {
+  const monthly = new Decimal(effectiveAprPct).div(1200)
+  return pct(monthly.plus(1).pow(12).minus(1).times(100))
+}
+
 /** Pays the scheduled installment first, then closes the outstanding balance that month. */
 export function simulateEarlySettlement(
   principalNet: Decimal.Value, schedule: readonly ScheduleRow[], settleAtMonth: number, feePct: Decimal.Value,

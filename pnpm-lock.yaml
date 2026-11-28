@@ -141,6 +141,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@fincopilot/financial-math':
+        specifier: workspace:*
+        version: link:../../packages/financial-math
       '@fincopilot/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
@@ -153,6 +156,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      decimal.js:
+        specifier: ^10.6.0
+        version: 10.6.0
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@19.3.1)

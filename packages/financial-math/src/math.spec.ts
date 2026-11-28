@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { amortizeLoan, assessDti, compoundDca, decliningPrincipalLoan, effectiveLoanApr, flatRateLoan, openFundScenarioBands, reducingBalanceLoan, simulateEarlySettlement, simulateRefinanceBreakEven, summarizeAmortizationForChart } from './index'
+import { amortizeLoan, assessDti, compoundDca, decliningPrincipalLoan, effectiveLoanApr, effectiveLoanEarFromApr, flatRateLoan, openFundScenarioBands, reducingBalanceLoan, simulateEarlySettlement, simulateRefinanceBreakEven, summarizeAmortizationForChart } from './index'
+
+describe('effective annual rate from monthly compounding', () => {
+  it.each([
+    ['0', '0.0000'],
+    ['12', '12.6825'],
+    ['14.5', '15.5035'],
+    ['16', '17.2271'],
+    ['0.00005', '0.0001'],
+  ])('converts %s%% nominal APR to %s%% EAR', (apr, expected) => {
+    expect(effectiveLoanEarFromApr(apr)).toBe(expected)
+  })
+})
 
 describe('Refinance with Decimal cash flows', () => {
   const contract = {

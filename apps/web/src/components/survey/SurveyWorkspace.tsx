@@ -5,6 +5,7 @@ import {
   handoffRoutes, LoanUseCase, ManualCompareRequestSchema, ManualCompareResponseSchema, SurveyInvestResponseSchema, SurveyLoanResponseSchema,
   SurveySessionDetailResponseSchema, SurveyTermMonthsSchema, type SurveyLoanRequest, type parseSurveyHandoff,
 } from '@fincopilot/shared-types'
+import Decimal from 'decimal.js'
 import { AlertTriangle, Calculator, Loader2, ShieldCheck } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
@@ -13,6 +14,7 @@ import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitl
 import { stripSpacedAmount } from '@/components/ui/money-input'
 import { validChartAmount } from '@/components/charts/chart-math'
 import { apiClient, ApiError } from '@/lib/api-client'
+import { formatInvestmentReturn, formatRate } from '@/lib/financial-format'
 import { formatVnd, profileQuery, surveyHistoryQuery } from '@/lib/workspace-data'
 import { decimal, Field, fieldStyle, manualDraft, manualInput, ManualOfferFields, methodLabels, MoneyField } from './SurveyFields'
 
@@ -28,6 +30,19 @@ type Handoff = ReturnType<typeof parseSurveyHandoff>
 const tabs = [
   ['loan', 'Khảo sát vay'], ['invest', 'Đầu tư / tích lũy'], ['manual', 'Tự nhập so sánh'], ['refinance', 'Đổi khoản vay / Đảo nợ'],
 ] as const
+const manualPresets = [
+  {
+    label: 'So sánh Dư nợ giảm dần 14,5% vs Lãi phẳng 12% + phí 1 tr',
+    offers: [manualDraft(0), { ...manualDraft(1), annualRatePct: '12', calcMethod: 'FLAT_RATE' as const, upfrontFeeVnd: '1000000' }],
+  },
+  {
+    label: 'Cố định 9% vs Ưu đãi 6,5% rồi thả nổi 11%',
+    offers: [
+      { ...manualDraft(0), principalVnd: '500000000', termMonths: '120', annualRatePct: '9' },
+      { ...manualDraft(1), principalVnd: '500000000', termMonths: '120', annualRatePct: '6.5', promoMonths: '12', floatingRatePct: '11' },
+    ],
+  },
+]
 const priorities: Record<SurveyLoanRequest['priority'], string> = {
   LOWEST_APR: 'APR thấp nhất',
   LOWEST_MONTHLY_PAYMENT: 'Trả tháng thấp nhất',
@@ -304,6 +319,11 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
                 <Field id="survey-invest-term" label="Thời gian (tháng)" value={form.invest} onChange={(v) => set('invest', v)} term />
               </>}
               {tab === 'manual' && <>
+                <div className="flex flex-wrap gap-2 sm:col-span-2" role="group" aria-label="Mẫu so sánh khoản vay">
+                  {manualPresets.map(preset => <Button key={preset.label} type="button" variant="outline" size="sm"
+                    className="h-auto min-h-9 max-w-full justify-start whitespace-normal text-left"
+                    onClick={() => setManualOffers(preset.offers)}>{preset.label}</Button>)}
+                </div>
                 {manualOffers.map((item) => <ManualOfferFields key={item.id} item={item}
                   onChange={(updated) => setManualOffers((old) => old.map((offer) => offer.id === updated.id ? updated : offer))}
                   onRemove={manualOffers.length > 2 ? () => setManualOffers((old) => old.filter(({ id }) => id !== item.id)) : undefined} />)}
@@ -466,19 +486,49 @@ function InvestmentResults({ result, filter }: { result: Extract<Result, { tab: 
   return <div className="min-w-0 space-y-4">
     <InvestmentGrowthChart offers={offers} initial={initial} term={term} />
     <Card><CardHeader><CardTitle>So sánh đầu tư và tích lũy</CardTitle></CardHeader>
-      <CardContent className="space-y-3">{offers.map(({ productId, productName, productCategory, sourceLabel, sourceUrl, scenario, scenarios }) =>
+      <CardContent className="min-w-0 space-y-3">
+        <div className="max-w-full overflow-x-auto rounded-lg border border-border focus-visible:outline-primary"
+          role="region" aria-labelledby="investment-table-caption" tabIndex={0}>
+          <table className="w-full min-w-[42rem] border-collapse text-left text-xs tabular-nums">
+            <caption id="investment-table-caption" className="bg-muted px-3 py-2 text-left font-semibold">So sánh nhanh các kênh</caption>
+            <thead className="border-b border-border bg-muted/60 text-muted-foreground"><tr>
+              {['Kênh & Tổ chức', 'Lãi kỳ vọng', 'Vốn tự đóng', 'Phí & Thuế', 'Lãi ròng (+%)', 'Giá trị cuối kỳ'].map(label =>
+                <th key={label} scope="col" className="px-3 py-2 font-semibold">{label}</th>)}
+            </tr></thead>
+            <tbody className="divide-y divide-border">
+              {offers.map(({ productId, institutionName, productCategory, scenario }) => <tr key={productId}>
+                <th scope="row" className="px-3 py-2 font-medium">{investmentLabels[productCategory]}<span className="block text-muted-foreground">{institutionName}</span></th>
+                <td className="whitespace-nowrap px-3 py-2">{formatRate(scenario.annualReturnPct)}/năm</td>
+                <td className="whitespace-nowrap px-3 py-2">{formatVnd(scenario.totalContributedVnd)}</td>
+                <td className="whitespace-nowrap px-3 py-2">{formatVnd(new Decimal(scenario.sellFeeVnd).plus(scenario.taxVnd).toFixed())}</td>
+                <td className="whitespace-nowrap px-3 py-2">{formatVnd(scenario.netProfitVnd)}
+                  <span className="block text-muted-foreground">{formatInvestmentReturn(scenario.netProfitVnd, scenario.totalContributedVnd)}</span></td>
+                <td className="whitespace-nowrap px-3 py-2 font-semibold">{formatVnd(scenario.netValueVnd)}</td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>
+        {offers.map(({ productId, productName, productCategory, sourceLabel, sourceUrl, scenario, scenarios }) =>
         <article key={productId} className="space-y-3 rounded-xl border p-4">
           <Badge variant="outline">{investmentLabels[productCategory]}</Badge>
           <h3 className="font-semibold">{productName} · {percent(scenario.annualReturnPct)}%/năm</h3>
           <dl className="grid gap-2 sm:grid-cols-3">
             <Metric label="Tiền mình góp" value={formatVnd(scenario.totalContributedVnd)} />
-            <Metric label="Lãi ròng" value={formatVnd(scenario.netProfitVnd)} />
-            <div><dt className="text-sm">Giá trị ròng cuối kỳ</dt><dd className="text-2xl font-bold text-primary">{formatVnd(scenario.netValueVnd)}</dd></div>
+            <Metric label={'Lãi ròng (' + formatInvestmentReturn(scenario.netProfitVnd, scenario.totalContributedVnd) + ')'}
+              value={formatVnd(scenario.netProfitVnd)} />
+            <Metric label="Giá trị ròng cuối kỳ" value={formatVnd(scenario.netValueVnd)} />
           </dl>
-          {scenarios && <dl className="grid gap-2 sm:grid-cols-3" aria-label="Ba kịch bản quỹ mở">
-            {scenarioLabels.map(([key, label]) => <Metric key={key}
-              label={label + ' · ' + percent(scenarios[key].annualReturnPct) + '%/năm'}
-              value={formatVnd(scenarios[key].netValueVnd)} />)}
+          <p className="text-xs text-muted-foreground">{new Decimal(scenario.sellFeeVnd).plus(scenario.taxVnd).isZero()
+            ? 'Phí & thuế: 0 đ' : <>Phí bán {formatVnd(scenario.sellFeeVnd)} · Thuế {formatVnd(scenario.taxVnd)}</>}</p>
+          {scenarios && <dl className="grid grid-cols-3 gap-1.5 sm:gap-2" aria-label="Ba kịch bản quỹ mở">
+            {scenarioLabels.map(([key, label]) => {
+              const current = scenarios[key]
+              return <div key={key} className="min-w-0 rounded-lg border p-1.5 text-xs sm:p-2">
+                <dt className="font-medium">{label}</dt>
+                <dd className="mt-1 font-semibold tabular-nums [overflow-wrap:anywhere]">{formatVnd(current.netValueVnd)}</dd>
+                <dd className="mt-0.5 text-muted-foreground">{formatInvestmentReturn(current.netProfitVnd, current.totalContributedVnd)}</dd>
+              </div>
+            })}
           </dl>}
           <p className="text-sm text-muted-foreground">{sourceLabel} <a href={sourceUrl} target="_blank" rel="noreferrer" className="text-primary underline">Xem nguồn</a></p>
         </article>)}</CardContent>
