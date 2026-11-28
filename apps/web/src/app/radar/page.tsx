@@ -10,6 +10,7 @@ import { handoffRoutes } from '@fincopilot/shared-types'
 import { Button } from '@/components/ui'
 import { MarketRateBenchmarkChart } from '@/components/charts/MarketRateBenchmarkChart'
 import { useRadarDesk, type DeskPanel, type RadarTab } from '@/components/layout/RadarDeskContext'
+import { useWorkspaceField } from '@/components/layout/WorkspaceSessionContext'
 import { DeskDialog } from '@/components/radar/DeskDialog'
 import { ThreatTrendBoard } from '@/components/radar/ThreatTrendBoard'
 import { EditorialImage } from '@/components/radar/EditorialImage'
@@ -168,30 +169,35 @@ function RadarWorkspace() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const [tab, setTab] = useState<RadarTab>(() => readRadarTab(searchParams))
+  const [tab, setTab] = useWorkspaceField('radar', 'tab')
   const { register } = useRadarDesk()
   const [panel, setPanel] = useState<DeskPanel | null>(null)
   const [quickCheck, setQuickCheck] = useState('')
   const [savedEntries, setSavedEntries] = useState<ReadingEntry[]>([])
   const [historyEntries, setHistoryEntries] = useState<ReadingEntry[]>([])
   const feed = useRef<HTMLElement>(null)
-  const scrollPositions = useRef<Partial<Record<RadarTab, number>>>({})
-  const restoreScroll = useRef(false)
-
-  const changeTab = useCallback((view: RadarTab) => {
-    if (view === tab) return
-    scrollPositions.current[tab] = window.innerWidth <= 900 ? window.scrollY : feed.current?.scrollTop ?? 0
-    restoreScroll.current = true
-    setTab(view)
-  }, [tab])
+  const [scrollByTab] = useWorkspaceField('radar', 'scrollByTab')
+  const changeTab = useCallback((view: RadarTab) => setTab(view), [setTab])
 
   useLayoutEffect(() => {
-    if (!restoreScroll.current) return
-    restoreScroll.current = false
-    const top = scrollPositions.current[tab] ?? 0
-    if (window.innerWidth <= 900) window.scrollTo({ top, behavior: 'instant' })
-    else feed.current?.scrollTo({ top, behavior: 'instant' })
-  }, [tab])
+    const node = feed.current
+    if (!node) return
+    const top = scrollByTab[tab] ?? 0
+    const frame = requestAnimationFrame(() => {
+      if (window.innerWidth <= 900) window.scrollTo({ top, behavior: 'instant' })
+      else node.scrollTo({ top, behavior: 'instant' })
+    })
+    const save = () => {
+      scrollByTab[tab] = window.innerWidth <= 900 ? window.scrollY : node.scrollTop
+    }
+    node.addEventListener('scroll', save, { passive: true })
+    window.addEventListener('scroll', save, { passive: true })
+    return () => {
+      cancelAnimationFrame(frame)
+      node.removeEventListener('scroll', save)
+      window.removeEventListener('scroll', save)
+    }
+  }, [scrollByTab, tab])
 
   const replaceQuery = useCallback((query: URLSearchParams) => {
     startTransition(() => window.history.replaceState(null, '', pathname + (query.size ? '?' + query : '')))
@@ -230,22 +236,19 @@ function RadarWorkspace() {
     query.delete('category')
     replaceQuery(query)
   }
-  const [category, setCategory] = useState(() => searchParams.get('category') ?? '')
-  const [search, setSearch] = useState('')
-  const [period, setPeriod] = useState<'all' | 'today' | '7d' | 'month' | 'year' | 'custom'>('all')
-  const [year, setYear] = useState(String(new Date().getFullYear()))
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  useEffect(() => {
-    const sync = () => {
-      const params = new URLSearchParams(window.location.search)
-      changeTab(readRadarTab(params))
-      setCategory(params.get('category') ?? '')
-    }
-    sync()
-    window.addEventListener('popstate', sync)
-    return () => window.removeEventListener('popstate', sync)
-  }, [searchParams, changeTab])
+  const [category, setCategory] = useWorkspaceField('radar', 'category')
+  const [search, setSearch] = useWorkspaceField('radar', 'search')
+  const [period, setPeriod] = useWorkspaceField('radar', 'period')
+  const [year, setYear] = useWorkspaceField('radar', 'year')
+  const [dateFrom, setDateFrom] = useWorkspaceField('radar', 'dateFrom')
+  const [dateTo, setDateTo] = useWorkspaceField('radar', 'dateTo')
+  const urlTab = searchParams.has('feed') || searchParams.has('tab') ? readRadarTab(searchParams) : undefined
+  const urlCategory = searchParams.get('category')
+  useLayoutEffect(() => {
+    if (urlTab) changeTab(urlTab)
+    else if (urlCategory !== null) changeTab('articles')
+    if (urlCategory !== null) setCategory(urlCategory)
+  }, [urlTab, urlCategory, changeTab, setCategory])
   useEffect(() => {
     const refresh = () => { setSavedEntries(getSavedArticles()); setHistoryEntries(getReadingHistory()) }
     refresh()

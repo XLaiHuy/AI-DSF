@@ -2,19 +2,20 @@
 
 import {
   ForensicAuditFieldsSchema, ForensicFollowUpRequestSchema, ForensicFollowUpResponseSchema, ROUTES,
-  type ForensicGuidance, type ForensicAuditFields, type ForensicAuditResponse, type ForensicAuditStage, type ForensicFollowUpResponse, type ForensicHandoff,
+  type ForensicAuditFields, type ForensicAuditStage, type ForensicHandoff,
 } from '@fincopilot/shared-types'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, Bot, ChartNoAxesCombined, Check, FileText, LoaderCircle, Plus, QrCode, RotateCcw, ShieldAlert, ShieldCheck, Wallet, X } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from 'react'
+import { useWorkspaceField, useWorkspaceSession, type ForensicReply as Reply } from '@/components/layout/WorkspaceSessionContext'
 import { Alert, Button, Label } from '@/components/ui'
 import { ApiError, apiClient } from '@/lib/api-client'
 import { auditListQuery, auditQuery, formatVnd, requestError, sessionQuery } from '@/lib/workspace-data'
 import { cn } from '@/lib/utils'
 import { addAttachments, AttachmentStrip } from './AttachmentStrip'
 import { AuditHistory } from './AuditHistory'
-import { conversationCacheExpiry, readConversationCache, safeCachedQuestion, writeConversationCache } from './conversation-cache'
+import { clearConversationCache, conversationCacheExpiry, readConversationCache, writeConversationCache } from './conversation-cache'
 import { ForensicReport } from './ForensicReport'
 import { plainAuditText } from './report-copy'
 import { streamAudit } from './stream-audit'
@@ -76,8 +77,6 @@ const examples = [
 ]
 
 type Submission = { text: string; files: File[]; context: string; fields?: ForensicAuditFields }
-type Reply = ForensicFollowUpResponse & { question: string; streamed: boolean }
-type Conversation = { audit: ForensicAuditResponse; submission: Submission; replies: Reply[] }
 type Pending = { kind: 'audit'; submission: Submission; stages: ForensicAuditStage[] }
   | { kind: 'chat'; question: string; text?: string }
 
@@ -149,25 +148,20 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
   uploadMaxMb: number
   pdfMaxPages: number
 }) {
-  const [entity, setEntity] = useState(handoff.claimedEntity ?? '')
-  const [sourceAlertId, setSourceAlertId] = useState(handoff.from === 'radar' ? handoff.alertId : undefined)
-  const [draft, setDraft] = useState(() => {
-    if (handoff.from === 'radar') return [handoff.summary, handoff.indicator].filter(Boolean).join('\n')
-    if (handoff.from === 'survey-apr' && handoff.amount && handoff.term && handoff.annualRatePct) {
-      return `${handoff.label ? handoff.label + '\n' : ''}Kiểm tra khoản vay ${formatVnd(handoff.amount)}, kỳ hạn ${handoff.term} tháng, APR ${handoff.annualRatePct}%/năm.`
-    }
-    if (handoff.from === 'home-quick-check' && handoff.prefillText) return handoff.prefillText
-    return handoff.prefillText ?? ''
-  })
-  const [preAuditTurns, setPreAuditTurns] = useState<{ question: string; answer: string; guidance?: ForensicGuidance }[]>([])
+  const [entity, setEntity] = useWorkspaceField('forensic', 'entity')
+  const [sourceAlertId, setSourceAlertId] = useWorkspaceField('forensic', 'sourceAlertId')
+  const [draft, setDraft] = useWorkspaceField('forensic', 'draft')
+  const [preAuditTurns, setPreAuditTurns] = useWorkspaceField('forensic', 'preAuditTurns')
   const [demo, setDemo] = useState<typeof examples[number]>()
   const [loadingDemo, setLoadingDemo] = useState(false)
   const [files, setFiles] = useState<File[]>([])
-  const [conversation, setConversation] = useState<Conversation>()
+  const [conversation, setConversation] = useWorkspaceField('forensic', 'conversation')
+  const submittedFiles = useRef<{ auditId: string; files: File[] }>(null)
+  const reportFiles = submittedFiles.current?.auditId === conversation?.audit.auditId ? submittedFiles.current?.files ?? [] : []
   const [pending, setPending] = useState<Pending>()
   const [error, setError] = useState('')
   const [resetting, setResetting] = useState(false)
-  const [conversationSession, setConversationSession] = useState<{ owner: string; id: string; expiresAt: number }>()
+  const [conversationSession, setConversationSession] = useWorkspaceField('forensic', 'conversationSession')
   const [dragging, setDragging] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const attach = useRef<HTMLButtonElement>(null)
@@ -178,9 +172,14 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
   const lastScrollTop = useRef(0)
   const activeRequest = useRef<AbortController>(null)
   const demoRequest = useRef<AbortController>(null)
-  const session = useQuery(sessionQuery)
   const queryClient = useQueryClient()
-  const viewer = session.data?.kind === 'user' ? 'user:' + session.data.user.id : session.isSuccess ? 'guest' : undefined
+  const session = useQuery(sessionQuery)
+  const { viewerKey: viewer, clearForensicSession } = useWorkspaceSession()
+  const [restore, setRestore] = useState<ReturnType<typeof readConversationCache>>()
+  const restoreId = restore?.owner === viewer && !conversation ? restore?.activeAuditId : undefined
+  const report = useQuery({ ...auditQuery(restoreId ?? ''), enabled: Boolean(restoreId), retry: false })
+  const handoffKey = JSON.stringify(handoff)
+  const appliedHandoff = useRef<string>(null)
   const followingUp = Boolean(conversation && !files.length && !entity && !demo)
   const promptLabel = followingUp ? 'Câu hỏi tiếp theo' : 'Nội dung cần giám định'
   const submitLabel = followingUp ? 'Gửi câu hỏi' : 'Gửi giám định'
@@ -188,18 +187,62 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
   const contextName = entity ? 'Đơn vị từ Bộ lọc Tin cậy: ' + entity : demo ? 'Mẫu: ' + demo.label : ''
 
   useEffect(() => {
-    if (!viewer) return
+    if (!viewer || conversationSession) return
     const cached = readConversationCache(viewer)
+    if (!handoff.from && !handoff.prefillText && !handoff.claimedEntity) setRestore(cached)
     setConversationSession({ owner: viewer, id: cached?.id ?? crypto.randomUUID(), expiresAt: cached?.expiresAt ?? conversationCacheExpiry() })
-    setPreAuditTurns(cached?.turns.map(turn => ({ ...turn, answer: turn.guidance.message })) ?? [])
-  }, [viewer])
+    if (cached?.turns.length) setPreAuditTurns(cached.turns)
+  }, [viewer, conversationSession, handoff.from, handoff.prefillText, handoff.claimedEntity, setConversationSession, setPreAuditTurns])
 
   useEffect(() => {
-    if (!conversationSession || conversationSession.owner !== viewer) return
-    const turns = preAuditTurns.flatMap(({ question, guidance }) =>
-      guidance ? [{ question: safeCachedQuestion(question), guidance }] : []).slice(-3)
-    writeConversationCache(conversationSession.owner, conversationSession.id, turns, conversationSession.expiresAt)
-  }, [conversationSession, preAuditTurns, viewer])
+    if (!restoreId || !restore) return
+    if (report.isSuccess) {
+      setConversation({
+        audit: report.data,
+        submission: { text: report.data.privacyProof.rawTextMasked ?? '', context: '' },
+        replies: (restore.followUpTurns ?? []).map(turn => ({ ...turn, streamed: false, meta: undefined })),
+      })
+      setRestore(undefined)
+    } else if (report.isError) {
+      if (report.error instanceof ApiError && [403, 404].includes(report.error.status)) setRestore(undefined)
+      else setError('Chưa mở lại được báo cáo. Tải lại trang để thử lại.')
+    }
+  }, [restoreId, restore, report.data, report.error, report.isSuccess, report.isError, setConversation])
+
+  useEffect(() => {
+    if (!viewer || appliedHandoff.current === handoffKey) return
+    appliedHandoff.current = handoffKey
+    const next = JSON.parse(handoffKey) as ForensicHandoff
+    if (!next.from && !next.prefillText && !next.claimedEntity) return
+    activeRequest.current?.abort()
+    demoRequest.current?.abort()
+    submittedFiles.current = null
+    setRestore(undefined)
+    setConversation(undefined)
+    setPreAuditTurns([])
+    setEntity(next.claimedEntity ?? '')
+    setSourceAlertId(next.from === 'radar' ? next.alertId : undefined)
+    setFiles([])
+    setDemo(undefined)
+    setPending(undefined)
+    setLoadingDemo(false)
+    setError('')
+    if (next.from === 'radar') setDraft([next.summary, next.indicator].filter(Boolean).join('\n'))
+    else if (next.from === 'survey-apr' && next.amount && next.term && next.annualRatePct) {
+      setDraft(`${next.label ? next.label + '\n' : ''}Kiểm tra khoản vay ${formatVnd(next.amount)}, kỳ hạn ${next.term} tháng, APR ${next.annualRatePct}%/năm.`)
+    } else setDraft(next.prefillText ?? '')
+  }, [viewer, handoffKey, setConversation, setDraft, setEntity, setPreAuditTurns, setSourceAlertId])
+
+  useEffect(() => {
+    if (!conversationSession || conversationSession.owner !== viewer || restoreId) return
+    if (!conversation && !preAuditTurns.length) return
+    writeConversationCache({
+      ...conversationSession,
+      turns: preAuditTurns.slice(-3).map(({ question, answer }) => ({ question, answer })),
+      activeAuditId: conversation?.audit.auditId,
+      followUpTurns: conversation?.replies.slice(-6).map(({ question, answer }) => ({ question, answer })),
+    })
+  }, [conversationSession, conversation, preAuditTurns, viewer, restoreId])
 
   useEffect(() => () => {
     activeRequest.current?.abort()
@@ -284,14 +327,14 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
     } finally {
       setResetting(false)
     }
-    setConversationSession({ owner: conversationSession.owner, id: crypto.randomUUID(), expiresAt: conversationCacheExpiry() })
+    clearForensicSession()
+    clearConversationCache()
+    setRestore(undefined)
+    submittedFiles.current = null
     followScroll.current = false
     if (scrollRoot) scrollRoot.scrollTop = 0
-    setConversation(undefined)
-    setDraft('')
     setEntity('')
     setSourceAlertId(undefined)
-    setPreAuditTurns([])
     setDemo(undefined)
     setFiles([])
     setError('')
@@ -309,20 +352,20 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
     const original = submission.text || audit.privacyProof.rawTextMasked || ''
     const rawQrString = submission.fields?.rawQrString ??
       (/^(?:000201\S+6304[0-9a-f]{4}|(?:(?:https?|bitcoin|ethereum|tron|usdt|momo|zalopay):)\S+|2\|99\|\S+|(?:0x[a-f0-9]{40}|T[1-9A-HJ-NP-Za-km-z]{33}|[13][1-9A-HJ-NP-Za-km-z]{25,34}|bc1[ac-hj-np-z02-9]{11,71}))$/i.test(original) ? original : undefined)
-    const qrSummary = !rawQrString && !submission.files.length ? audit.qrPayloads.map((qr) =>
+    const qrSummary = !rawQrString && !reportFiles.length ? audit.qrPayloads.map((qr) =>
       [qr.providerLabel ?? qr.bankName, qr.accountNumberMasked, qr.qrAmountVnd ? qr.qrAmountVnd + ' đ' : null, qr.purposeText]
         .filter(Boolean).join(' · ')).filter(Boolean).join('\n') : ''
     const base = [rawQrString === original ? '' : original, qrSummary].filter(Boolean).join('\n\n')
     const addition = 'Thông tin bổ sung\n' + append
     const text = [base.slice(0, 50_000 - addition.length - 2).trim(), addition].filter(Boolean).join('\n\n')
-    void send({ ...submission, text, fields: {
+    void send({ ...submission, text, files: reportFiles, fields: {
       rawText: text, rawQrString, claimedEntityName: submission.fields?.claimedEntityName ?? audit.claimedEntityName ?? undefined,
       sourceAlertId: submission.fields?.sourceAlertId,
     } })
   }
 
   async function send(resubmission?: Submission) {
-    if (activeRequest.current || demoRequest.current || !conversationSession || conversationSession.owner !== viewer || resetting) return
+    if (restoreId || activeRequest.current || demoRequest.current || !conversationSession || conversationSession.owner !== viewer || resetting) return
     const text = draft.trim()
     const controller = new AbortController()
     const options = { signal: controller.signal }
@@ -354,12 +397,13 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
           setPending({ kind: 'chat', question: text })
           return apiClient.post(chatPath, followUp.data, { ...options, schema: ForensicFollowUpResponseSchema })
         })
+        setConversationSession({ ...conversationSession, expiresAt: conversationCacheExpiry() })
         setConversation({ ...conversation, replies: [...conversation.replies, { question: text, ...reply, streamed }] })
       } else {
         const sameSession = conversationSession.expiresAt > Date.now()
         const id = sameSession ? conversationSession.id : crypto.randomUUID()
         if (!sameSession) setPreAuditTurns([])
-        const history = sameSession ? preAuditTurns.filter(turn => turn.guidance).slice(-3).flatMap(({ question, answer, guidance }) => [
+        const history = sameSession ? preAuditTurns.slice(-3).flatMap(({ question, answer, guidance }) => [
           { role: 'user' as const, content: question.trim() },
           { role: 'assistant' as const, content: answer.trim(), intent: guidance?.intent },
         ]).filter(turn => turn.content.length > 0 && turn.content.length <= 800) : []
@@ -403,7 +447,9 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
         followScroll.current = false
         if (scrollRoot) scrollRoot.scrollTop = 0
         setPreAuditTurns([])
-        setConversation({ audit, submission, replies: [] })
+        setConversationSession({ owner: conversationSession.owner, id, expiresAt: conversationCacheExpiry() })
+        submittedFiles.current = { auditId: audit.auditId, files: attachments }
+        setConversation({ audit, submission: { text: submission.text, context: submission.context, fields: submission.fields }, replies: [] })
         setFiles([])
         setEntity('')
         setSourceAlertId(undefined)
@@ -507,7 +553,7 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
 
       {conversation && pending?.kind !== 'audit' && (
         <div className="grid min-w-0 gap-4">
-          <UserBubble submission={conversation.submission} />
+          <UserBubble submission={{ ...conversation.submission, files: reportFiles }} />
           <ForensicReport key={conversation.audit.auditId} audit={conversation.audit} inline animate
             opening={<AgentBubble label="Kết quả từ FinCopilot" answer="Mình đã xem nội dung bạn gửi. Đây là kết quả và những việc bạn có thể làm tiếp." />} />
           {visibleReplies.map((reply, index) => {

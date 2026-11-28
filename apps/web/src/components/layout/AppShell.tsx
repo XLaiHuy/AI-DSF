@@ -4,10 +4,11 @@ import { ROUTES } from '@fincopilot/shared-types'
 import { usePathname } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { DeskNavigation } from '@/components/radar/DeskNavigation'
+import { WorkspaceSessionProvider } from './WorkspaceSessionContext'
 import { RadarDeskProvider, useRadarDesk } from './RadarDeskContext'
 
 export function AppShell({ children }: { children: ReactNode }) {
-  return <RadarDeskProvider><DeskFrame>{children}</DeskFrame></RadarDeskProvider>
+  return <WorkspaceSessionProvider><RadarDeskProvider><DeskFrame>{children}</DeskFrame></RadarDeskProvider></WorkspaceSessionProvider>
 }
 
 function DeskFrame({ children }: { children: ReactNode }) {

@@ -7,6 +7,7 @@ import { Camera, Github, LockKeyhole, LogIn, LogOut } from 'lucide-react'
 import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { z } from 'zod'
 import { Badge, Button, buttonVariants, Card, Input, Label } from '@/components/ui'
+import { useWorkspaceSession } from '@/components/layout/WorkspaceSessionContext'
 import { apiClient } from '@/lib/api-client'
 import { requestError, sessionQuery } from '@/lib/workspace-data'
 import { cn } from '@/lib/utils'
@@ -162,11 +163,14 @@ export function AccountStatus({ session }: { session: AuthSessionResponse }) {
   const avatarAction = user?.avatarUrl ? 'Đổi ảnh' : 'Tải ảnh chân dung'
   const selectAvatar = () => avatarInput.current?.click()
 
+  const { clearAllWorkspaceSessions } = useWorkspaceSession()
+
   async function logout() {
     setBusy(true)
     setError('')
     try {
       await apiClient.post('/auth/logout')
+      clearAllWorkspaceSessions()
       window.location.replace(ROUTES.profile + '?logout=success')
     } catch (cause) {
       setError(requestError(cause, 'Chưa thể đăng xuất. Vui lòng thử lại.'))

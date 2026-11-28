@@ -8,31 +8,24 @@ import { useQueryClient } from '@tanstack/react-query'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useWorkspaceField } from '@/components/layout/WorkspaceSessionContext'
 import { Button, Card, CardContent, CardHeader, CardTitle } from '@/components/ui'
 import { stripSpacedAmount } from '@/components/ui/money-input'
 import { apiClient } from '@/lib/api-client'
 import { auditHref, formatVnd, requestError, surveyHistoryQuery } from '@/lib/workspace-data'
 import { decimal, Field, fieldStyle, methodLabels, MoneyField } from './SurveyFields'
 
+import { refinanceDraft } from './survey-session'
+
 const RefinanceBreakEvenChart = dynamic(() => import('@/components/charts/RefinanceBreakEvenChart').then((module) => module.RefinanceBreakEvenChart), { ssr: false })
 const categories = { UNSECURED_LOAN: 'Vay tín chấp', SECURED_LOAN: 'Vay có tài sản bảo đảm' } as const
 const percent = (value: string) => value.replace(/(\.\d*?[1-9])0+$/u, '$1').replace(/\.0+$/u, '').replace('.', ',') + '%/năm'
 
-function draft(contract?: SurveyRefinanceContract) {
-  return {
-    principal: contract?.remainingPrincipalVnd ?? '', months: contract ? String(contract.remainingTermMonths) : '',
-    rate: contract?.currentAnnualRatePct ?? '', method: contract?.currentCalcMethod ?? 'REDUCING_BALANCE' as const,
-    flatBase: contract?.currentFlatInterestBaseVnd ?? '',
-    monthlyFee: contract?.currentMonthlyFeeVnd ?? '0', exitFee: contract?.earlySettlementFeePct ?? '0',
-    category: contract?.productCategory ?? 'UNSECURED_LOAN' as const,
-    newMonths: contract?.newTermMonths == null ? '' : String(contract.newTermMonths),
-  }
-}
-
-export function RefinanceWorkspace({ sourceAuditId, restored, onResult }: {
-  sourceAuditId?: string; restored?: SurveyRefinanceResponse; onResult: (value: SurveyRefinanceResponse) => void
+export function RefinanceWorkspace({ sourceAuditId, restored }: {
+  sourceAuditId?: string; restored?: SurveyRefinanceResponse
 }) {
-  const [form, setForm] = useState(() => draft(restored?.currentContract))
+  const [form, setForm] = useWorkspaceField('survey', 'refinanceForm')
+  const [, setResults] = useWorkspaceField('survey', 'resultsByTab')
   const [loading, setLoading] = useState(Boolean(sourceAuditId && !restored))
   const [error, setError] = useState('')
   const [selected, setSelected] = useState('')
@@ -49,8 +42,8 @@ export function RefinanceWorkspace({ sourceAuditId, restored, onResult }: {
     try {
       const result = await apiClient.post('/survey/refinance', input, { schema: SurveyRefinanceResponseSchema, signal: controller.signal })
       if (controller.signal.aborted) return
-      onResult(result)
-      setForm(draft(result.currentContract))
+      setResults(old => ({ ...old, refinance: result }))
+      setForm(refinanceDraft(result.currentContract))
       setSelected('')
       if (result.meta.savedToHistory) void queryClient.invalidateQueries({ queryKey: surveyHistoryQuery.queryKey })
     } catch (failure) {
@@ -61,12 +54,12 @@ export function RefinanceWorkspace({ sourceAuditId, restored, onResult }: {
         setLoading(false)
       }
     }
-  }, [onResult, queryClient])
+  }, [queryClient, setForm, setResults])
 
-  const restoredInitially = useRef(Boolean(restored))
+  const loadedSource = restored?.currentContract.sourceAuditId
   useEffect(() => {
     const controller = new AbortController()
-    if (sourceAuditId && !restoredInitially.current) {
+    if (sourceAuditId && sourceAuditId !== loadedSource) {
       queueMicrotask(() => {
         if (!controller.signal.aborted) void calculate({ sourceAuditId }, controller)
       })
@@ -74,8 +67,9 @@ export function RefinanceWorkspace({ sourceAuditId, restored, onResult }: {
     return () => {
       controller.abort()
       request.current?.abort()
+      request.current = null
     }
-  }, [calculate, sourceAuditId])
+  }, [calculate, sourceAuditId, loadedSource])
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()

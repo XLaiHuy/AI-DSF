@@ -8,6 +8,7 @@ import { Badge, Button, Card, Input, Label } from '@/components/ui'
 import { ThreatReviewPanel } from '@/components/admin/ThreatReviewPanel'
 import { DataCatalogPanel } from '@/components/admin/DataCatalogPanel'
 import { type AdminCredentials } from '@/components/admin/admin-client'
+import { useWorkspaceSession } from '@/components/layout/WorkspaceSessionContext'
 import { apiClient } from '@/lib/api-client'
 import { auditListQuery, profileQuery, requestError, sessionQuery, surveyHistoryQuery } from '@/lib/workspace-data'
 
@@ -64,12 +65,15 @@ export default function AdminPage() {
     setCredentials((previous) => ({ key: '', revision: previous.revision + 1 }))
   }
 
+  const { clearAllWorkspaceSessions } = useWorkspaceSession()
+
   async function logout() {
     if (busy) return
     setBusy(true)
     setError('')
     try {
       await apiClient.post('/auth/logout')
+      clearAllWorkspaceSessions()
       clearKey()
       const providers = session.data?.oauthProviders ?? { google: false, github: false }
       await updateSession({ kind: 'guest', user: null, oauthProviders: providers })

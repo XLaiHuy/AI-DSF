@@ -3,13 +3,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   handoffRoutes, LoanUseCase, ManualCompareRequestSchema, ManualCompareResponseSchema, SurveyInvestResponseSchema, SurveyLoanResponseSchema,
-  SurveySessionDetailResponseSchema, SurveyTermMonthsSchema, type ManualCompareRequest, type ManualCompareResponse, type SurveyInvestResponse,
-  type SurveyLoanRequest, type SurveyLoanResponse, type SurveyRefinanceResponse, type parseSurveyHandoff,
+  SurveySessionDetailResponseSchema, SurveyTermMonthsSchema, type SurveyLoanRequest, type parseSurveyHandoff,
 } from '@fincopilot/shared-types'
 import { AlertTriangle, Calculator, Loader2, ShieldCheck } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, TermInfo } from '@/components/ui'
 import { stripSpacedAmount } from '@/components/ui/money-input'
 import { validChartAmount } from '@/components/charts/chart-math'
@@ -17,6 +16,8 @@ import { apiClient, ApiError } from '@/lib/api-client'
 import { formatVnd, profileQuery, surveyHistoryQuery } from '@/lib/workspace-data'
 import { decimal, Field, fieldStyle, manualDraft, manualInput, ManualOfferFields, methodLabels, MoneyField } from './SurveyFields'
 
+import { useWorkspaceField, useWorkspaceSession } from '@/components/layout/WorkspaceSessionContext'
+import { investmentLabels, refinanceDraft, type InvestmentFilter, type SurveyResult as Result, type SurveyTab as Tab } from './survey-session'
 import { RefinanceWorkspace } from './RefinanceWorkspace'
 
 const InvestmentGrowthChart = dynamic(() => import('@/components/charts/InvestmentGrowthChart').then(module => module.InvestmentGrowthChart), { ssr: false })
@@ -24,12 +25,6 @@ const LoanAmortizationChart = dynamic(() => import('@/components/charts/LoanAmor
 const LoanAprDtiChart = dynamic(() => import('@/components/charts/LoanAprDtiChart').then(module => module.LoanAprDtiChart), { ssr: false })
 
 type Handoff = ReturnType<typeof parseSurveyHandoff>
-type Tab = NonNullable<Handoff['mode']>
-type Result =
-  | { tab: 'loan'; data: SurveyLoanResponse; amount: string; term: number }
-  | { tab: 'invest'; data: SurveyInvestResponse; queriedFilter: InvestmentFilter; initial: string; term: number }
-  | { tab: 'manual'; data: ManualCompareResponse; inputs: ManualCompareRequest['offers'] }
-
 const tabs = [
   ['loan', 'Khảo sát vay'], ['invest', 'Đầu tư / tích lũy'], ['manual', 'Tự nhập so sánh'], ['refinance', 'Đổi khoản vay / Đảo nợ'],
 ] as const
@@ -38,8 +33,6 @@ const priorities: Record<SurveyLoanRequest['priority'], string> = {
   LOWEST_MONTHLY_PAYMENT: 'Trả tháng thấp nhất',
   LOWEST_TOTAL_COST: 'Tổng chi phí thấp nhất',
 }
-const investmentLabels = { SAVING: 'Tiết kiệm', ACCUMULATION: 'Tích lũy', OPEN_FUND: 'Quỹ mở' }
-type InvestmentFilter = keyof typeof investmentLabels | 'ALL'
 const investmentFilters = [['ALL', 'Tất cả'], ['SAVING', 'Tiết kiệm'], ['ACCUMULATION', 'Tích lũy'], ['OPEN_FUND', 'Quỹ mở']] as const
 const loanDefaults = {
   UNSECURED_SALARY: { range: '6–60', label: 'Vay tín chấp theo lương', amount: '50000000', term: '24', category: 'UNSECURED_LOAN' },
@@ -58,31 +51,28 @@ const hasHighApr = (value: string) => {
 }
 
 export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
-  const [tab, setTab] = useState<Tab>(handoff.mode ?? 'loan')
+  const { update } = useWorkspaceSession()
+  const [tab, setTab] = useWorkspaceField('survey', 'tab')
+  const [form, setForm] = useWorkspaceField('survey', 'form')
+  const [category, setCategory] = useWorkspaceField('survey', 'category')
+  const [loanUseCase, setLoanUseCase] = useWorkspaceField('survey', 'loanUseCase')
+  const [source, setSource] = useWorkspaceField('survey', 'source')
+  const [touched, setTouched] = useWorkspaceField('survey', 'touched')
+  const [priority, setPriority] = useWorkspaceField('survey', 'priority')
+  const [investmentFilter, setInvestmentFilter] = useWorkspaceField('survey', 'investmentFilter')
+  const [manualOffers, setManualOffers] = useWorkspaceField('survey', 'manualOffers')
+  const [dtiEdits, setDtiEdits] = useWorkspaceField('survey', 'dtiEdits')
+  const [resultsByTab, setResultsByTab] = useWorkspaceField('survey', 'resultsByTab')
+  const [refinanceSourceAuditId, setRefinanceSourceAuditId] = useWorkspaceField('survey', 'refinanceSourceAuditId')
+  const [, setRefinanceForm] = useWorkspaceField('survey', 'refinanceForm')
   const [loading, setLoading] = useState(false)
   const [restoring, setRestoring] = useState(Boolean(handoff.sessionId))
   const [error, setError] = useState('')
-  const [result, setResult] = useState<Result | null>(null)
-  const [refinanceResult, setRefinanceResult] = useState<SurveyRefinanceResponse>()
   const request = useRef<AbortController | null>(null)
   const queryClient = useQueryClient()
   const profile = useQuery(profileQuery).data?.profile
-  const [form, setForm] = useState({
-    principal: (handoff.mode === 'invest' ? undefined : handoff.amount) ?? '50000000',
-    initial: (handoff.mode === 'invest' ? handoff.amount : undefined) ?? '20000000', contribution: '3000000',
-    loan: String((handoff.mode === 'invest' ? undefined : handoff.term) ?? 24),
-    invest: String((handoff.mode === 'invest' ? handoff.term : undefined) ?? 12),
-    entity: '', shock: handoff.shockDelta ?? '0',
-  })
-  const [loanUseCase, setLoanUseCase] = useState<LoanUseCase | ''>(() => (handoff.mode !== 'invest' && handoff.amount) || handoff.auditId ? '' : 'UNSECURED_SALARY')
-  const [category, setCategory] = useState<SurveyLoanRequest['productCategory']>('UNSECURED_LOAN')
-  const [source, setSource] = useState({ sourceArticleId: handoff.articleId, sourceAuditId: handoff.mode === 'refinance' ? undefined : handoff.auditId })
-  const touched = useRef({ amount: handoff.mode !== 'invest' && Boolean(handoff.amount), term: handoff.mode !== 'invest' && handoff.term != null })
-  const [priority, setPriority] = useState<SurveyLoanRequest['priority']>('LOWEST_APR')
-  const [investmentFilter, setInvestmentFilter] = useState<InvestmentFilter>('ALL')
-  const [manualOffers, setManualOffers] = useState(() => [manualDraft(0), manualDraft(1)])
-  const nextOffer = useRef(2)
-  const [dtiEdits, setDtiEdits] = useState<Partial<Record<'income' | 'expense' | 'debt', string>>>({})
+  const result = tab === 'refinance' ? undefined : resultsByTab[tab]
+  const setResult = useCallback((next: Result) => setResultsByTab(old => ({ ...old, [next.tab]: next })), [setResultsByTab])
   const income = dtiEdits.income ?? profile?.monthlyIncomeVnd ?? ''
   const expense = dtiEdits.expense ?? profile?.monthlyExpenseVnd ?? ''
   const debt = dtiEdits.debt ?? profile?.existingDebtPaymentVnd ?? ''
@@ -94,6 +84,32 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
   const set = (key: keyof typeof form, value: string) => setForm((old) => ({ ...old, [key]: value }))
 
   useEffect(() => () => request.current?.abort(), [])
+
+  useEffect(() => {
+    const { mode, sessionId, auditId, articleId, amount, term, shockDelta } = handoff
+    if (sessionId || (!mode && !auditId && !articleId && !amount && term == null && shockDelta == null)) return
+    update('survey', previous => {
+      const tab = mode ?? 'loan'
+      if (tab === 'refinance' && auditId && auditId !== previous.refinanceSourceAuditId) {
+        return { ...previous, tab, refinanceSourceAuditId: auditId, refinanceForm: refinanceDraft(),
+          resultsByTab: { ...previous.resultsByTab, refinance: undefined } }
+      }
+      if (tab === 'invest' && (amount || term != null)) {
+        return { ...previous, tab,
+          form: { ...previous.form, initial: amount ?? previous.form.initial, invest: term == null ? previous.form.invest : String(term) },
+          resultsByTab: { ...previous.resultsByTab, invest: undefined } }
+      }
+      if (tab === 'loan' && (amount || term != null || auditId || articleId || shockDelta != null)) {
+        return { ...previous, tab, loanUseCase: amount || auditId ? '' : previous.loanUseCase,
+          source: { sourceArticleId: articleId, sourceAuditId: auditId },
+          touched: { amount: Boolean(amount) || previous.touched.amount, term: term != null || previous.touched.term },
+          form: { ...previous.form, principal: amount ?? previous.form.principal,
+            loan: term == null ? previous.form.loan : String(term), shock: shockDelta ?? '0' },
+          resultsByTab: { ...previous.resultsByTab, loan: undefined } }
+      }
+      return { ...previous, tab }
+    })
+  }, [handoff, update])
 
   useEffect(() => {
     if (!handoff.sessionId) return
@@ -109,7 +125,7 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
         setCategory(input.productCategory)
         setPriority(input.priority)
         setSource({ sourceArticleId: input.sourceArticleId, sourceAuditId: input.sourceAuditId })
-        touched.current = { amount: true, term: true }
+        setTouched({ amount: true, term: true })
         setForm((old) => ({ ...old, principal: input.principalVnd, loan: String(input.termMonths),
           shock: input.rateShockDeltaPct ?? '0', entity: input.checkEntityName ?? '' }))
         setDtiEdits({ income: input.dtiOverride?.monthlyIncomeVnd ?? '', expense: input.dtiOverride?.monthlyExpenseVnd ?? '',
@@ -123,12 +139,13 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
         setResult({ tab: 'invest', queriedFilter: input.productCategory ?? 'ALL', data: saved.result, initial: input.initialVnd, term: input.termMonths })
       } else if (saved.sessionMode === 'REFINANCE_COMPARE') {
         setTab('refinance')
-        setRefinanceResult(saved.result)
+        setResultsByTab(old => ({ ...old, refinance: saved.result }))
+        setRefinanceForm(refinanceDraft(saved.result.currentContract))
+        setRefinanceSourceAuditId(saved.result.currentContract.sourceAuditId ?? undefined)
       } else {
         const inputs = saved.inputParams.offers
         setTab('manual')
         setManualOffers(inputs.map((offer, index) => manualDraft(index, offer)))
-        nextOffer.current = inputs.length
         setResult({ tab: 'manual', data: saved.result, inputs })
       }
     }).catch((failure: unknown) => {
@@ -138,7 +155,8 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
       if (!controller.signal.aborted) setRestoring(false)
     })
     return () => controller.abort()
-  }, [handoff.sessionId])
+  }, [handoff.sessionId, setCategory, setDtiEdits, setForm, setInvestmentFilter, setLoanUseCase, setManualOffers,
+    setPriority, setRefinanceForm, setRefinanceSourceAuditId, setResult, setResultsByTab, setSource, setTab, setTouched])
 
   function changeLoanUseCase(value: string) {
     const next = LoanUseCase.safeParse(value)
@@ -147,8 +165,8 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
     setLoanUseCase(next.data)
     setCategory(defaults.category)
     setForm((old) => ({ ...old,
-      principal: touched.current.amount ? old.principal : defaults.amount,
-      loan: touched.current.term ? old.loan : defaults.term,
+      principal: touched.amount ? old.principal : defaults.amount,
+      loan: touched.term ? old.loan : defaults.term,
     }))
   }
 
@@ -159,7 +177,6 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
     setTab(next)
     setLoading(false)
     setError('')
-    setResult(null)
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -178,7 +195,6 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
     request.current = controller
     setLoading(true)
     setError('')
-    setResult(null)
     const { signal } = controller
     try {
       let next: Result
@@ -238,14 +254,13 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
         </div>
         {restoring ? <p role="status" className="min-h-48 text-sm text-muted-foreground">Đang mở lại phiên khảo sát…</p>
           : tab === 'refinance' ? <RefinanceWorkspace
-            sourceAuditId={handoff.mode === 'refinance' ? handoff.auditId : undefined}
-            restored={refinanceResult} onResult={setRefinanceResult} />
+            sourceAuditId={refinanceSourceAuditId} restored={resultsByTab.refinance} />
           : <form onSubmit={submit}>
           <fieldset className="min-w-0 space-y-4">
           <legend className="sr-only">{tabs.find(([id]) => id === tab)?.[1]}</legend>
           {tab === 'loan' && <>
-            {(handoff.shockDelta != null || source.sourceArticleId) && <p role="status" className="rounded-xl border border-border bg-accent/50 p-4 text-sm">
-              Đã nhận cú sốc lãi suất từ Radar{handoff.shockDelta != null && <> · <strong>{handoff.shockDelta} điểm phần trăm</strong></>}
+            {(form.shock !== '0' || source.sourceArticleId) && <p role="status" className="rounded-xl border border-border bg-accent/50 p-4 text-sm">
+              Đã nhận cú sốc lãi suất từ Radar{form.shock !== '0' && <> · <strong>{form.shock} điểm phần trăm</strong></>}
               {source.sourceArticleId && <> · <Link className="underline" href={'/radar/' + source.sourceArticleId}>Xem bài viết nguồn</Link></>}
             </p>}
             {source.sourceAuditId && <p role="status" className="rounded-xl border border-border bg-accent/50 p-4 text-sm">
@@ -273,9 +288,9 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
             <CardContent className="grid gap-4 sm:grid-cols-2">
               {tab === 'loan' && <>
                 <MoneyField id="survey-principal" label="Số tiền cần vay (VNĐ)" value={form.principal}
-                  onChange={(v) => { touched.current.amount = true; set('principal', v) }} />
+                  onChange={(v) => { setTouched((old) => ({ ...old, amount: true })); set('principal', v) }} />
                 <Field id="survey-loan-term" label="Kỳ hạn (tháng)" value={form.loan}
-                  onChange={(v) => { touched.current.term = true; set('loan', v) }} term />
+                  onChange={(v) => { setTouched((old) => ({ ...old, term: true })); set('loan', v) }} term />
                 {fromProfile && <p className="sm:col-span-2 text-sm text-muted-foreground" role="status">Đã nạp từ Hồ sơ cá nhân</p>}
                 <MoneyField id="survey-income" label="Thu nhập mỗi tháng (VNĐ)" value={income} onChange={(v) => setDtiEdits((old) => ({ ...old, income: v }))} />
                 <MoneyField id="survey-expense" label="Chi phí sinh hoạt (VNĐ)" value={expense} onChange={(v) => setDtiEdits((old) => ({ ...old, expense: v }))} />
@@ -293,7 +308,7 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
                   onChange={(updated) => setManualOffers((old) => old.map((offer) => offer.id === updated.id ? updated : offer))}
                   onRemove={manualOffers.length > 2 ? () => setManualOffers((old) => old.filter(({ id }) => id !== item.id)) : undefined} />)}
                 <Button type="button" variant="outline" className="sm:col-span-2" disabled={manualOffers.length >= 4} onClick={() => {
-                  const id = nextOffer.current++
+                  const id = Math.max(...manualOffers.map(offer => offer.id)) + 1
                   const slot = ['Gói A', 'Gói B', 'Gói C', 'Gói D'].find((label) => !manualOffers.some((offer) => offer.label === label))
                   setManualOffers((old) => [...old, { ...manualDraft(id), label: slot ?? 'Gói ' + (id + 1) }])
                 }}>Thêm phương án</Button>
