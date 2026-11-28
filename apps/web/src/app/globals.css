@@ -273,7 +273,7 @@ body {
 
 .forensic-input-mirror > textarea:placeholder-shown { block-size: 2.25rem; }
 
-.print-only { display: none; }
+.print-only, .incident-print { display: none; }
 
 .audit-timeline > li:not(:last-child)::before {
   content: "";
@@ -1208,6 +1208,15 @@ body {
 }
 
 @media print {
+  body:has(> .incident-print) > :not(.incident-print) { display: none !important; }
+  body > .incident-print {
+    display: block;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: 11pt/1.5 system-ui, sans-serif;
+    color: #111;
+  }
+
   html:has(.forensic-report),
   body:has(.forensic-report) {
     min-height: 0;

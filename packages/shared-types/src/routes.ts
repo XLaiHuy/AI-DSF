@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { decimalString, positiveDecimal } from './dto/decimal'
+import { decimalString, nonnegativeDecimal, positiveDecimal } from './dto/decimal'
 import { SurveyTermMonthsSchema } from './dto/survey.dto'
 
 export const ROUTES = {
@@ -42,6 +42,9 @@ const auditHandoff = z.strictObject({ ...loanFields, auditId: z.string().min(1) 
 const refinanceHandoff = z.strictObject({ auditId: z.uuid() })
 const trustFilterHandoff = z.strictObject({ claimedEntity: z.string().trim().min(1).max(200) })
 const quickSurveyHandoff = z.strictObject(loanFields)
+const investmentPrefill = z.strictObject({
+  amount: nonnegativeDecimal, contribution: nonnegativeDecimal, term: SurveyTermMonthsSchema,
+})
 const radarAlertHandoff = z.strictObject({
   alertId: z.uuid(),
   indicator: z.string().trim().min(1).max(256).optional(),
@@ -68,6 +71,7 @@ export type RouteHandoffParams = {
   radarAlertToForensic: z.infer<typeof radarAlertHandoff>
   surveyHighAprToForensic: z.infer<typeof highAprHandoff>
   quickSurvey: z.infer<typeof quickSurveyHandoff>
+  investmentPrefill: z.infer<typeof investmentPrefill>
   homeQuickForensic: z.infer<typeof homeQuickForensicHandoff>
   surveySession: z.infer<typeof surveySessionHandoff>
 }
@@ -95,6 +99,8 @@ export const handoffRoutes = {
     withQuery(ROUTES.forensic, { ...highAprHandoff.parse(params), from: 'survey-apr' }),
   quickSurvey: (params: RouteHandoffParams['quickSurvey']) =>
     withQuery(ROUTES.survey, { mode: 'loan', ...quickSurveyHandoff.parse(params) }),
+  investmentPrefill: (params: RouteHandoffParams['investmentPrefill']) =>
+    withQuery(ROUTES.survey, { mode: 'invest', ...investmentPrefill.parse(params) }),
   homeQuickForensic: (params: RouteHandoffParams['homeQuickForensic']) =>
     withQuery(ROUTES.forensic, { ...homeQuickForensicHandoff.parse(params), from: 'home-quick-check' }),
   surveySession: (params: RouteHandoffParams['surveySession']) => {
@@ -107,14 +113,17 @@ export type RouteSearchParams = Record<string, string | string[] | undefined>
 
 const surveyQuerySchema = z.object({
   mode: z.enum(['loan', 'invest', 'manual', 'refinance']).optional().catch(undefined),
-  amount: positiveDecimal.optional().catch(undefined),
+  amount: nonnegativeDecimal.optional().catch(undefined),
   term: termQuery.optional().catch(undefined),
+  contribution: nonnegativeDecimal.optional().catch(undefined),
   shockDelta: decimalString.optional().catch(undefined),
   from: z.enum(['radar', 'forensic', 'profile']).optional().catch(undefined),
   articleId: z.uuid().optional().catch(undefined),
   auditId: z.uuid().optional().catch(undefined),
   sessionId: z.uuid().optional().catch(undefined),
-})
+}).transform(data => ({
+  ...data, amount: data.mode === 'invest' ? data.amount : positiveDecimal.safeParse(data.amount).data,
+}))
 
 export const forensicQuerySchema = z.object({
   claimedEntity: trustFilterHandoff.shape.claimedEntity.optional().catch(undefined),

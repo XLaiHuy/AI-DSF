@@ -121,6 +121,40 @@ describe('Verified Copilot tools', () => {
     expect(recurring.richCard).toMatchObject({ kind: 'INVESTMENT_PLAN', initialVnd: '0', monthlyContributionVnd: '3000000' })
   })
 
+  it('uses income, expenses and existing debt to calculate a safe loan at a verified rate', async () => {
+    const { prisma, run } = setup()
+    prisma.financialProduct.findMany.mockResolvedValue([
+      { ...bank, nominalRateMin: decimal('10'), nominalRateMax: decimal('10'), effectiveDate: new Date() },
+      { ...bank, nominalRateMin: decimal('14'), nominalRateMax: decimal('14'), effectiveDate: new Date() },
+      { ...bank, nominalRateMin: decimal('2'), nominalRateMax: decimal('2'), dataProvenance: 'WEB_REFERENCE', effectiveDate: new Date() },
+    ])
+    const result = await run('Lương 18 triệu, chi 8 triệu, tôi được vay tối đa bao nhiêu trong 36 tháng để an toàn?')
+    expect(result.toolTrace?.map(step => step.tool)).toEqual(['PROFILE_HEALTH', 'SAFE_LOAN_LIMIT'])
+    expect(result.richCard).toMatchObject({ kind: 'SAFE_LOAN_LIMIT', termMonths: 36, safeDtiCapPct: '35',
+      existingDebtPaymentVnd: '1000000', maxSafeEmiVnd: '5300000', referenceRatePct: '12',
+      openSurveyHref: expect.stringMatching(/^\/survey\?mode=loan&amount=\d+&term=36$/),
+    })
+  })
+
+  it('calculates a goal contribution and prefills it even when there is no rate for the term', async () => {
+    const { prisma, run } = setup()
+    prisma.financialProduct.findMany.mockResolvedValue([])
+    const result = await run('Muốn có 300 triệu sau 3 năm, đang có 50 triệu, mỗi tháng cần góp bao nhiêu?')
+    expect(result.toolTrace).toEqual([expect.objectContaining({ tool: 'GOAL_PLANNER', status: 'done', summary: expect.stringContaining('0%') })])
+    expect(result.richCard).toMatchObject({ kind: 'GOAL_PLANNER', targetVnd: '300000000', initialVnd: '50000000',
+      termMonths: 36, requiredMonthlyContributionVnd: '6944445', projectedNetValueVnd: '300000020',
+      openSurveyHref: '/survey?mode=invest&amount=50000000&contribution=6944445&term=36',
+    })
+  })
+
+  it('uses the compiled catalog snapshot when the bank lookup is offline', async () => {
+    const { prisma, run } = setup()
+    prisma.financialProduct.findMany.mockRejectedValue(new Error('offline'))
+    const result = await run('Lương 18 triệu, chi 8 triệu, vay tối đa bao nhiêu trong 36 tháng?')
+    expect(result.richCard?.kind).toBe('SAFE_LOAN_LIMIT')
+    expect(result.toolTrace?.at(-1)?.summary).toContain('bản lưu ngoại tuyến')
+  })
+
   it('simulates a refinance using the current annual rate and the stated settlement fee', async () => {
     const { run } = setup()
     const result = await run('Nên đảo nợ không? Dư nợ 100 triệu, còn 24 tháng, lãi suất hiện tại 18%/năm, phí tất toán 1%.')

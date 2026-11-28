@@ -140,6 +140,28 @@ function CardBody({ card, surveyActionLabel }: { card: CardData; surveyActionLab
         </div>}
         <CardAction href={card.openRadarHref}>Mở Radar cảnh báo</CardAction>
       </>
+    case 'SAFE_LOAN_LIMIT':
+      return <>
+        <h3 className="font-semibold">Số tiền vay tối đa theo ngân sách</h3>
+        <p className="text-lg font-semibold text-primary">{amount(card.maxSafePrincipalVnd)}</p>
+        <Metrics items={[
+          ['Thu nhập mỗi tháng', amount(card.monthlyIncomeVnd)], ['Chi phí sinh hoạt', amount(card.monthlyExpenseVnd)],
+          ['Đang trả nợ mỗi tháng', amount(card.existingDebtPaymentVnd)], ['Có thể trả thêm mỗi tháng', amount(card.maxSafeEmiVnd)],
+        ]} />
+        <p className="text-xs text-muted-foreground">{card.termMonths} tháng · lãi tham khảo {formatRate(card.referenceRatePct)}/năm · tổng trả nợ tối đa {card.safeDtiCapPct}% thu nhập. Ước tính theo dư nợ giảm dần, chưa tính phí.</p>
+        <CardAction href={card.openSurveyHref}>{surveyActionLabel ?? 'Mở Khảo sát khoản vay'}</CardAction>
+      </>
+    case 'GOAL_PLANNER':
+      return <>
+        <h3 className="font-semibold">Khoản góp để đạt mục tiêu</h3>
+        <p className="text-lg font-semibold text-primary">{amount(card.requiredMonthlyContributionVnd)} <span className="text-xs font-medium">/tháng</span></p>
+        <Metrics items={[
+          ['Mục tiêu', amount(card.targetVnd)], ['Vốn ban đầu', amount(card.initialVnd)],
+          ['Thời gian góp', card.termMonths + ' tháng'], ['Dự kiến cuối kỳ', amount(card.projectedNetValueVnd)],
+        ]} />
+        <p className="text-xs text-muted-foreground">{card.referenceCategoryLabel} · lợi suất giả định {formatRate(card.referenceAnnualReturnPct)}/năm.</p>
+        <CardAction href={card.openSurveyHref}>{surveyActionLabel ?? 'Mở Khảo sát đầu tư và tích lũy'}</CardAction>
+      </>
     case 'PROFILE_SNAPSHOT':
       return <>
         <h3 className="font-semibold">Sức khỏe tài chính</h3>

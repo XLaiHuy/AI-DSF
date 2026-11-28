@@ -102,7 +102,7 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
   useEffect(() => () => request.current?.abort(), [])
 
   useEffect(() => {
-    const { mode, sessionId, auditId, articleId, amount, term, shockDelta } = handoff
+    const { mode, sessionId, auditId, articleId, amount, contribution, term, shockDelta } = handoff
     if (sessionId || (!mode && !auditId && !articleId && !amount && term == null && shockDelta == null)) return
     update('survey', previous => {
       const tab = mode ?? 'loan'
@@ -110,9 +110,10 @@ export default function SurveyWorkspace({ handoff }: { handoff: Handoff }) {
         return { ...previous, tab, refinanceSourceAuditId: auditId, refinanceForm: refinanceDraft(),
           resultsByTab: { ...previous.resultsByTab, refinance: undefined } }
       }
-      if (tab === 'invest' && (amount || term != null)) {
+      if (tab === 'invest' && (amount || contribution || term != null)) {
         return { ...previous, tab,
-          form: { ...previous.form, initial: amount ?? previous.form.initial, invest: term == null ? previous.form.invest : String(term) },
+          form: { ...previous.form, initial: amount ?? previous.form.initial, contribution: contribution ?? previous.form.contribution,
+            invest: term == null ? previous.form.invest : String(term) },
           resultsByTab: { ...previous.resultsByTab, invest: undefined } }
       }
       if (tab === 'loan' && (amount || term != null || auditId || articleId || shockDelta != null)) {

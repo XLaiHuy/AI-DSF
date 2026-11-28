@@ -27,7 +27,7 @@ const offerName = {
 }
 
 export const CopilotToolTraceItemSchema = z.strictObject({
-  tool: z.enum(['PROFILE_HEALTH', 'LOAN_SURVEY', 'INVESTMENT_SURVEY', 'REFINANCE_SIM', 'RADAR_ALERTS']),
+  tool: z.enum(['PROFILE_HEALTH', 'LOAN_SURVEY', 'INVESTMENT_SURVEY', 'REFINANCE_SIM', 'RADAR_ALERTS', 'SAFE_LOAN_LIMIT', 'GOAL_PLANNER']),
   label: z.string().max(120),
   status: z.enum(['done', 'empty', 'skipped']),
   durationMs: count,
@@ -76,6 +76,18 @@ export const CopilotRichCardSchema = z.discriminatedUnion('kind', [
       label: z.string().max(120), minRatePct: decimalString, maxRatePct: decimalString, medianRatePct: decimalString, sampleCount: count,
     })).max(4),
     openRadarHref: copilotHref('radar'),
+  }),
+  z.strictObject({
+    kind: z.literal('SAFE_LOAN_LIMIT'),
+    monthlyIncomeVnd: nonnegativeDecimal, monthlyExpenseVnd: nonnegativeDecimal, existingDebtPaymentVnd: nonnegativeDecimal,
+    maxSafeEmiVnd: nonnegativeDecimal, termMonths: months, referenceRatePct: nonnegativeDecimal,
+    maxSafePrincipalVnd: nonnegativeDecimal, safeDtiCapPct: z.literal('35'), openSurveyHref: copilotHref('survey'),
+  }),
+  z.strictObject({
+    kind: z.literal('GOAL_PLANNER'),
+    targetVnd: nonnegativeDecimal, initialVnd: nonnegativeDecimal, termMonths: months,
+    referenceCategoryLabel: z.string().max(120), referenceAnnualReturnPct: nonnegativeDecimal,
+    requiredMonthlyContributionVnd: nonnegativeDecimal, projectedNetValueVnd: nonnegativeDecimal, openSurveyHref: copilotHref('survey'),
   }),
   z.strictObject({
     kind: z.literal('PROFILE_SNAPSHOT'),

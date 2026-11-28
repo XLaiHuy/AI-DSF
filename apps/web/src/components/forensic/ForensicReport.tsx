@@ -16,6 +16,7 @@ import { PersonalImpactCard } from './PersonalImpactCard'
 import { plainAuditText } from './report-copy'
 import { RevealBlock, StreamingTextReveal, useReducedMotion } from './StreamingContentReveal'
 import { FersEvidenceLedger, FersRiskScale, reportRisk } from './FersAssessment'
+import { IncidentActionKit } from './IncidentActionKit'
 import { verdictLabels } from './verdict'
 
 const verdictTone = {
@@ -277,6 +278,7 @@ export function ForensicReport({ audit, inline = false, animate = false, opening
   const skip = useRef<HTMLButtonElement>(null)
   const [stage, setStage] = useState(0)
   const [skipped, setSkipped] = useState(false)
+  const { riskTier } = reportRisk(audit)
   const printing = useSyncExternalStore(subscribePrint, () => window.matchMedia('print').matches, () => false)
   const reduced = useReducedMotion()
   const narrative = plainAuditText(audit.aiNarrative)
@@ -394,6 +396,7 @@ export function ForensicReport({ audit, inline = false, animate = false, opening
       </header>
       {opening && <RevealBlock animate={animated} className="print-hidden">{opening}</RevealBlock>}
       <RevealBlock animate={animated} className="print-keep"><VerdictHero audit={audit} inline={inline} /></RevealBlock>
+      {(riskTier === 'T2' || riskTier === 'T3') && <IncidentActionKit key={audit.auditId} audit={audit} riskTier={riskTier} />}
       {audit.meta.learningTrace && <LearningTrace trace={audit.meta.learningTrace} />}
       <AuditFeedback key={audit.auditId} audit={audit} />
       {!finished && (

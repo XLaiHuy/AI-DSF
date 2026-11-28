@@ -6,12 +6,15 @@ import { parseVnd } from './hard-rules.engine'
 
 export type ExtractedSlots = NonNullable<ForensicGuidance['extractedSlots']>
 export type SurveyDomain = 'LOAN' | 'INVEST' | 'SAVINGS'
-export type CopilotIntent = SurveyDomain | 'RADAR' | 'REFINANCE' | 'PROFILE'
+export type CopilotIntent = SurveyDomain | 'RADAR' | 'REFINANCE' | 'PROFILE' | 'SAFE_LOAN_LIMIT' | 'GOAL_PLANNER'
 export type CopilotInput = { rawText: string; session: SessionContext; slots: ExtractedSlots; domain?: SurveyDomain }
 
 export const amountToken = /(?<![\p{L}\d.,-])(\d{1,16}(?:[.,]\d{1,3}| \d{3}(?!\d)){0,5})\s*(triệu|trieu|tr|tỷ|tỉ|ty|ti|nghìn|nghin|ngàn|ngan|k|đồng|dong|vnđ|vnd|đ|₫)(?![\p{L}\d])(?:\s*(?:đồng|dong|vnđ|vnd|đ|₫)(?![\p{L}\d]))?/giu
 export const rateToken = /\d+(?:[.,]\d+)?\s*%(?:\s*\/\s*(?:tháng|năm|thang|nam))?/giu
 export const termToken = /(?<![\p{L}\d.,-])(\d{1,3})\s*(tháng|thang|năm|nam)(?![\p{L}\d])/giu
+
+const safeLoan = /\bvay\b.{0,28}\b(?:toi da|bao nhieu (?:thi|de) an toan)\b/
+const goalPlanner = /\b(?:can|nen|phai) (?:gop|tich luy|de danh) bao nhieu\b|\b(?:gop|de danh) bao nhieu (?:moi|hang) thang\b/
 
 const refinance = /\b(?:dao no|doi khoan vay|chuyen khoan vay|tai cap von|tai tai tro khoan vay)\b/
 const loan = /\b(?:muon vay|can vay|du dinh vay|neu vay|nen vay|ke hoach vay|vay (?:mua\b|tin chap\b|the chap\b|\d))/
@@ -30,6 +33,8 @@ export function copilotIntent(raw: string, domain?: SurveyDomain): CopilotIntent
   const plain = normalizeVietnamese(raw)
   if (refinance.test(plain)) return 'REFINANCE'
   if (recent.test(plain) && (alertTopic.test(plain) || rateTopic.test(plain))) return 'RADAR'
+  if (safeLoan.test(plain)) return 'SAFE_LOAN_LIMIT'
+  if (goalPlanner.test(plain)) return 'GOAL_PLANNER'
   if (loan.test(plain)) return 'LOAN'
   if (profile.test(plain)) return 'PROFILE'
   if (invest.test(plain)) return 'INVEST'
@@ -50,6 +55,27 @@ export function copilotProfileAmounts(raw: string): FinancialHealthRequest {
 }
 
 const single = <T,>(values: T[]) => values.length === 1 ? values[0] : undefined
+
+export function copilotTerm(raw: string, priorTerm?: number) {
+  const terms = [...raw.matchAll(termToken)].map(match =>
+    Number(match[1]) * (normalizeVietnamese(match[2]) === 'nam' ? 12 : 1))
+  return SurveyTermMonthsSchema.safeParse(single(terms) ?? (terms.length ? undefined : priorTerm)).data
+}
+
+export function copilotGoalAmounts(raw: string) {
+  const figures = [...raw.matchAll(amountToken)].flatMap(match => {
+    const value = parseVnd(match)
+    if (value == null) return []
+    const prefix = normalizeVietnamese(raw.slice(Math.max(0, match.index - 80), match.index))
+    return [{ value,
+      target: /\b(?:muon co|dat|muc tieu|tich luy du|can du)(?: (?:la|du|khoang))*$/.test(prefix),
+      initial: /\b(?:dang co|hien co|da co|co san|von ban dau)(?: (?:la|khoang))*$/.test(prefix),
+    }]
+  })
+  const targets = figures.filter(item => item.target)
+  const initial = figures.filter(item => item.initial)
+  return { target: single(targets)?.value, initial: single(initial)?.value, ambiguous: initial.length > 1 }
+}
 
 export function copilotAmounts(raw: string, intent: CopilotIntent, slots: ExtractedSlots) {
   const amounts = [...raw.matchAll(amountToken)].flatMap(match => {
@@ -73,9 +99,7 @@ export function copilotAmounts(raw: string, intent: CopilotIntent, slots: Extrac
   const primary = candidates.filter(item => item.primary)
   const amount = single(primary.length ? primary : candidates)?.value ?? (candidates.length ? undefined : slots.amountVnd)
   const contribution = single(amounts.filter(item => item.contribution))?.value
-  const terms = [...raw.matchAll(termToken)].map(match =>
-    Number(match[1]) * (normalizeVietnamese(match[2]) === 'nam' ? 12 : 1))
-  const term = SurveyTermMonthsSchema.safeParse(single(terms) ?? (terms.length ? undefined : slots.termMonths)).data
+  const term = copilotTerm(raw, slots.termMonths)
   return { amount, contribution, term }
 }
 

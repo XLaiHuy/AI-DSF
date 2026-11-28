@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   actual365Interest, civilLoanAnnualRateCapPct, compoundDca, criminalLoanAnnualRateScreenPct,
   effectiveLoanApr, effectiveLoanEarFromApr, exceedsOverdueInterestCap, reducingBalanceLoan,
-  verifyInvestmentCalculation, verifyLoanCalculation,
+  maxSafeLoanPrincipal, requiredMonthlyContribution, verifyInvestmentCalculation, verifyLoanCalculation,
 } from './index'
 
 const within = (actual: Decimal.Value, expected: Decimal.Value, tolerance: Decimal.Value) =>
@@ -23,7 +23,7 @@ describe('spreadsheet and Vietnam regulatory oracles', () => {
     expect(verifyLoanCalculation('100000000', '100000000', loan.schedule, apr, ear).verified).toBe(true)
     expect(verifyLoanCalculation('100000000', '100000000', loan.schedule, '20', ear).verified).toBe(false)
     // PV(12%/12,36,-4000000) = 120430020.149096410.
-    within(reducingBalanceLoan('120430020', '12', 36).monthlyPaymentVnd, '4000000', 1)
+    within(maxSafeLoanPrincipal('4000000', '12', 36), '120430020.149096410', 1)
   })
 
   it('matches end-of-month Excel FV and checks the net-value identity', () => {
@@ -31,6 +31,7 @@ describe('spreadsheet and Vietnam regulatory oracles', () => {
     const result = compoundDca('50000000', '3000000', 36, '6', '0', '0')
     within(result.netValueVnd, '177842341.135222565', 1)
     expect(verifyInvestmentCalculation(result).verified).toBe(true)
+    within(requiredMonthlyContribution('177842341', '50000000', 36, '6'), '3000000', 1)
     expect(verifyInvestmentCalculation({ ...result, taxVnd: '1' }).verified).toBe(false)
   })
 

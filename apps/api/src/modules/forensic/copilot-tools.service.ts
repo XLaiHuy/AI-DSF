@@ -1,4 +1,4 @@
-import { assessDti } from '@fincopilot/financial-math'
+import { assessDti, compoundDca, maxSafeLoanPrincipal, requiredMonthlyContribution } from '@fincopilot/financial-math'
 import { Injectable, Optional } from '@nestjs/common'
 import {
   ForensicGuidanceSchema, SurveyInvestRequestSchema, SurveyLoanRequestSchema, SurveyRefinanceTermsSchema, handoffRoutes,
@@ -12,7 +12,9 @@ import { calculateFinancialHealth } from '../profile-auth/financial-health.engin
 import { readThreatTrends } from '../radar/threat-trends'
 import { compareCatalogQuality } from '../survey-calc/product-catalog'
 import { SurveyCalcService } from '../survey-calc/survey-calc.service'
-import { copilotAmounts, copilotIntent, copilotLoanGoal, copilotLoanUseCase, copilotProfileAmounts, copilotRefinanceRates, type CopilotInput } from './copilot-input'
+import { copilotAmounts, copilotGoalAmounts, copilotIntent, copilotLoanGoal, copilotLoanUseCase, copilotProfileAmounts,
+  copilotRefinanceRates, copilotTerm, type CopilotInput } from './copilot-input'
+import { copilotReferenceRate, decimalMedian } from './copilot-reference-rates'
 import { normalizeVietnamese } from './data/trusted-institutions'
 import { formatCaseAmount } from './payment-qr-description'
 import { maskForensicText } from './qr-evidence'
@@ -24,6 +26,7 @@ type Tool = CopilotToolTraceItem['tool']
 const labels: Record<Tool, string> = {
   PROFILE_HEALTH: 'Hồ sơ DTI', LOAN_SURVEY: 'Kho ngân hàng NHNN', INVESTMENT_SURVEY: 'Danh mục đầu tư đã xác minh',
   REFINANCE_SIM: 'Mô phỏng đổi khoản vay', RADAR_ALERTS: 'Radar cảnh báo đã xác minh',
+  SAFE_LOAN_LIMIT: 'Tính số tiền vay tối đa', GOAL_PLANNER: 'Tính khoản góp để đạt mục tiêu',
 }
 const investmentCategories = { SAVING: 'Tiết kiệm', ACCUMULATION: 'Tích lũy', OPEN_FUND: 'Quỹ mở' } as const
 const marketCategories = { UNSECURED_LOAN: 'Vay tín chấp', SECURED_LOAN: 'Vay thế chấp', SAVING: 'Tiết kiệm', ACCUMULATION: 'Tích lũy' } as const
@@ -67,11 +70,13 @@ export class CopilotToolsService {
     const intent = copilotIntent(input.rawText, input.domain)
     if (!intent) return undefined
     const trace: CopilotToolTraceItem[] = []
-    const result = intent === 'RADAR' ? await this.radar(trace)
-      : intent === 'PROFILE' ? await this.profileSnapshot(input, trace)
-        : intent === 'LOAN' ? await this.loan(input, trace)
-          : intent === 'REFINANCE' ? await this.refinance(input, trace)
-            : await this.investment(input, intent, trace)
+    const result = intent === 'SAFE_LOAN_LIMIT' ? await this.safeLoanLimit(input, trace)
+      : intent === 'GOAL_PLANNER' ? await this.goalPlanner(input, trace)
+        : intent === 'RADAR' ? await this.radar(trace)
+          : intent === 'PROFILE' ? await this.profileSnapshot(input, trace)
+            : intent === 'LOAN' ? await this.loan(input, trace)
+              : intent === 'REFINANCE' ? await this.refinance(input, trace)
+                : await this.investment(input, intent, trace)
     return result ? safeResult(trace, result) : undefined
   }
 
@@ -116,6 +121,71 @@ export class CopilotToolsService {
             : 'Đã dùng số liệu tài chính từ hồ sơ của phiên này.'
       return { data: { values, inline, summary, baseline }, summary, empty }
     })
+  }
+
+  private async safeLoanLimit(input: CopilotInput, trace: CopilotToolTraceItem[]): Promise<Guidance> {
+    const termMonths = copilotTerm(input.rawText, input.slots.termMonths)
+    if (!termMonths) return { intent: 'NEEDS_DETAILS', message: 'Bạn dự định vay trong bao nhiêu tháng hoặc năm?' }
+
+    const profile = await this.profile(input, trace)
+    const income = profile?.values.monthlyIncomeVnd
+    const expense = profile?.values.monthlyExpenseVnd
+    const debt = profile?.values.existingDebtPaymentVnd
+    if (income == null || expense == null || debt == null) {
+      return { intent: 'NEEDS_DETAILS', message: 'Cho mình biết thu nhập, chi phí sinh hoạt và khoản trả nợ mỗi tháng để tính số tiền có thể vay.',
+        cta: { label: 'Mở Hồ sơ tài chính', href: '/profile' } }
+    }
+    const safeDtiCapPct = '35'
+    const useCase = copilotLoanUseCase(input.rawText)
+    const category = (useCase && useCase !== 'UNSECURED_SALARY') || /\bthe chap\b/.test(normalizeVietnamese(input.rawText))
+      ? 'SECURED_LOAN' : 'UNSECURED_LOAN'
+    const richCard = await this.step(trace, 'SAFE_LOAN_LIMIT', async () => {
+      const reference = await copilotReferenceRate(this.prisma, category, termMonths)
+      if (!reference) return { data: undefined, empty: true, summary: 'Chưa có lãi suất công bố phù hợp với kỳ hạn này.' }
+      const dtiRoom = new Precise(income).mul(safeDtiCapPct).div(100).minus(debt)
+      const cashRoom = new Precise(income).minus(expense).minus(debt)
+      const maxSafeEmiVnd = Precise.max(0, Precise.min(dtiRoom, cashRoom)).floor().toFixed(0)
+      const maxSafePrincipalVnd = maxSafeLoanPrincipal(maxSafeEmiVnd, reference.rate, termMonths)
+      const openSurveyHref = maxSafePrincipalVnd === '0' ? '/survey?mode=loan'
+        : handoffRoutes.quickSurvey({ amount: maxSafePrincipalVnd, term: termMonths })
+      const data: Extract<CopilotRichCard, { kind: 'SAFE_LOAN_LIMIT' }> = {
+        kind: 'SAFE_LOAN_LIMIT', monthlyIncomeVnd: income, monthlyExpenseVnd: expense, existingDebtPaymentVnd: debt, maxSafeEmiVnd,
+        termMonths, referenceRatePct: reference.rate, maxSafePrincipalVnd, safeDtiCapPct, openSurveyHref,
+      }
+      return { data, summary: reference.summary }
+    })
+    return { intent: 'FINANCIAL_EDUCATION', richCard,
+      message: richCard ? 'Đã tính theo số tiền còn lại mỗi tháng và giữ tổng tiền trả nợ trong 35% thu nhập.'
+        : 'Chưa có lãi suất đủ để ước tính số tiền vay. Bạn có thể xem gói vay hoặc nhập lãi suất trong Khảo sát.',
+      cta: { label: 'Mở Khảo sát khoản vay', href: richCard?.openSurveyHref ?? '/survey?mode=loan' } }
+  }
+
+  private async goalPlanner(input: CopilotInput, trace: CopilotToolTraceItem[]): Promise<Guidance> {
+    const termMonths = copilotTerm(input.rawText, input.slots.termMonths)
+    const { target, initial, ambiguous } = copilotGoalAmounts(input.rawText)
+    if (!termMonths || !target || new Precise(target).lte(0) || ambiguous) {
+      return { intent: 'NEEDS_DETAILS', message: 'Bạn muốn có bao nhiêu tiền, sau bao lâu và đã dành riêng được bao nhiêu cho mục tiêu này?' }
+    }
+    const stored = !initial && /\b(?:dung|tinh ca) (?:tien |khoan )?tiet kiem\b/.test(normalizeVietnamese(input.rawText))
+      ? await this.profile(input, trace) : undefined
+    const initialVnd = initial ?? stored?.values.liquidSavingsVnd ?? '0'
+    const richCard = await this.step(trace, 'GOAL_PLANNER', async () => {
+      const reference = await copilotReferenceRate(this.prisma, 'SAVING', termMonths)
+      const referenceAnnualReturnPct = reference?.rate ?? '0'
+      const requiredMonthlyContributionVnd = requiredMonthlyContribution(target, initialVnd, termMonths, referenceAnnualReturnPct)
+      const { netValueVnd } = compoundDca(initialVnd, requiredMonthlyContributionVnd, termMonths, referenceAnnualReturnPct, '0', '0')
+      const data: Extract<CopilotRichCard, { kind: 'GOAL_PLANNER' }> = {
+        kind: 'GOAL_PLANNER', targetVnd: target, initialVnd, termMonths,
+        referenceCategoryLabel: reference ? 'Tiết kiệm ngân hàng' : 'Tích lũy không tính lãi',
+        referenceAnnualReturnPct, requiredMonthlyContributionVnd, projectedNetValueVnd: netValueVnd,
+        openSurveyHref: handoffRoutes.investmentPrefill({ amount: initialVnd, contribution: requiredMonthlyContributionVnd, term: termMonths }),
+      }
+      const summary = reference?.summary ?? 'Chưa có mức lãi phù hợp. Tính theo phương án góp đều với lợi suất giả định 0%.'
+      return { data, summary: summary + (initialVnd === '0' ? ' Vốn ban đầu tạm tính 0 đ.' : '') }
+    })
+    return { intent: 'FINANCIAL_EDUCATION', richCard,
+      message: richCard ? 'Đã tính khoản cần góp vào cuối mỗi tháng để đạt số tiền mục tiêu.' : 'Chưa tính được khoản góp cho mục tiêu này.',
+      cta: { label: 'Mở Khảo sát đầu tư và tích lũy', href: richCard?.openSurveyHref ?? '/survey?mode=invest' } }
   }
 
   private async loan(input: CopilotInput, trace: CopilotToolTraceItem[]): Promise<Guidance | undefined> {
@@ -276,9 +346,7 @@ export class CopilotToolsService {
           min: new Precise(item.nominalRateMin.toFixed()), max: new Precise(item.nominalRateMax.toFixed()),
         }))
         if (!ranges.length) return []
-        const points = ranges.map(({ min, max }) => min.plus(max).div(2)).sort((a, b) => a.cmp(b))
-        const middle = Math.floor(points.length / 2)
-        const median = points.length % 2 ? points[middle] : points[middle - 1].plus(points[middle]).div(2)
+        const median = decimalMedian(ranges.map(({ min, max }) => min.plus(max).div(2)))
         return [{ label, minRatePct: Precise.min(...ranges.map(item => item.min)).toFixed(),
           maxRatePct: Precise.max(...ranges.map(item => item.max)).toFixed(), medianRatePct: median.toFixed(4), sampleCount: ranges.length }]
       })

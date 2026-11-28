@@ -229,7 +229,8 @@ export async function routeForensicConversation(
 
   if (genericScam.test(plain) || evidenceInvitation.test(plain)) return guidance(recoveryCheck)
   const toolIntent = runCopilot && copilotIntent(rawText)
-  if ((toolIntent === 'RADAR' || toolIntent === 'REFINANCE' || toolIntent === 'PROFILE') &&
+  if ((toolIntent === 'RADAR' || toolIntent === 'REFINANCE' || toolIntent === 'PROFILE' ||
+    toolIntent === 'SAFE_LOAN_LIMIT' || toolIntent === 'GOAL_PLANNER') &&
     guidanceEligible(rawText, aliases, toolIntent)) {
     const result = await runCopilot?.({ rawText, slots: {} })
     if (result) return guidance(result)

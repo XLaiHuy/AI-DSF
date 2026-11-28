@@ -10,6 +10,19 @@ export function reducingBalanceLoan(principal: Decimal.Value, annualRatePct: Dec
   return amortizeLoan(principal, annualRatePct, termMonths, 'REDUCING_BALANCE')
 }
 
+export function maxSafeLoanPrincipal(maxMonthlyPaymentVnd: Decimal.Value, annualRatePct: Decimal.Value, termMonths: number) {
+  const budget = new Decimal(maxMonthlyPaymentVnd).floor()
+  const rate = new Decimal(annualRatePct).div(1200)
+  if (!budget.isFinite() || budget.lt(0) || !rate.isFinite() || rate.lt(0) || !Number.isInteger(termMonths) || termMonths < 1 || termMonths > 600) {
+    throw new RangeError('Invalid loan affordability assumptions')
+  }
+  const annuityFactor = rate.isZero() ? new Decimal(termMonths) : new Decimal(1).minus(rate.plus(1).pow(-termMonths)).div(rate)
+  const principal = budget.mul(annuityFactor).floor()
+  const repayment = reducingBalanceLoan(principal, annualRatePct, termMonths)
+  if (new Decimal(repayment.monthlyPaymentVnd).gt(budget)) throw new Error('Loan affordability verification failed')
+  return principal.toFixed(0)
+}
+
 /** Equal-principal amortisation: principal is constant and interest declines monthly. */
 export function decliningPrincipalLoan(principal: Decimal.Value, annualRatePct: Decimal.Value, termMonths: number): LoanCalculation {
   return amortizeLoan(principal, annualRatePct, termMonths, 'DECLINING_PRINCIPAL')
@@ -248,6 +261,43 @@ export function compoundDca(initialVnd: Decimal.Value, monthlyContributionVnd: D
   const tax = new Decimal(money(taxableValue.mul(taxPct).div(100)))
   const net = gross.sub(sellFee).sub(tax)
   return { totalContributedVnd: money(contributed), grossValueVnd: money(gross), sellFeeVnd: money(sellFee), taxVnd: money(tax), netValueVnd: money(net), netProfitVnd: money(net.sub(contributed)) }
+}
+
+export type ContributionOptions = FundOptions & { sellFeePct?: Decimal.Value; taxPct?: Decimal.Value }
+
+export function requiredMonthlyContribution(targetVnd: Decimal.Value, initialVnd: Decimal.Value, termMonths: number,
+  annualReturnPct: Decimal.Value, options?: ContributionOptions,
+) {
+  const target = new Decimal(targetVnd)
+  const initial = new Decimal(initialVnd)
+  const growth = new Decimal(annualReturnPct)
+  const fee = new Decimal(options?.sellFeePct ?? 0)
+  const tax = new Decimal(options?.taxPct ?? 0)
+  const charges = [fee, tax, ...(options?.redemptionFeeTiers ?? []).map(item => new Decimal(item.ratePct))]
+  if (!target.isFinite() || target.lt(0) || !initial.isFinite() || initial.lt(0) || !growth.isFinite() || growth.lte(-100) ||
+    !Number.isInteger(termMonths) || termMonths < 1 || termMonths > 600 ||
+    charges.some(charge => !charge.isFinite() || charge.lt(0)) ||
+    Decimal.max(fee, ...charges.slice(2)).plus(tax).gte(100)) {
+    throw new RangeError('Invalid contribution assumptions')
+  }
+  const reachesGoal = (contribution: Decimal) => new Decimal(compoundDca(
+    initial, contribution, termMonths, growth, fee, tax, options,
+  ).netValueVnd).gte(target)
+
+  let low = new Decimal(0)
+  if (reachesGoal(low)) return '0'
+  let high = Decimal.max(1, target.div(termMonths).ceil())
+  for (let expansion = 0; !reachesGoal(high); expansion += 1) {
+    if (expansion === 64) throw new RangeError('Contribution exceeds the modeled range')
+    high = high.mul(2)
+  }
+  while (high.minus(low).gt(1)) {
+    const mid = high.plus(low).div(2).floor()
+    if (reachesGoal(mid)) high = mid
+    else low = mid
+  }
+  if (!reachesGoal(high)) throw new Error('Contribution verification failed')
+  return high.toFixed(0)
 }
 
 export function openFundScenarioBands(

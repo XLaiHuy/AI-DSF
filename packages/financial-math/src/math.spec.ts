@@ -1,5 +1,6 @@
+import Decimal from 'decimal.js'
 import { describe, expect, it } from 'vitest'
-import { amortizeLoan, assessDti, compoundDca, decliningPrincipalLoan, effectiveLoanApr, effectiveLoanEarFromApr, flatRateLoan, openFundScenarioBands, reducingBalanceLoan, simulateEarlySettlement, simulateRefinanceBreakEven, summarizeAmortizationForChart } from './index'
+import { amortizeLoan, assessDti, compoundDca, decliningPrincipalLoan, effectiveLoanApr, effectiveLoanEarFromApr, flatRateLoan, openFundScenarioBands, reducingBalanceLoan, simulateEarlySettlement, simulateRefinanceBreakEven, summarizeAmortizationForChart, maxSafeLoanPrincipal, requiredMonthlyContribution } from './index'
 
 describe('effective annual rate from monthly compounding', () => {
   it.each([
@@ -145,4 +146,26 @@ describe('Financial math golden vectors', () => {
   })
   it('V3 - DTI thresholds', () => { expect(assessDti('18000000', '8000000', '2000000', '2412471')).toEqual({ dtiPct: '24.51', disposableVnd: '5587529', riskBand: 'SAFE' }); expect(assessDti('18000000', '8000000', '4600000', '2412471').riskBand).toBe('MODERATE'); expect(assessDti('18000000', '8000000', '6000000', '2412471').riskBand).toBe('HIGH_PRESSURE'); expect(assessDti('18000000', '8000000', '7000000', '2412471').riskBand).toBe('CRITICAL_OVERLOAD') })
   it('V4 - DCA, redemption fee and tax', () => { expect(compoundDca('20000000', '3000000', 24, '10.0', '0.5', '0.1')).toEqual({ totalContributedVnd: '92000000', grossValueVnd: '103748565', sellFeeVnd: '518743', taxVnd: '103749', netValueVnd: '103126073', netProfitVnd: '11126073' }) })
+})
+
+
+describe('reverse loan and contribution plans', () => {
+  it('floors the annuity principal and verifies the first payment', () => {
+    expect(maxSafeLoanPrincipal('100.75', '0', 12)).toBe('1200')
+    expect(maxSafeLoanPrincipal('0', '12', 36)).toBe('0')
+    const principal = maxSafeLoanPrincipal('5300000', '23.5', 36)
+    expect(new Decimal(reducingBalanceLoan(principal, '23.5', 36).monthlyPaymentVnd).lte('5300000')).toBe(true)
+    expect(() => maxSafeLoanPrincipal('100', '12', 0)).toThrow(RangeError)
+  })
+
+  it('finds the monthly amount after fees and lot-based tax rounding', () => {
+    const options = { taxPct: '0.1', taxFreeAfterMonths: 24, redemptionFeeTiers: [{ throughMonths: 12, ratePct: '2' }] }
+    const contribution = requiredMonthlyContribution('300000000', '50000000', 36, '6', options)
+    const value = (monthly: Decimal.Value) =>
+      new Decimal(compoundDca('50000000', monthly, 36, '6', 0, options.taxPct, options).netValueVnd)
+    expect(value(contribution).gte('300000000')).toBe(true)
+    expect(value(new Decimal(contribution).minus(1)).lt('300000000')).toBe(true)
+    expect(requiredMonthlyContribution('1000000', '1000000', 12, '0')).toBe('0')
+    expect(requiredMonthlyContribution('100', '0', 3, '0')).toBe('34')
+  })
 })

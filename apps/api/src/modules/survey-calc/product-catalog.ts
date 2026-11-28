@@ -85,12 +85,16 @@ function checkSource(url: string) {
   return ready
 }
 
+export async function readProductSnapshot() {
+  const text = await readFile(resolve(configDir, 'loan-rate-snapshot.json'), 'utf8')
+  return productSnapshotSchema.parse(JSON.parse(text)).products
+}
+
 export async function syncProductCatalog(prisma: PrismaService) {
-  const [snapshotText, sourcesText] = await Promise.all([
-    readFile(resolve(configDir, 'loan-rate-snapshot.json'), 'utf8'),
+  const [products, sourcesText] = await Promise.all([
+    readProductSnapshot(),
     readFile(resolve(configDir, 'loan-rate-sources.yaml'), 'utf8'),
   ])
-  const { products } = productSnapshotSchema.parse(JSON.parse(snapshotText))
   const { sources } = sourcesSchema.parse(parse(sourcesText))
   const endpoints = [...new Set(sources.filter(({ isTrustedForRates }) => isTrustedForRates).map(({ endpointUrl }) => endpointUrl))]
   const checks = await Promise.all(endpoints.map(checkSource))

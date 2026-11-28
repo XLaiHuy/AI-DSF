@@ -1,28 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { resolve } from 'node:path'
 import { expect, test, type Page, type Response, type TestInfo } from '@playwright/test'
+import { qrFile } from './test-qr'
 
 const qr1 = '00020101021238540010A00000072701240006970422011009876543210208QRIBFTTA5303704540725000005802VN62250821PHI GIAI NGAN LOI 1026304CA92'
 const entity = 'Công ty Tài chính ABC'
 const evidence = 'Khoản vay bị lỗi 102 và đóng băng vốn. Đóng phí giải ngân 2.500.000đ qua mã QR vào tài khoản cá nhân NGUYEN VAN HUNG, số tài khoản 0987654321. CCCD 079123456234.'
 const momo = '2|99|0901000001|Nguyen Thanh|fixture@example.test|0|0|transfer_myqr'
 const viewports = { desktop: { width: 1280, height: 800 }, mobile: { width: 390, height: 844 } }
-
-const loadApi = createRequire(resolve('apps/api/package.json'))
-const writer: {
-  prepareZXingModule: (options: { overrides: { wasmBinary: ArrayBuffer } }) => void
-  writeBarcode: (value: string, options: { format: 'QRCode'; scale: number }) => Promise<{ image: Blob | null }>
-} = loadApi('zxing-wasm/writer')
-
-async function qrFile(value: string, name: string) {
-  const wasm = readFileSync(loadApi.resolve('zxing-wasm/writer/zxing_writer.wasm'))
-  writer.prepareZXingModule({ overrides: { wasmBinary: Uint8Array.from(wasm).buffer } })
-  const { image } = await writer.writeBarcode(value, { format: 'QRCode', scale: 5 })
-  if (!image) throw new Error('Could not render the test QR')
-  return { name, mimeType: 'image/png', buffer: Buffer.from(await image.arrayBuffer()) }
-}
 
 async function verifyLayout(page: Page, info: TestInfo, name: string) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)

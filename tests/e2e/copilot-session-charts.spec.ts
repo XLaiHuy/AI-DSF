@@ -1,9 +1,14 @@
 import { resolve } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
+import { qrFile } from './test-qr'
 
 const screenshotDir = resolve('test-results/copilot-upgrade-verified')
+const masterScreenshots = resolve('test-results/master-plan-verified')
 const surveyTitle = 'Mình cùng tìm phương án phù hợp nhé'
 const loanPrompt = 'Lương 18 triệu, chi 8 triệu, muốn vay 100 triệu trong 36 tháng có ổn không?'
+const safeLoanPrompt = 'Lương 18 triệu, chi 8 triệu, tôi được vay tối đa bao nhiêu trong 36 tháng để an toàn?'
+const goalPrompt = 'Muốn có 300 triệu sau 3 năm, đang có 50 triệu, mỗi tháng cần góp bao nhiêu?'
+const transferQr = '00020101021238540010A00000072701240006970422011009876543210208QRIBFTTA5303704540725000005802VN62250821PHI GIAI NGAN LOI 1026304CA92'
 const radarPrompt = 'Gần đây có thủ đoạn lừa đảo và lãi suất ngân hàng nào đáng chú ý?'
 
 async function checkLayout(page: Page) {
@@ -186,6 +191,97 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 320, height: 844 
       await plot.screenshot({ path: resolve(screenshotDir, 'survey-apr-ear-preset-' + viewport.width + '.png') })
     })
 
+    test('Copilot tính ngược khoản vay và số tiền cần góp', async ({ page }) => {
+      await page.goto('/forensic')
+      await ask(page, safeLoanPrompt)
+      const loan = page.getByRole('article', { name: 'Câu trả lời của FinCopilot' }).last()
+      const loanTitle = loan.getByRole('heading', { name: 'Số tiền vay tối đa theo ngân sách' })
+      await expect(loanTitle).toBeVisible({ timeout: 25_000 })
+      await expect(loan.locator('summary')).toContainText('Tính số tiền vay tối đa')
+      const loanLink = loan.getByRole('link', { name: 'Mở Khảo sát khoản vay' })
+      await expect(loanLink).toHaveAttribute('href', /^\/survey\?mode=loan&amount=\d+&term=36$/)
+      const principal = new URL((await loanLink.getAttribute('href'))!, page.url()).searchParams.get('amount')!
+      await loan.evaluate(element => element.scrollIntoView({ block: 'start', behavior: 'instant' }))
+      await checkLayout(page)
+      await page.screenshot({ path: resolve(masterScreenshots, 'safe-loan-' + viewport.width + '.png') })
+      await loanLink.click()
+      await expect(page.getByLabel('Số tiền cần vay (VNĐ)')).toHaveValue(principal.replace(/\B(?=(\d{3})+(?!\d))/g, ' '))
+      await expect(page.getByLabel('Kỳ hạn (tháng)')).toHaveValue('36')
+      await nav(page, 'Giám định lừa đảo & QR')
+
+      await ask(page, goalPrompt)
+      const goal = page.getByRole('article', { name: 'Câu trả lời của FinCopilot' }).last()
+      await expect(goal.getByRole('heading', { name: 'Khoản góp để đạt mục tiêu' })).toBeVisible({ timeout: 25_000 })
+      await expect(goal.locator('summary')).toContainText('Tính khoản góp để đạt mục tiêu')
+      const goalLink = goal.getByRole('link', { name: 'Mở Khảo sát đầu tư và tích lũy' })
+      await expect(goalLink).toHaveAttribute('href', /^\/survey\?mode=invest&amount=50000000&contribution=\d+&term=36$/)
+      const contribution = new URL((await goalLink.getAttribute('href'))!, page.url()).searchParams.get('contribution')!
+      await goal.evaluate(element => element.scrollIntoView({ block: 'start', behavior: 'instant' }))
+      await checkLayout(page)
+      await page.screenshot({ path: resolve(masterScreenshots, 'goal-planner-' + viewport.width + '.png') })
+      await goalLink.click()
+      await expect(page.getByLabel('Vốn ban đầu (VNĐ)')).toHaveValue('50 000 000')
+      await expect(page.getByLabel('Góp thêm mỗi tháng (VNĐ)')).toHaveValue(contribution.replace(/\B(?=(\d{3})+(?!\d))/g, ' '))
+    })
+
+    test('Mẫu trình báo tạo bản in và bản sao trên trình duyệt', async ({ page }) => {
+      await page.addInitScript(() => {
+        Object.defineProperty(navigator, 'clipboard', {
+          value: { writeText: (value: string) => { document.body.dataset.testClipboard = value; return Promise.resolve() } },
+        })
+        window.print = () => {
+          document.body.dataset.testPrint = document.querySelector('.incident-print')?.textContent ?? ''
+          window.dispatchEvent(new Event('afterprint'))
+        }
+      })
+      await page.goto('/forensic')
+      const composer = page.getByRole('textbox', { name: 'Nội dung cần giám định' })
+      await composer.fill('Bên cho vay báo lỗi 102 và yêu cầu đóng phí giải ngân 2 triệu vào tài khoản cá nhân.')
+      await page.getByLabel('Chọn tệp giám định').setInputFiles(await qrFile(transferQr, 'bank.png'))
+      await page.getByRole('button', { name: 'Gửi giám định' }).click()
+      const title = page.getByRole('heading', { name: 'Mẫu trình báo và tra soát' })
+      await expect(title).toBeVisible({ timeout: 30_000 })
+      await expect(page.getByText('Thông tin cá nhân chỉ xử lý trên trình duyệt, không gửi về máy chủ')).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Đơn trình báo A05' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Yêu cầu tra soát ngân hàng' })).toBeVisible()
+      await expect(page.getByText(/Đọc từ mã QR: .*BIN 970422/)).toBeVisible()
+      const requests: string[] = []
+      page.on('request', request => {
+        if (request.url().includes('/api/v1/')) requests.push(request.url() + (request.postData() ?? ''))
+      })
+      await title.evaluate(element => element.scrollIntoView({ block: 'start', behavior: 'instant' }))
+      await checkLayout(page)
+      await page.screenshot({ path: resolve(masterScreenshots, 'incident-kit-' + viewport.width + '.png') })
+      const privateName = 'Private Canary'
+      const privatePhone = '0987654329'
+      const privateDate = '2026-11-11T02:17'
+      const privateAmount = '7654321'
+      const privateReference = 'CANARY-TRANS-75364'
+      await page.getByLabel('Họ tên người trình báo').fill(privateName)
+      await page.getByLabel('SĐT liên hệ').fill(privatePhone)
+      await page.getByLabel('Thời điểm chuyển tiền').fill(privateDate)
+      await page.getByLabel('Số tiền đã chuyển (đồng)').fill(privateAmount)
+      await page.getByLabel('Mã giao dịch').fill(privateReference)
+      await page.getByRole('button', { name: 'Sao chép Đơn trình báo A05' }).click()
+      await expect(page.getByText('Đã sao chép Đơn trình báo A05.')).toBeVisible()
+      const copied = await page.evaluate(() => document.body.dataset.testClipboard)
+      expect(copied).toContain('canhbao.ncsc.gov.vn')
+      expect(copied).toContain('113')
+      await page.getByRole('button', { name: 'In / Lưu PDF Yêu cầu tra soát ngân hàng' }).click()
+      const printed = await page.evaluate(() => document.body.dataset.testPrint)
+      expect(printed).toMatch(/TRA SOÁT VÀ HỖ TRỢ PHONG TỎA/)
+      expect(printed).toContain('BIN 970422')
+      const browserState = await page.evaluate(() => [location.href, JSON.stringify(localStorage), JSON.stringify(sessionStorage)].join('|'))
+      for (const value of [privateName, privatePhone, privateDate, privateAmount, privateReference]) {
+        expect(copied).toContain(value)
+        expect(printed).toContain(value)
+        expect(browserState).not.toContain(value)
+        expect(requests.join('|')).not.toContain(value)
+      }
+      await page.reload()
+      await expect(page.getByLabel('Họ tên người trình báo')).toHaveValue('')
+    })
+
     test('Copilot đối chiếu hồ sơ, khoản vay và tin Radar', async ({ page }) => {
       await page.goto('/forensic')
       await page.getByRole('button', { name: loanPrompt, exact: true }).click()
@@ -195,6 +291,8 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 320, height: 844 
       await trace.click()
       await expect(loan.getByText(/\d+ ms/)).toHaveCount(2)
       await expect(loan.getByRole('heading', { name: /Kế hoạch vay/ })).toBeVisible()
+      await expect(loan.getByText(/Tham khảo từ nguồn công bố|Danh mục đã xác minh/).first()).toHaveText(/\d{2}\/\d{2}\/\d{4}/)
+      await expect(loan.getByText(/Cập nhật trong 30 ngày|Đã 31–60 ngày|Quá 60 ngày/).first()).toBeVisible()
       await expect(loan.getByRole('link', { name: /Mở (bảng trả nợ trong Khảo sát|Khảo sát khoản vay)/ })).toHaveAttribute('href', /^\/survey\?mode=loan&sessionId=/)
       await checkLayout(page)
       if (viewport.width === 320) {
@@ -202,6 +300,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 320, height: 844 
         await loan.scrollIntoViewIfNeeded()
         await page.screenshot({ path: resolve(screenshotDir, 'copilot-loan-dti-320.png') })
       } else await loan.screenshot({ path: resolve(screenshotDir, 'copilot-loan-dti-1280.png') })
+      await page.screenshot({ path: resolve(masterScreenshots, 'loan-provenance-' + viewport.width + '.png') })
       await expect(loan.getByText(/Tỷ lệ trả nợ.*DTI/)).toBeVisible()
       await loan.getByRole('link', { name: /Mở (bảng trả nợ trong Khảo sát|Khảo sát khoản vay)/ }).click()
       await expect(page.getByLabel('Số tiền cần vay (VNĐ)')).toHaveValue('100 000 000')
