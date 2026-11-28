@@ -23,6 +23,7 @@ type ForensicSession = {
   draft: string
   entity: string
   sourceAlertId?: string
+  handoffKey?: string
   conversationSession?: { owner: string; id: string; expiresAt: number }
 }
 type RadarSession = {
@@ -57,18 +58,21 @@ const WorkspaceSessionContext = createContext<SessionContext | null>(null)
 
 export function WorkspaceSessionProvider({ children }: { children: ReactNode }) {
   const session = useQuery(sessionQuery)
-  const viewerKey = session.data?.kind === 'user' ? 'user:' + session.data.user.id : session.isSuccess ? 'guest' : undefined
+  const viewerKey = session.data?.kind === 'user' ? 'user:' + session.data.user.id : session.data?.kind === 'guest' ? 'guest' : undefined
   const [store, setStore] = useState(() => ({ viewerKey, sessions: emptySessions() }))
-  const matchesViewer = store.viewerKey === viewerKey
-  if (!matchesViewer) setStore({ viewerKey, sessions: emptySessions() })
+  if (store.viewerKey !== viewerKey) {
+    // The first guest response confirms the visitor who is already using the public workspace.
+    const firstGuest = store.viewerKey === undefined && viewerKey === 'guest'
+    setStore({ viewerKey, sessions: firstGuest ? store.sessions : emptySessions() })
+  }
 
   useEffect(() => {
     if (viewerKey) clearConversationCache({ unlessOwner: viewerKey })
   }, [viewerKey])
 
   const update = useCallback<SessionContext['update']>((scope, change) => {
-    setStore((previous) => previous.viewerKey !== viewerKey ? previous : {
-      viewerKey, sessions: { ...previous.sessions, [scope]: change(previous.sessions[scope]) },
+    setStore((previous) => previous.viewerKey !== viewerKey && !(viewerKey === undefined && previous.viewerKey === 'guest') ? previous : {
+      viewerKey: previous.viewerKey, sessions: { ...previous.sessions, [scope]: change(previous.sessions[scope]) },
     })
   }, [viewerKey])
   const clearForensicSession = useCallback(() => update('forensic', emptyForensic), [update])

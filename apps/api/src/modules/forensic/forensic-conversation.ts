@@ -1,5 +1,6 @@
 import { AI_TASK_SCHEMAS, handoffRoutes, type ForensicAuditFields, type ForensicGuidance } from '@fincopilot/shared-types'
 import { hasInternalIdentifierLeak } from '../../common/untrusted-text'
+import { amountToken, rateToken, termToken, copilotIntent, copilotLoanGoal, type CopilotInput, type CopilotIntent, type ExtractedSlots as Slots, type SurveyDomain } from './copilot-input'
 import { compressConversationContext } from './context-compressor'
 import type { ConversationSessionState } from './conversation-session.store'
 import type { AiGatewayService } from '../ai-gateway/ai-gateway.service'
@@ -13,14 +14,9 @@ import { formatCaseAmount } from './payment-qr-description'
 import { maskForensicText } from './qr-evidence'
 
 type Guidance = Omit<ForensicGuidance, 'type'>
-type Slots = NonNullable<ForensicGuidance['extractedSlots']>
-type SurveyDomain = 'LOAN' | 'INVEST' | 'SAVINGS'
 type History = NonNullable<ForensicAuditFields['preAuditHistory']>
 type ConversationAi = Pick<AiGatewayService, 'generateStructured'> & Partial<Pick<AiGatewayService, 'classifyConversationRoute'>>
 
-const amountToken = /(?<![\p{L}\d.,-])(\d{1,16}(?:[.,]\d{1,3}| \d{3}(?!\d)){0,5})\s*(triệu|trieu|tr|tỷ|tỉ|ty|ti|nghìn|nghin|ngàn|ngan|k|đồng|dong|vnđ|vnd|đ|₫)(?![\p{L}\d])(?:\s*(?:đồng|dong|vnđ|vnd|đ|₫)(?![\p{L}\d]))?/giu
-const rateToken = /\d+(?:[.,]\d+)?\s*%(?:\s*\/\s*(?:tháng|năm|thang|nam))?/giu
-const termToken = /(?<![\p{L}\d.,-])(\d{1,3})\s*(tháng|thang|năm|nam)(?![\p{L}\d])/giu
 const loanGoal = /^(?:(?:toi|minh|em|anh|chi) )?(?:(?:muon|can|tu van|hoi ve|tim hieu) )*vay(?: tien| von(?: kinh doanh)?| kinh doanh| mua nha| mua xe| tieu dung| tra gop| the chap| tin chap)?$/
 const investmentGoal = /^(?:(?:toi|minh|em|anh|chi) )?(?:(?:muon|can|nen|tu van|tim hieu) )*(?:dau tu(?: gi| the nao)?|quy mo)$/
 const savingsGoal = /^(?:(?:toi|minh|em|anh|chi) )?(?:(?:muon|can|nen|tu van|tim hieu) )*(?:gui tiet kiem|tiet kiem|tich luy)$/
@@ -159,16 +155,19 @@ function surveyGuide(domain: SurveyDomain, slots: Slots): Guidance {
   }
 }
 
-export function guidanceEligible(raw: string, aliases?: readonly TeencodeAlias[]) {
+export function guidanceEligible(raw: string, aliases?: readonly TeencodeAlias[], copilot?: CopilotIntent) {
   if (isOffTopicPrompt(raw) || inspectForensicInput(raw, aliases).strippedControlSpans > 0) return false
   const isCivilLimit = /\b(?:tran lai suat|dieu 468|lai suat dan su)\b/.test(normalizeVietnamese(raw))
   const checked = isCivilLimit ? raw.replace(/(?<![\d.,])20\s*%\s*(?:\/\s*năm)?/giu, ' ') : raw
   const remainder = checked.replace(amountToken, ' ').replace(termToken, ' ').replace(rateToken, ' ')
   const plain = expandTeencode(raw, aliases).normalized
-  const termsOffered = Boolean(checked.match(rateToken)) &&
+  const termsOffered = copilot !== 'REFINANCE' && Boolean(checked.match(rateToken)) &&
     Boolean(checked.match(amountToken) || checked.match(termToken)) && !informationSeeking.test(plain)
+  const genericBankAllowed = copilot === 'RADAR' || copilot === 'REFINANCE'
+  const evidenceContext = genericBankAllowed ? plain.replace(/\bngan hang\b/g, ' ') : plain
   return !hasConcreteFinancialEvidence(remainder, aliases) &&
-    !/\b(?:ngan hang|cong ty|to chuc|cong an|ke toan|shipper|dien luc|hai quan|sep|hop dong|hoa don|don hang|link la|duong dan|vneid|stk|so tai khoan|sdt|so dien thoai|phi giai ngan|loi 102|dong bang von|mao danh|gia mao|cam ket loi nhuan|yeu cau nop|chao lai|bao lai|bao phi|hen giai ngan|uy thac|bao loi|usdt|btc|eth|crypto)\b/.test(plain) &&
+    !(copilot && /\b(?:ben cho vay|nguoi la|loi moi|tin nhan|chao moi|bao giai ngan)\b/.test(plain)) &&
+    !/\b(?:ngan hang|cong ty|to chuc|cong an|ke toan|shipper|dien luc|hai quan|sep|hop dong|hoa don|don hang|link la|duong dan|vneid|stk|so tai khoan|sdt|so dien thoai|phi giai ngan|loi 102|dong bang von|mao danh|gia mao|cam ket loi nhuan|yeu cau nop|chao lai|bao lai|bao phi|hen giai ngan|uy thac|bao loi|usdt|btc|eth|crypto)\b/.test(evidenceContext) &&
     !termsOffered && !hasSuspiciousContext(plain) &&
     !findInstitution(plain.replace(/^(?:ben|don vi|ten) /, ''), []) && !/\b(?:vay|gui tiet kiem|dau tu) (?:o|tai|tu|qua) \w/.test(plain) &&
     !/\b(?:vietcombank|vietinbank|techcombank|agribank|bidv|mbbank|vpbank|fe credit|home credit|mcredit)\b/.test(plain)
@@ -207,6 +206,7 @@ const guidance = (result: Guidance): ForensicGuidance => ({ type: 'guidance', ..
 export async function routeForensicConversation(
   fields: ForensicAuditFields, hasFiles: boolean, ai: ConversationAi, aliases?: readonly TeencodeAlias[],
   loadSession?: () => Promise<ConversationSessionState | undefined>,
+  runCopilot?: (input: Omit<CopilotInput, 'session'>) => Promise<Guidance | undefined>,
 ) {
   const { rawText, rawQrString, sourceAlertId, claimedEntityName, preAuditHistory = [] } = fields
   if (hasFiles || rawQrString || !rawText) return null
@@ -228,6 +228,12 @@ export async function routeForensicConversation(
     (/\bchuyen nham\b/.test(plain) || !/\b(?:so tai khoan|stk|bien lai|ma giao dich)\b/.test(plain))) return guidance(recovery)
 
   if (genericScam.test(plain) || evidenceInvitation.test(plain)) return guidance(recoveryCheck)
+  const toolIntent = runCopilot && copilotIntent(rawText)
+  if ((toolIntent === 'RADAR' || toolIntent === 'REFINANCE' || toolIntent === 'PROFILE') &&
+    guidanceEligible(rawText, aliases, toolIntent)) {
+    const result = await runCopilot?.({ rawText, slots: {} })
+    if (result) return guidance(result)
+  }
   const education = educationGuide(rawText)
   const lookingUp = informationSeeking.test(plain)
   const remainder = rawText.replace(amountToken, ' ').replace(termToken, ' ').replace(rateToken, ' ')
@@ -235,16 +241,22 @@ export async function routeForensicConversation(
     !hasSuspiciousContext(expandTeencode(rawText, aliases).normalized)
   const eligible = guidanceEligible(rawText, aliases) || generalEducation
   if (!eligible) return null
-  if (profileQuestion.test(plain)) return guidance(profileGuide)
+  if (toolIntent !== 'LOAN' && profileQuestion.test(plain)) return guidance(profileGuide)
 
   const session = await loadSession?.()
   const previous = session ? { ...session.slots, domain: session.domain } : surveyContext(preAuditHistory)
-  const newDomain = surveyDomain(rawText)
+  const newDomain = surveyDomain(rawText) ?? (toolIntent === 'LOAN' || toolIntent === 'INVEST' || toolIntent === 'SAVINGS' ? toolIntent : undefined)
   const domain = newDomain ?? (updatesSurveySlots(rawText) ? previous.domain : undefined)
   const stated = explicitSlots(rawText)
   if (domain === 'LOAN' || domain === 'INVEST' || domain === 'SAVINGS') {
     const priorSlots = previous.domain === domain || (!previous.domain && domain !== 'LOAN') ? previous : {}
-    return guidance(surveyGuide(domain, { ...priorSlots, ...stated }))
+    const goalNote = runCopilot && domain === 'LOAN' ? copilotLoanGoal(rawText) : undefined
+    const fallback = surveyGuide(domain, { ...priorSlots, ...stated, ...(goalNote && { goalNote }) })
+    if (runCopilot && guidanceEligible(rawText, aliases, domain)) {
+      const result = await runCopilot({ rawText, domain, slots: priorSlots })
+      if (result) return guidance(newDomain ? result : { ...result, cta: fallback.cta })
+    }
+    return guidance(fallback)
   }
 
   if (!previous.domain && updatesSurveySlots(rawText) && rawText.match(amountToken) && rawText.match(termToken) &&

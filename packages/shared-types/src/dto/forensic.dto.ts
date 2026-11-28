@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { FindingSeverity, QrScheme, QrServiceCode, RuleCode, VerdictLevel } from '../enums'
+import { DtiRiskBand, FindingSeverity, QrScheme, QrServiceCode, RuleCode, VerdictLevel } from '../enums'
 import { decimalString, nonnegativeDecimal } from './decimal'
 
 export const LearningTraceSchema = z.strictObject({
@@ -14,12 +14,79 @@ export const LearningTraceSchema = z.strictObject({
 })
 
 const domain = z.enum(['LOAN', 'INVEST', 'SAVINGS', 'PROFILE', 'SCAM'])
+const count = z.number().int().nonnegative()
+const months = z.number().int().min(1).max(600)
+const copilotHref = (route: 'survey' | 'profile' | 'radar' | 'forensic') =>
+  z.string().regex(new RegExp('^/' + route + '(?:[?][^\\s#]*)?$'))
+const offerName = { institutionName: z.string().max(200), productName: z.string().max(200) }
+
+export const CopilotToolTraceItemSchema = z.strictObject({
+  tool: z.enum(['PROFILE_HEALTH', 'LOAN_SURVEY', 'INVESTMENT_SURVEY', 'REFINANCE_SIM', 'RADAR_ALERTS']),
+  label: z.string().max(120),
+  status: z.enum(['done', 'empty', 'skipped']),
+  durationMs: count,
+  summary: z.string().max(240),
+})
+export type CopilotToolTraceItem = z.infer<typeof CopilotToolTraceItemSchema>
+
+export const CopilotRichCardSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('LOAN_PLAN'),
+    principalVnd: nonnegativeDecimal, termMonths: months, categoryLabel: z.string().max(120),
+    profileUsed: z.boolean(), dtiPct: nonnegativeDecimal.nullable(), dtiRiskBand: DtiRiskBand,
+    disposableCashflowVnd: decimalString.nullable(),
+    topOffers: z.array(z.strictObject({
+      ...offerName, monthlyPaymentFirstVnd: nonnegativeDecimal, effectiveAprPct: decimalString,
+      totalInterestAndFeesVnd: nonnegativeDecimal, trustScore: z.number().int().min(0).max(100),
+    })).max(3),
+    openSurveyHref: copilotHref('survey'),
+  }),
+  z.strictObject({
+    kind: z.literal('INVESTMENT_PLAN'),
+    initialVnd: nonnegativeDecimal, monthlyContributionVnd: nonnegativeDecimal, termMonths: months,
+    topOffers: z.array(z.strictObject({
+      ...offerName, categoryLabel: z.string().max(120), annualReturnPct: decimalString,
+      totalContributedVnd: nonnegativeDecimal, netValueVnd: nonnegativeDecimal, netProfitVnd: decimalString,
+    })).max(3),
+    openSurveyHref: copilotHref('survey'),
+  }),
+  z.strictObject({
+    kind: z.literal('REFINANCE_PLAN'),
+    remainingPrincipalVnd: nonnegativeDecimal, remainingTermMonths: months, currentAnnualRatePct: nonnegativeDecimal,
+    bestBankName: z.string().max(200).nullable(), monthlySavingsVnd: decimalString.nullable(),
+    totalSwitchCostVnd: nonnegativeDecimal.nullable(), breakEvenMonth: months.nullable(), netSavingsVnd: decimalString.nullable(),
+    recommendation: z.enum(['WORTH_REFINANCING', 'MARGINAL', 'KEEP_CURRENT']).nullable(),
+    openSurveyHref: copilotHref('survey'),
+  }),
+  z.strictObject({
+    kind: z.literal('RADAR_BRIEF'),
+    windowLabel: z.string().max(80), totalVerified: count,
+    alerts: z.array(z.strictObject({
+      id: z.uuid(), title: z.string().max(200), vnAisCode: z.string().max(20).nullable(),
+      vnAisLabel: z.string().max(200).nullable(), publishedAt: z.iso.datetime(), handoffHref: copilotHref('forensic'),
+    })).max(3),
+    marketRates: z.array(z.strictObject({
+      label: z.string().max(120), minRatePct: decimalString, maxRatePct: decimalString, medianRatePct: decimalString, sampleCount: count,
+    })).max(4),
+    openRadarHref: copilotHref('radar'),
+  }),
+  z.strictObject({
+    kind: z.literal('PROFILE_SNAPSHOT'),
+    score: z.number().int().min(0).max(100).nullable(), dtiPct: nonnegativeDecimal.nullable(), emergencyMonths: nonnegativeDecimal.nullable(),
+    maxSafeEmiVnd: nonnegativeDecimal.nullable(), monthlySurplusVnd: decimalString.nullable(),
+    summary: z.string().max(240), openProfileHref: copilotHref('profile'),
+  }),
+])
+export type CopilotRichCard = z.infer<typeof CopilotRichCardSchema>
+
 export const ForensicGuidanceSchema = z.strictObject({
   type: z.literal('guidance'),
   intent: z.enum(['ASSISTANT_INFO', 'NEEDS_DETAILS', 'FINANCIAL_EDUCATION', 'SCAM_CHECK_INCOMPLETE', 'EMERGENCY_SCAM_RECOVERY', 'PROFILE_HEALTH_NAV', 'ACK_SMALLTALK']),
   message: z.string(), suggestedPrompts: z.array(z.string()).optional(),
   checklist: z.array(z.string().max(300)).max(6).optional(),
   cta: z.strictObject({ label: z.string(), href: z.string().regex(/^\/(?:survey|profile|radar|forensic)(?:\?[^\s#]*)?$/) }).optional(),
+  toolTrace: z.array(CopilotToolTraceItemSchema).max(3).optional(),
+  richCard: CopilotRichCardSchema.optional(),
   extractedSlots: z.strictObject({ domain: domain.optional(), amountVnd: nonnegativeDecimal.optional(), termMonths: z.number().int().min(1).max(600).optional(), goalNote: z.string().trim().min(1).max(160).optional() }).optional(),
 })
 export type ForensicGuidance = z.infer<typeof ForensicGuidanceSchema>

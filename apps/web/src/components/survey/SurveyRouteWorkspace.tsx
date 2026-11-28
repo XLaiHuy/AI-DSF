@@ -10,5 +10,5 @@ export function SurveyRouteWorkspace() {
   const params = useSearchParams()
   const { viewerKey } = useWorkspaceSession()
   const handoff = useMemo(() => parseSurveyHandoff(Object.fromEntries(params.entries())), [params])
-  return <SurveyWorkspace key={[viewerKey, handoff.sessionId].join(':')} handoff={handoff} />
+  return <SurveyWorkspace key={[viewerKey ?? 'guest', handoff.sessionId].join(':')} handoff={handoff} />
 }

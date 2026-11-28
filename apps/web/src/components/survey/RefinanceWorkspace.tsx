@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  LoanCategory, SurveyRefinanceRequestSchema, SurveyRefinanceResponseSchema, SurveyRefinanceTermsSchema,
+  LoanCategory, SurveyRefinanceResponseSchema, SurveyRefinanceTermsSchema,
   type SurveyRefinanceContract, type SurveyRefinanceRequest, type SurveyRefinanceResponse,
 } from '@fincopilot/shared-types'
 import { useQueryClient } from '@tanstack/react-query'
@@ -85,7 +85,8 @@ export function RefinanceWorkspace({ sourceAuditId, restored }: {
       setError('Nhập số tiền còn nợ, lãi suất và kỳ hạn hợp lệ trước khi tính.')
       return
     }
-    void calculate(SurveyRefinanceRequestSchema.parse({ ...checked.data, sourceAuditId: source?.sourceAuditId }), new AbortController())
+    const sourceAuditId = source?.sourceAuditId
+    void calculate(sourceAuditId ? { ...checked.data, sourceAuditId } : checked.data, new AbortController())
   }
 
   return <section className="min-w-0 space-y-4" aria-label="Đổi khoản vay / Đảo nợ">

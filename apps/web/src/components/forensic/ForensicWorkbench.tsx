@@ -7,13 +7,14 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, Bot, ChartNoAxesCombined, Check, FileText, LoaderCircle, Plus, QrCode, RotateCcw, ShieldAlert, ShieldCheck, Wallet, X } from 'lucide-react'
 import Link from 'next/link'
-import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent, type ReactNode } from 'react'
 import { useWorkspaceField, useWorkspaceSession, type ForensicReply as Reply } from '@/components/layout/WorkspaceSessionContext'
 import { Alert, Button, Label } from '@/components/ui'
 import { ApiError, apiClient } from '@/lib/api-client'
 import { auditListQuery, auditQuery, formatVnd, requestError, sessionQuery } from '@/lib/workspace-data'
 import { cn } from '@/lib/utils'
 import { addAttachments, AttachmentStrip } from './AttachmentStrip'
+import { CopilotRichCard } from './CopilotRichCard'
 import { AuditHistory } from './AuditHistory'
 import { clearConversationCache, conversationCacheExpiry, readConversationCache, writeConversationCache } from './conversation-cache'
 import { ForensicReport } from './ForensicReport'
@@ -21,6 +22,12 @@ import { plainAuditText } from './report-copy'
 import { streamAudit } from './stream-audit'
 import { streamReply } from './stream-reply'
 import { LiveReplyText } from './StreamingContentReveal'
+
+const copilotPrompts = [
+  'Lương 18 triệu, chi 8 triệu, muốn vay 100 triệu trong 36 tháng có ổn không?',
+  'Đầu tư 20 triệu, góp thêm 3 triệu/tháng trong 24 tháng được bao nhiêu?',
+  'Gần đây có thủ đoạn lừa đảo và lãi suất ngân hàng nào đáng chú ý?',
+]
 
 const examples = [
   {
@@ -90,19 +97,20 @@ function UserBubble({ submission }: { submission: Submission }) {
   )
 }
 
-function AgentBubble({ answer, streamed, complete = true, degraded, status, stages, reaudit, busy,
+function AgentBubble({ answer, streamed, complete = true, degraded, status, stages, reaudit, busy, children,
   label = 'Câu trả lời của FinCopilot' }: {
   answer?: string; streamed?: boolean; complete?: boolean; degraded?: boolean; status?: string; stages?: ForensicAuditStage[]
-  label?: string; reaudit?: () => void; busy?: boolean
+  label?: string; reaudit?: () => void; busy?: boolean; children?: ReactNode
 }) {
   const latest = stages?.at(-1)
   return (
-    <article aria-label={label} className="forensic-agent grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-2.5 sm:gap-3">
-      <span className="grid size-9 place-items-center rounded-xl bg-accent text-primary sm:size-10">
+    <article aria-label={label} className={cn("forensic-agent grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-2.5 sm:gap-3",
+      children && "max-[359px]:grid-cols-[minmax(0,1fr)]")}>
+      <span className={cn("grid size-9 place-items-center rounded-xl bg-accent text-primary sm:size-10", children && "max-[359px]:hidden")}>
         <Bot size={21} strokeWidth={1.7} aria-hidden="true" />
       </span>
       <div className={cn('max-w-full space-y-1.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm leading-relaxed shadow-xs sm:px-4 sm:py-3',
-        stages ? 'w-full sm:max-w-[34rem]' : 'w-fit sm:max-w-[90%]')}>
+        stages ? 'w-full sm:max-w-[34rem]' : children ? 'w-full sm:max-w-[44rem]' : 'w-fit sm:max-w-[90%]')}>
         <p className="text-xs font-semibold text-primary">FinCopilot{degraded ? ' · Dựa trên báo cáo' : ''}</p>
         {status && <div role="status" className="flex items-start gap-2 text-muted-foreground">
           <span aria-hidden="true" className="forensic-thinking-dots mt-2 flex shrink-0 items-center gap-1 text-primary"><i /><i /><i /></span>
@@ -133,6 +141,7 @@ function AgentBubble({ answer, streamed, complete = true, degraded, status, stag
         )}
         {streamed && answer ? <LiveReplyText text={plainAuditText(answer) || answer} complete={complete} />
           : answer && <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{plainAuditText(answer)}</p>}
+        {children}
         {reaudit && (
           <Button variant="outline" className="mt-2 min-h-11 whitespace-normal text-start" disabled={busy} onClick={reaudit}>
             <RotateCcw size={16} aria-hidden="true" /> Giám định lại kèm thông tin vừa bổ sung
@@ -178,7 +187,9 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
   const [restore, setRestore] = useState<ReturnType<typeof readConversationCache>>()
   const restoreId = restore?.owner === viewer && !conversation ? restore?.activeAuditId : undefined
   const report = useQuery({ ...auditQuery(restoreId ?? ''), enabled: Boolean(restoreId), retry: false })
+  const restoringReport = Boolean(restoreId && report.isPending)
   const handoffKey = JSON.stringify(handoff)
+  const [previousHandoff, setPreviousHandoff] = useWorkspaceField('forensic', 'handoffKey')
   const appliedHandoff = useRef<string>(null)
   const followingUp = Boolean(conversation && !files.length && !entity && !demo)
   const promptLabel = followingUp ? 'Câu hỏi tiếp theo' : 'Nội dung cần giám định'
@@ -187,36 +198,33 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
   const contextName = entity ? 'Đơn vị từ Bộ lọc Tin cậy: ' + entity : demo ? 'Mẫu: ' + demo.label : ''
 
   useEffect(() => {
-    if (!viewer || conversationSession) return
-    const cached = readConversationCache(viewer)
-    if (!handoff.from && !handoff.prefillText && !handoff.claimedEntity) setRestore(cached)
-    setConversationSession({ owner: viewer, id: cached?.id ?? crypto.randomUUID(), expiresAt: cached?.expiresAt ?? conversationCacheExpiry() })
-    if (cached?.turns.length) setPreAuditTurns(cached.turns)
-  }, [viewer, conversationSession, handoff.from, handoff.prefillText, handoff.claimedEntity, setConversationSession, setPreAuditTurns])
-
-  useEffect(() => {
-    if (!restoreId || !restore) return
-    if (report.isSuccess) {
-      setConversation({
-        audit: report.data,
-        submission: { text: report.data.privacyProof.rawTextMasked ?? '', context: '' },
-        replies: (restore.followUpTurns ?? []).map(turn => ({ ...turn, streamed: false, meta: undefined })),
-      })
-      setRestore(undefined)
-    } else if (report.isError) {
-      if (report.error instanceof ApiError && [403, 404].includes(report.error.status)) setRestore(undefined)
-      else setError('Chưa mở lại được báo cáo. Tải lại trang để thử lại.')
+    if (!viewer) return
+    const cached = conversationSession ? undefined : readConversationCache(viewer)
+    if (!conversationSession) {
+      setConversationSession({ owner: viewer, id: cached?.id ?? crypto.randomUUID(), expiresAt: cached?.expiresAt ?? conversationCacheExpiry() })
     }
-  }, [restoreId, restore, report.data, report.error, report.isSuccess, report.isError, setConversation])
-
-  useEffect(() => {
-    if (!viewer || appliedHandoff.current === handoffKey) return
+    if (appliedHandoff.current === handoffKey) return
     appliedHandoff.current = handoffKey
     const next = JSON.parse(handoffKey) as ForensicHandoff
-    if (!next.from && !next.prefillText && !next.claimedEntity) return
+    if (!next.from && !next.prefillText && !next.claimedEntity) {
+      if (cached) {
+        setRestore(cached)
+        setPreAuditTurns(cached.turns)
+      }
+      return
+    }
+    if (previousHandoff === handoffKey) return
+    setPreviousHandoff(handoffKey)
+    const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+    if (cached?.activeAuditId && navigation?.type === 'reload' && navigation.name === window.location.href.split('#')[0]) {
+      setRestore(cached)
+      return
+    }
     activeRequest.current?.abort()
     demoRequest.current?.abort()
     submittedFiles.current = null
+    clearConversationCache()
+    setConversationSession({ owner: viewer, id: crypto.randomUUID(), expiresAt: conversationCacheExpiry() })
     setRestore(undefined)
     setConversation(undefined)
     setPreAuditTurns([])
@@ -231,7 +239,23 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
     else if (next.from === 'survey-apr' && next.amount && next.term && next.annualRatePct) {
       setDraft(`${next.label ? next.label + '\n' : ''}Kiểm tra khoản vay ${formatVnd(next.amount)}, kỳ hạn ${next.term} tháng, APR ${next.annualRatePct}%/năm.`)
     } else setDraft(next.prefillText ?? '')
-  }, [viewer, handoffKey, setConversation, setDraft, setEntity, setPreAuditTurns, setSourceAlertId])
+  }, [viewer, conversationSession, handoffKey, previousHandoff, setConversationSession,
+    setConversation, setDraft, setEntity, setPreAuditTurns, setPreviousHandoff, setSourceAlertId])
+
+  useEffect(() => {
+    if (!restoreId || !restore) return
+    if (report.isSuccess) {
+      setConversation({
+        audit: report.data,
+        submission: { text: report.data.privacyProof.rawTextMasked ?? '', context: '' },
+        replies: (restore.followUpTurns ?? []).map(turn => ({ ...turn, streamed: false })),
+      })
+      setRestore(undefined)
+    } else if (report.isError) {
+      if (report.error instanceof ApiError && [403, 404].includes(report.error.status)) setRestore(undefined)
+      else setError('Chưa mở lại được báo cáo. Tải lại trang để thử lại.')
+    }
+  }, [restoreId, restore, report.data, report.error, report.isSuccess, report.isError, setConversation])
 
   useEffect(() => {
     if (!conversationSession || conversationSession.owner !== viewer || restoreId) return
@@ -364,9 +388,9 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
     } })
   }
 
-  async function send(resubmission?: Submission) {
-    if (restoreId || activeRequest.current || demoRequest.current || !conversationSession || conversationSession.owner !== viewer || resetting) return
-    const text = draft.trim()
+  async function send(resubmission?: Submission, quickQuestion?: string) {
+    if (restoringReport || activeRequest.current || demoRequest.current || !conversationSession || conversationSession.owner !== viewer || resetting) return
+    const text = (quickQuestion ?? draft).trim()
     const controller = new AbortController()
     const options = { signal: controller.signal }
     const isChat = !resubmission && followingUp && conversation
@@ -512,32 +536,43 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
         <div ref={transcript} className="grid min-w-0 gap-4 py-3 sm:py-4">
       {preAuditTurns.map(({ question, answer, guidance }, index) => <div key={index} className="grid gap-3">
         <p className="ml-auto max-w-[85%] whitespace-pre-wrap [overflow-wrap:anywhere] rounded-xl bg-accent p-3 text-sm">{question}</p>
-        <div aria-live="polite"><AgentBubble answer={answer} complete />
+        <div className="min-w-0" aria-live="polite"><AgentBubble answer={answer} complete>
+          {(guidance?.richCard || Boolean(guidance?.toolTrace?.length)) && <CopilotRichCard card={guidance?.richCard} trace={guidance?.toolTrace}
+            surveyActionLabel={guidance?.richCard && 'openSurveyHref' in guidance.richCard &&
+              guidance.cta?.href === guidance.richCard.openSurveyHref ? guidance.cta.label : undefined} />}
+        </AgentBubble>
           {!!guidance?.checklist?.length && <ol aria-label="Các bước ứng cứu" className="mt-3 list-decimal space-y-2 rounded-lg border border-verdict-warning-border bg-verdict-warning-bg py-3 pe-3 ps-9 text-sm leading-relaxed text-verdict-warning">
             {guidance.checklist.map(step => <li key={step}>{step}</li>)}
           </ol>}
           {guidance && <div className="mt-2 flex flex-wrap gap-2">
             {guidance.suggestedPrompts?.map(prompt => <button type="button" key={prompt} className="rounded-full border px-3 py-2 text-sm" onClick={() => { setDraft(prompt); textarea.current?.focus() }}>{prompt}</button>)}
-            {guidance.cta && <Link className="rounded-lg bg-primary px-3 py-2 text-primary-foreground" href={guidance.cta.href}>{guidance.cta.label}</Link>}
+            {guidance.cta && (!guidance.richCard || ('openSurveyHref' in guidance.richCard && guidance.cta.href !== guidance.richCard.openSurveyHref)) && <Link className="rounded-lg bg-primary px-3 py-2 text-primary-foreground" href={guidance.cta.href}>{guidance.cta.label}</Link>}
           </div>}</div>
       </div>)}
-      {!conversation && !pending && !preAuditTurns.length && (
+      {restoringReport && <p role="status" className="text-sm text-muted-foreground">Đang mở lại báo cáo…</p>}
+      {!restoringReport && !conversation && !pending && !preAuditTurns.length && (
         <div className="grid gap-4 rounded-xl border border-primary/15 bg-card p-4 shadow-sm sm:p-6">
           <div className="flex items-start gap-3">
             <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-accent text-primary">
               <ShieldCheck size={25} aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <h2 className="font-semibold tracking-tight">Giám định với FinCopilot</h2>
-              <p className="text-sm leading-relaxed text-muted-foreground">Kiểm tra mã QR, chi phí vay và dấu hiệu lừa đảo. Ảnh gốc được xóa sau khi kiểm tra.</p>
+              <h2 className="font-semibold tracking-tight">Trợ lý & Giám định FinCopilot</h2>
+              <p className="text-sm leading-relaxed text-muted-foreground">Hỏi về khoản vay, tích lũy và cảnh báo mới. Gửi mã QR hoặc hợp đồng để giám định một trường hợp cụ thể.</p>
             </div>
+          </div>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Câu hỏi thử Copilot">
+            {copilotPrompts.map(prompt => <Button key={prompt} type="button" variant="outline" size="sm"
+              className="h-auto min-h-10 max-w-full justify-start whitespace-normal rounded-full text-left"
+              disabled={!conversationSession || Boolean(entity || sourceAlertId || files.length || loadingDemo || restoringReport)}
+              onClick={() => { setDraft(prompt); void send(undefined, prompt) }}>{prompt}</Button>)}
           </div>
           <div className="grid gap-2.5 sm:grid-cols-2" aria-label="Mẫu giám định">
             {examples.map((example) => {
               const Icon = example.icon
               return (
                 <button key={example.label} type="button" className="case-card flex min-h-11 min-w-0 items-start gap-3 rounded-lg border border-border bg-background p-3 text-start"
-                  aria-label={example.label} aria-pressed={demo === example} onClick={() => void selectDemo(example)}>
+                  aria-label={example.label} aria-pressed={demo === example} disabled={!conversationSession} onClick={() => void selectDemo(example)}>
                   <span className={cn('grid size-9 shrink-0 place-items-center rounded-md', example.tone)}><Icon size={19} aria-hidden="true" /></span>
                   <span className="min-w-0">
                     <span className="block text-sm font-semibold">{example.label}</span>
@@ -625,13 +660,13 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
               event.currentTarget.value = ''
             }} />
           <Button ref={attach} variant="outline" size="icon" className="size-9 shrink-0 rounded-full"
-            disabled={Boolean(pending) || loadingDemo} aria-label={attachmentLabel} title={attachmentLabel} onClick={() => input.current?.click()}>
+            disabled={Boolean(pending) || loadingDemo || !conversationSession} aria-label={attachmentLabel} title={attachmentLabel} onClick={() => input.current?.click()}>
             <Plus size={18} aria-hidden="true" />
           </Button>
           <Label htmlFor="forensic-text" className="sr-only">{promptLabel}</Label>
           <div className="forensic-input-mirror min-w-0 flex-1 self-center text-sm leading-6 sm:text-base" data-value={pending ? '' : draft}>
             <textarea id="forensic-text" ref={textarea} value={pending ? '' : draft} rows={1}
-              maxLength={followingUp ? 2000 : 50000} disabled={Boolean(pending) || loadingDemo}
+              maxLength={followingUp ? 2000 : 50000} disabled={Boolean(pending) || loadingDemo || restoringReport || !conversationSession || !session.isSuccess}
               placeholder={followingUp ? 'Hỏi về báo cáo…' : 'Bạn muốn kiểm tra điều gì?'}
               className="block h-auto min-h-9 max-h-36 w-full resize-none rounded-xl px-2 py-1.5 caret-primary outline-none [field-sizing:content] placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
               onPaste={handlePaste}
@@ -644,7 +679,7 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
             />
           </div>
           <Button type="submit" className="size-9 shrink-0 rounded-full p-0 shadow-sm" aria-label={submitLabel}
-            disabled={Boolean(pending) || loadingDemo || !session.isSuccess || !(draft.trim() || files.length || entity)}>
+            disabled={Boolean(pending) || loadingDemo || restoringReport || !conversationSession || !session.isSuccess || !(draft.trim() || files.length || entity)}>
             <ArrowUp size={18} aria-hidden="true" />
           </Button>
         </div>

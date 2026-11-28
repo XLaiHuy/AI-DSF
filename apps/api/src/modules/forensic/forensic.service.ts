@@ -29,6 +29,7 @@ import { ChannelIntelligenceService } from './channel-intelligence.service'
 import { expandTeencode, stripZeroWidthAndBidi } from './forensic-prompt-guard'
 import { extractThreatIocs } from './threat-iocs'
 import { communityProposalQueue } from './community-proposal.processor'
+import { CopilotToolsService } from './copilot-tools.service'
 import { ConversationSessionStore } from './conversation-session.store'
 import type { PreAuditTurn } from './context-compressor'
 import { buildForensicRiskAssessment } from './risk-assessment.engine'
@@ -109,17 +110,22 @@ export class ForensicService {
     private readonly threatMemory?: ThreatMemoryService,
     @Optional() @InjectQueue(communityProposalQueue) private readonly communityQueue?: Queue<CommunityProposal>,
     @Optional() private readonly conversations?: ConversationSessionStore,
+    @Optional() private readonly copilotTools?: CopilotToolsService,
   ) {}
 
   async screenAudit(fields: ForensicAuditFields, files: readonly Upload[], session?: SessionContext) {
     const { conversationId, rawText } = fields
     const store = this.conversations
     const aliases = this.threatMemory?.cachedAliases()
-    if (!session || !conversationId || !store) return routeForensicConversation(fields, files.length > 0, this.ai, aliases)
+    const copilot = this.copilotTools
+    const runCopilot = session && copilot
+      ? (input: Omit<Parameters<CopilotToolsService['planAndExecute']>[0], 'session'>) => copilot.planAndExecute({ ...input, session })
+      : undefined
+    if (!session || !conversationId || !store) return routeForensicConversation(fields, files.length > 0, this.ai, aliases, undefined, runCopilot)
 
     let pending: ReturnType<ConversationSessionStore['load']> | undefined
     const load = () => (pending ??= store.load(session, conversationId)).catch(() => undefined)
-    const result = await routeForensicConversation(fields, files.length > 0, this.ai, aliases, async () => (await load())?.state)
+    const result = await routeForensicConversation(fields, files.length > 0, this.ai, aliases, async () => (await load())?.state, runCopilot)
     if (result?.type !== 'guidance' || !rawText) return result
 
     const snapshot = await load()

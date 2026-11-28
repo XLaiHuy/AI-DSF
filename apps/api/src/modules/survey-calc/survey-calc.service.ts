@@ -182,7 +182,9 @@ export class SurveyCalcService {
     }
   }
 
-  async loan(input: SurveyLoanRequest, session: SessionContext): Promise<SurveyLoanResponse> {
+  async loan(input: SurveyLoanRequest, session: SessionContext, options: {
+    verifiedBanksOnly?: boolean; deterministic?: boolean; persistDtiOverride?: boolean
+  } = {}): Promise<SurveyLoanResponse> {
     await this.checkTrust(input.checkEntityName)
     const shock = new D(input.rateShockDeltaPct ?? 0).toDecimalPlaces(3)
     if (shock.abs().gt(200)) invalid('Mức điều chỉnh lãi suất nằm ngoài phạm vi mô phỏng.')
@@ -191,7 +193,7 @@ export class SurveyCalcService {
     const [links, profile, catalog] = await Promise.all([
       this.sourceLinks(input, session), this.profile(session),
       this.catalog(input.loanUseCase ? { loanUseCase: input.loanUseCase } : { productCategory: input.productCategory },
-        { ...input, amount: principal }, { in: [...loanMethods] }),
+        { ...input, amount: principal, bankOnly: options.verifiedBanksOnly }, { in: [...loanMethods] }),
     ])
     const dtiInput = input.dtiOverride ?? (profile?.monthlyIncomeVnd != null && profile.monthlyExpenseVnd != null && profile.existingDebtPaymentVnd != null
       ? { monthlyIncomeVnd: profile.monthlyIncomeVnd.toString(), monthlyExpenseVnd: profile.monthlyExpenseVnd.toString(),
@@ -269,7 +271,7 @@ export class SurveyCalcService {
     offers.sort((a, b) => b.trustScore - a.trustScore || new D(a[field]).cmp(b[field]) || (b.fitScore ?? 0) - (a.fitScore ?? 0))
     let aiExplanation: SurveyLoanResponse['aiExplanation'] = offers.length ? fallbackExplanation : null
     let degradedMode = false
-    if (offers.length) {
+    if (offers.length && !options.deterministic) {
       try {
         aiExplanation = await this.ai.generateStructured('SURVEY_EXPLAIN', AI_TASK_SCHEMAS.SURVEY_EXPLAIN, {
           instruction: 'Giải thích bằng tiếng Việt sự đánh đổi giữa khoản trả tháng và tổng chi phí. Không tính lại, sửa số liệu, nhắc thông tin định danh hay khuyên chọn một gói.',
@@ -288,7 +290,8 @@ export class SurveyCalcService {
     }
     const meta = { degradedMode, catalogStatus, savedToHistory: true,
       ...(degradedMode ? { errorCode: 'ERR_AI_DEGRADED_FALLBACK' as const } : {}) }
-    const savedToHistory = await this.saveSession(session, 'LOAN_SURVEY', input, { ...result, meta },
+    const savedInput = options.persistDtiOverride === false ? { ...input, dtiOverride: undefined } : input
+    const savedToHistory = await this.saveSession(session, 'LOAN_SURVEY', savedInput, { ...result, meta },
       { ...links, profileId: profile?.id }, dti, shock.toString(), {
         result: { ...result, meta, offers: offers.map(({ stressSchedule: _schedule, ...offer }) => ({ ...offer, schedule: [] })) },
         baseRecipes: offers.map(offer => baseRecipes.get(offer.productId)),
