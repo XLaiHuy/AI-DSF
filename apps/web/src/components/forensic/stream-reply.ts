@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 const eventSchema = z.union([
   z.strictObject({ delta: z.string() }),
-  z.strictObject({ done: z.literal(true), meta: ForensicFollowUpResponseSchema.shape.meta }),
+  ForensicFollowUpResponseSchema.omit({ answer: true }).extend({ done: z.literal(true) }),
 ])
 
 export async function streamReply(path: string, input: ForensicFollowUpRequest, signal: AbortSignal,
@@ -34,7 +34,7 @@ export async function streamReply(path: string, input: ForensicFollowUpRequest, 
         const event = eventSchema.parse(JSON.parse(data))
         if ('done' in event) {
           if (!answer.trim()) throw new Error('Stream reply is empty')
-          return { answer, meta: event.meta }
+          return { answer, meta: event.meta, richCard: event.richCard, toolTrace: event.toolTrace, cta: event.cta }
         }
         answer += event.delta
         if (answer.length > 64_000) throw new Error('Stream reply exceeds its limit')

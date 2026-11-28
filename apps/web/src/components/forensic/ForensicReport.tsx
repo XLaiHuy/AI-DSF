@@ -271,12 +271,14 @@ function LearningTrace({ trace }: { trace: NonNullable<ForensicAuditResponse['me
   </details>
 }
 
-export function ForensicReport({ audit, inline = false, animate = false, opening }: {
-  audit: ForensicAuditResponse; inline?: boolean; animate?: boolean; opening?: ReactNode
+export function ForensicReport({ audit, inline = false, animate = false, opening, onRevealComplete }: {
+  audit: ForensicAuditResponse; inline?: boolean; animate?: boolean; opening?: ReactNode; onRevealComplete?: () => void
 }) {
   const report = useRef<HTMLElement>(null)
   const skip = useRef<HTMLButtonElement>(null)
-  const [stage, setStage] = useState(0)
+  const [blocksSettled, setBlocksSettled] = useState(false)
+  const [narrativeSettled, setNarrativeSettled] = useState(false)
+  const notified = useRef(false)
   const [skipped, setSkipped] = useState(false)
   const { riskTier } = reportRisk(audit)
   const printing = useSyncExternalStore(subscribePrint, () => window.matchMedia('print').matches, () => false)
@@ -292,7 +294,7 @@ export function ForensicReport({ audit, inline = false, animate = false, opening
   }) : ROUTES.survey
 
   const sections = [
-    { key: 'actions' as const, kind: 'list' as const, count: actions.length, active: actions.length > 0, body: (
+    { key: 'actions' as const, kind: 'list' as const, active: actions.length > 0, body: (
       <Card className="report-print-card space-y-3 p-5 sm:p-6">
         <h2 className="text-lg font-semibold tracking-tight">Việc nên làm ngay</h2>
         <ol role="list" className="scr-stagger-list grid gap-2">
@@ -305,16 +307,16 @@ export function ForensicReport({ audit, inline = false, animate = false, opening
         </ol>
       </Card>
     ) },
-    { key: 'impact' as const, kind: 'grid' as const, count: 5, active: Boolean(audit.personalImpact || hasImpactInput), body: <PersonalImpactCard impact={audit.personalImpact ?? null} /> },
-    { key: 'loan' as const, kind: 'grid' as const, count: audit.mathBreakdown?.phaseBreakdown?.length ?? 3, active: Boolean(audit.mathBreakdown), body: audit.mathBreakdown && (
+    { key: 'impact' as const, kind: 'grid' as const, active: Boolean(audit.personalImpact || hasImpactInput), body: <PersonalImpactCard impact={audit.personalImpact ?? null} /> },
+    { key: 'loan' as const, kind: 'grid' as const, active: Boolean(audit.mathBreakdown), body: audit.mathBreakdown && (
       <Card className="report-print-card p-5 sm:p-6"><LoanCost math={audit.mathBreakdown} handoff={handoff} /></Card>
     ) },
-    { key: 'law' as const, kind: 'list' as const, count: audit.legalCitations?.length ?? 0, active: Boolean(audit.legalCitations?.length), body: audit.legalCitations && <LegalReferencesCard citations={audit.legalCitations} /> },
-    { key: 'reason' as const, kind: 'list' as const, count: audit.findings.length + (audit.reasoningFindings?.length ?? 0), active: true, body: <Card className="report-print-card p-5 sm:p-6"><Explanation audit={audit} /></Card> },
-    { key: 'qr' as const, kind: 'table' as const, count: audit.qrPayloads.length * 7, active: Boolean(audit.qrPayloads.length || audit.claimedEntityName), body: (
+    { key: 'law' as const, kind: 'list' as const, active: Boolean(audit.legalCitations?.length), body: audit.legalCitations && <LegalReferencesCard citations={audit.legalCitations} /> },
+    { key: 'reason' as const, kind: 'list' as const, active: true, body: <Card className="report-print-card p-5 sm:p-6"><Explanation audit={audit} /></Card> },
+    { key: 'qr' as const, kind: 'table' as const, active: Boolean(audit.qrPayloads.length || audit.claimedEntityName), body: (
       <Card className="report-print-card p-5 sm:p-6"><EntityAndQr audit={audit} /></Card>
     ) },
-    { key: 'privacy' as const, kind: 'card' as const, count: 0, active: true, body: (
+    { key: 'privacy' as const, kind: 'card' as const, active: true, body: (
       <Card className="report-print-card space-y-4 p-5 sm:p-6">
         <section aria-labelledby="privacy-proof-heading" className="space-y-2">
           <h2 id="privacy-proof-heading" className="flex items-center gap-2 text-lg font-semibold tracking-tight">
@@ -346,26 +348,30 @@ export function ForensicReport({ audit, inline = false, animate = false, opening
   ].filter(({ active }) => active)
 
   const animated = animate && !skipped && !reduced && !printing
-  const finished = !animated || stage >= sections.length + 1
-  const previousCount = sections[stage - 2]?.count ?? 0
-  const finishNarrative = useCallback(() => setStage((current) => Math.max(current, 2)), [])
+  const blockCount = sections.length + 2 + Number(Boolean(opening)) + Number(riskTier === 'T2' || riskTier === 'T3') +
+    Number(Boolean(audit.meta.learningTrace)) + Number(Boolean(narrative))
+  const finished = !animated || blocksSettled && (!narrative || narrativeSettled)
+  const finishNarrative = useCallback(() => setNarrativeSettled(true), [])
 
   useEffect(() => {
-    if (!animated || finished || stage === 1 && narrative) return
-    const delay = stage === 0 ? 180 : stage === 1 ? 0 : Math.min(320, 220 + 15 * previousCount)
-    const timer = window.setTimeout(() => {
-      if (stage === sections.length && document.activeElement === skip.current) {
-        report.current?.querySelector<HTMLElement>('[data-verdict-heading]')?.focus({ preventScroll: true })
-      }
-      setStage((current) => current + 1)
-    }, delay)
+    if (!animated) return
+    const timer = window.setTimeout(() => setBlocksSettled(true), 200 + (blockCount - 1) * 45)
     return () => window.clearTimeout(timer)
-  }, [animated, finished, narrative, previousCount, sections.length, stage])
+  }, [animated, blockCount])
+
+  useEffect(() => {
+    if (!finished || notified.current) return
+    notified.current = true
+    if (document.activeElement === skip.current) {
+      report.current?.querySelector<HTMLElement>('[data-verdict-heading]')?.focus({ preventScroll: true })
+    }
+    onRevealComplete?.()
+  }, [finished, onRevealComplete])
 
   useEffect(() => {
     const details = new Map<HTMLDetailsElement, boolean>()
     const openDetails = () => {
-      if (animate) flushSync(() => setSkipped(true))
+      flushSync(() => setSkipped(true))
       report.current?.querySelectorAll<HTMLDetailsElement>('details[data-print-open]').forEach((item) => {
         if (!details.has(item)) details.set(item, item.open)
         item.open = true
@@ -382,7 +388,7 @@ export function ForensicReport({ audit, inline = false, animate = false, opening
       window.removeEventListener('afterprint', restoreDetails)
       restoreDetails()
     }
-  }, [animate])
+  }, [])
 
   const auditTime = audit.createdAt ?? audit.privacyProof.sourceFilesPurgedAt
 
@@ -394,11 +400,6 @@ export function ForensicReport({ audit, inline = false, animate = false, opening
         <p>Giám định lúc <time dateTime={auditTime}>{formatVietnamTime(auditTime)}</time> (giờ Việt Nam).</p>
         <p>Tệp gốc đã được xóa lúc <time dateTime={audit.privacyProof.sourceFilesPurgedAt}>{formatVietnamTime(audit.privacyProof.sourceFilesPurgedAt)}</time> (giờ Việt Nam). Báo cáo đã che thông tin định danh nhạy cảm.</p>
       </header>
-      {opening && <RevealBlock animate={animated} className="print-hidden">{opening}</RevealBlock>}
-      <RevealBlock animate={animated} className="print-keep"><VerdictHero audit={audit} inline={inline} /></RevealBlock>
-      {(riskTier === 'T2' || riskTier === 'T3') && <IncidentActionKit key={audit.auditId} audit={audit} riskTier={riskTier} />}
-      {audit.meta.learningTrace && <LearningTrace trace={audit.meta.learningTrace} />}
-      <AuditFeedback key={audit.auditId} audit={audit} />
       {!finished && (
         <div className="pointer-events-none sticky top-1 z-10 !-mb-9 flex justify-end pe-2 print-hidden">
           <Button ref={skip} variant="outline" className="pointer-events-auto h-8 rounded-full px-3 text-xs shadow-sm"
@@ -410,20 +411,22 @@ export function ForensicReport({ audit, inline = false, animate = false, opening
           </Button>
         </div>
       )}
-      {narrative && (!animated || stage >= 1) && (
-        <RevealBlock animate={animated}>
-          <Card data-report-narrative className="report-print-card space-y-2 border-primary/15 bg-card p-5 sm:p-6">
-            <h2 className="pe-16 text-lg font-semibold tracking-tight">Nhận định của FinCopilot</h2>
-            <p className="max-w-[75ch] whitespace-pre-wrap text-sm leading-relaxed [overflow-wrap:anywhere]">
-              <StreamingTextReveal animate={animated} text={narrative} onComplete={finishNarrative} />
-            </p>
-          </Card>
-        </RevealBlock>
-      )}
-      {sections.slice(0, animated ? Math.max(0, stage - 1) : sections.length).map(({ key, kind, body }) => (
-        <RevealBlock key={key} section={key} kind={kind} animate={animated} className={key === 'privacy' ? 'print-hidden' : undefined}>
-          {body}
-        </RevealBlock>
+      {[
+        { key: 'opening', body: opening, className: 'print-hidden' },
+        { key: 'verdict', body: <VerdictHero audit={audit} inline={inline} />, className: 'print-keep' },
+        { key: 'incident', body: (riskTier === 'T2' || riskTier === 'T3') && <IncidentActionKit key={audit.auditId} audit={audit} riskTier={riskTier} /> },
+        { key: 'learning', body: audit.meta.learningTrace && <LearningTrace trace={audit.meta.learningTrace} /> },
+        { key: 'feedback', body: <AuditFeedback key={audit.auditId} audit={audit} /> },
+        { key: 'narrative', body: narrative && <Card data-report-narrative className="report-print-card space-y-2 border-primary/15 bg-card p-5 sm:p-6">
+          <h2 className="pe-16 text-lg font-semibold tracking-tight">Nhận định của FinCopilot</h2>
+          <p className="grid max-w-[75ch] whitespace-pre-wrap text-sm leading-relaxed [overflow-wrap:anywhere]">
+            {animated && <span aria-hidden="true" className="invisible [grid-area:1/1]">{narrative}</span>}
+            <span className="min-w-0 [grid-area:1/1]"><StreamingTextReveal animate={animated} text={narrative} onComplete={finishNarrative} /></span>
+          </p>
+        </Card> },
+        ...sections.map(({ key, kind, body }) => ({ key, kind, body, section: key, className: key === 'privacy' ? 'print-hidden' : undefined })),
+      ].filter(({ body }) => Boolean(body)).map(({ key, body, className, ...attributes }, order) => (
+        <RevealBlock key={key} {...attributes} order={order} animate={animated} className={className}>{body}</RevealBlock>
       ))}
       <section className="print-only print-keep print-report-support">
         <h2>Kênh tiếp nhận hỗ trợ &amp; trình báo</h2>

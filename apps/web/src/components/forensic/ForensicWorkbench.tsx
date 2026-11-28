@@ -7,7 +7,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, Bot, ChartNoAxesCombined, Check, FileText, LoaderCircle, Plus, QrCode, RotateCcw, ShieldAlert, ShieldCheck, Wallet, X } from 'lucide-react'
 import Link from 'next/link'
-import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type FormEvent, type ReactNode } from 'react'
 import { useWorkspaceField, useWorkspaceSession, type ForensicReply as Reply } from '@/components/layout/WorkspaceSessionContext'
 import { Alert, Button, Label } from '@/components/ui'
 import { ApiError, apiClient } from '@/lib/api-client'
@@ -183,7 +183,9 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
   const demoRequest = useRef<AbortController>(null)
   const queryClient = useQueryClient()
   const session = useQuery(sessionQuery)
-  const { viewerKey: viewer, clearForensicSession } = useWorkspaceSession()
+  const { viewerKey: viewer, clearForensicSession, update, sessions } = useWorkspaceSession()
+  const savedScrollTop = sessions.forensic.scrollTop
+  const scrollerRestored = useRef<HTMLDivElement | null>(null)
   const [restore, setRestore] = useState<ReturnType<typeof readConversationCache>>()
   const restoreId = restore?.owner === viewer && !conversation ? restore?.activeAuditId : undefined
   const report = useQuery({ ...auditQuery(restoreId ?? ''), enabled: Boolean(restoreId), retry: false })
@@ -227,6 +229,7 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
     setConversationSession({ owner: viewer, id: crypto.randomUUID(), expiresAt: conversationCacheExpiry() })
     setRestore(undefined)
     setConversation(undefined)
+    update('forensic', previous => ({ ...previous, scrollTop: 0 }))
     setPreAuditTurns([])
     setEntity(next.claimedEntity ?? '')
     setSourceAlertId(next.from === 'radar' ? next.alertId : undefined)
@@ -240,13 +243,13 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
       setDraft(`${next.label ? next.label + '\n' : ''}Kiểm tra khoản vay ${formatVnd(next.amount)}, kỳ hạn ${next.term} tháng, APR ${next.annualRatePct}%/năm.`)
     } else setDraft(next.prefillText ?? '')
   }, [viewer, conversationSession, handoffKey, previousHandoff, setConversationSession,
-    setConversation, setDraft, setEntity, setPreAuditTurns, setPreviousHandoff, setSourceAlertId])
+    setConversation, setDraft, setEntity, setPreAuditTurns, setPreviousHandoff, setSourceAlertId, update])
 
   useEffect(() => {
     if (!restoreId || !restore) return
     if (report.isSuccess) {
       setConversation({
-        audit: report.data,
+        audit: report.data, reportRevealed: true,
         submission: { text: report.data.privacyProof.rawTextMasked ?? '', context: '' },
         replies: (restore.followUpTurns ?? []).map(turn => ({ ...turn, streamed: false })),
       })
@@ -268,10 +271,26 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
     })
   }, [conversationSession, conversation, preAuditTurns, viewer, restoreId])
 
+  useLayoutEffect(() => {
+    if (!scrollRoot || scrollerRestored.current === scrollRoot) return
+    scrollerRestored.current = scrollRoot
+    scrollRoot.scrollTop = savedScrollTop ?? 0
+    lastScrollTop.current = scrollRoot.scrollTop
+    followScroll.current = false
+  }, [scrollRoot, savedScrollTop])
+
   useEffect(() => () => {
     activeRequest.current?.abort()
     demoRequest.current?.abort()
-  }, [])
+    update('forensic', previous => {
+      const current = previous.conversation
+      return {
+        ...previous, scrollTop: lastScrollTop.current,
+        conversation: current && { ...current, reportRevealed: true,
+          replies: current.replies.map(reply => reply.meta && reply.streamed ? { ...reply, streamed: false } : reply) },
+      }
+    })
+  }, [update])
 
   useEffect(() => {
     if (!scrollRoot || !transcript.current) return
@@ -357,6 +376,7 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
     submittedFiles.current = null
     followScroll.current = false
     if (scrollRoot) scrollRoot.scrollTop = 0
+    lastScrollTop.current = 0
     setEntity('')
     setSourceAlertId(undefined)
     setDemo(undefined)
@@ -413,16 +433,19 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
         followScroll.current = true
         setPending({ kind: 'chat', question: text })
         const chatPath = '/forensic/audits/' + encodeURIComponent(conversation.audit.auditId) + '/chat'
-        let streamed = true
         const reply = await streamReply(chatPath, followUp.data, controller.signal,
           (answer) => setPending({ kind: 'chat', question: text, text: answer })).catch((cause: unknown) => {
           if (controller.signal.aborted) throw cause
-          streamed = false
           setPending({ kind: 'chat', question: text })
           return apiClient.post(chatPath, followUp.data, { ...options, schema: ForensicFollowUpResponseSchema })
         })
         setConversationSession({ ...conversationSession, expiresAt: conversationCacheExpiry() })
-        setConversation({ ...conversation, replies: [...conversation.replies, { question: text, ...reply, streamed }] })
+        setConversation(current => current?.audit.auditId === conversation.audit.auditId ? {
+          ...current, reportRevealed: true, replies: [
+            ...current.replies.map(turn => turn.meta && turn.streamed ? { ...turn, streamed: false } : turn),
+            { question: text, ...reply, streamed: false },
+          ],
+        } : current)
       } else {
         const sameSession = conversationSession.expiresAt > Date.now()
         const id = sameSession ? conversationSession.id : crypto.randomUUID()
@@ -470,6 +493,8 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
         }
         followScroll.current = false
         if (scrollRoot) scrollRoot.scrollTop = 0
+        lastScrollTop.current = 0
+        update('forensic', previous => ({ ...previous, scrollTop: 0 }))
         setPreAuditTurns([])
         setConversationSession({ owner: conversationSession.owner, id, expiresAt: conversationCacheExpiry() })
         submittedFiles.current = { auditId: audit.auditId, files: attachments }
@@ -529,9 +554,11 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
         onWheel={(event) => { if (event.deltaY < 0) followScroll.current = false }}
         onScroll={(event) => {
           const { scrollHeight, scrollTop, clientHeight } = event.currentTarget
+          if (scrollTop === lastScrollTop.current) return
           const movingUp = scrollTop < lastScrollTop.current - 1
           followScroll.current = !movingUp && scrollHeight - scrollTop - clientHeight < 120
           lastScrollTop.current = scrollTop
+          update('forensic', previous => ({ ...previous, scrollTop }))
         }}>
         <div ref={transcript} className="grid min-w-0 gap-4 py-3 sm:py-4">
       {preAuditTurns.map(({ question, answer, guidance }, index) => <div key={index} className="grid gap-3">
@@ -589,7 +616,9 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
       {conversation && pending?.kind !== 'audit' && (
         <div className="grid min-w-0 gap-4">
           <UserBubble submission={{ ...conversation.submission, files: reportFiles }} />
-          <ForensicReport key={conversation.audit.auditId} audit={conversation.audit} inline animate
+          <ForensicReport key={conversation.audit.auditId} audit={conversation.audit} inline animate={!conversation.reportRevealed}
+            onRevealComplete={() => setConversation(current => current?.audit.auditId === conversation.audit.auditId && !current.reportRevealed
+              ? { ...current, reportRevealed: true } : current)}
             opening={<AgentBubble label="Kết quả từ FinCopilot" answer="Mình đã xem nội dung bạn gửi. Đây là kết quả và những việc bạn có thể làm tiếp." />} />
           {visibleReplies.map((reply, index) => {
             const additions = visibleReplies.slice(0, index + 1)
@@ -598,7 +627,13 @@ export function ForensicWorkbench({ handoff, uploadMaxMb, pdfMaxPages }: {
               <UserBubble submission={{ text: reply.question, files: [], context: '' }} />
               <AgentBubble answer={reply.answer} streamed={reply.streamed} complete={Boolean(reply.meta)} degraded={reply.meta?.degradedMode}
                 status={reply.meta || reply.answer ? undefined : 'FinCopilot đang trả lời…'} busy={Boolean(pending) || loadingDemo}
-                reaudit={reply.meta?.suggestReaudit && additions.length ? () => reaudit([...new Set(additions)].join('\n')) : undefined} />
+                reaudit={reply.meta?.suggestReaudit && additions.length ? () => reaudit([...new Set(additions)].join('\n')) : undefined}>
+                {(reply.richCard || Boolean(reply.toolTrace?.length)) && <CopilotRichCard card={reply.richCard} trace={reply.toolTrace}
+                  surveyActionLabel={reply.richCard && 'openSurveyHref' in reply.richCard && reply.cta?.href === reply.richCard.openSurveyHref
+                    ? reply.cta.label : undefined} />}
+                {reply.cta && !reply.richCard && <Link className="inline-block rounded-lg border px-3 py-2 text-sm font-semibold text-primary"
+                  href={reply.cta.href}>{reply.cta.label}</Link>}
+              </AgentBubble>
             </div>
           })}
         </div>

@@ -4,6 +4,7 @@ import { qrFile } from './test-qr'
 
 const screenshotDir = resolve('test-results/copilot-upgrade-verified')
 const masterScreenshots = resolve('test-results/master-plan-verified')
+const hybridScreenshots = resolve('test-results/hybrid-copilot-verified')
 const surveyTitle = 'Mình cùng tìm phương án phù hợp nhé'
 const loanPrompt = 'Lương 18 triệu, chi 8 triệu, muốn vay 100 triệu trong 36 tháng có ổn không?'
 const safeLoanPrompt = 'Lương 18 triệu, chi 8 triệu, tôi được vay tối đa bao nhiêu trong 36 tháng để an toàn?'
@@ -40,6 +41,8 @@ async function ask(page: Page, question: string) {
 test.beforeEach(async ({ page, baseURL }) => {
   if (!baseURL) throw new Error('The Copilot tests need the Playwright base URL.')
   await page.context().addCookies([{ name: 'fincopilot_e2e_mode', value: 'phase-two', url: baseURL }])
+  // Establish a signed guest per test before audits share the proxy IP.
+  expect((await page.request.post('/api/v1/auth/session/guest')).ok()).toBe(true)
   await page.emulateMedia({ reducedMotion: 'reduce' })
 })
 
@@ -285,6 +288,117 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 320, height: 844 
       await page.reload()
       await page.getByText('Điền thông tin vào mẫu (không bắt buộc)', { exact: true }).click()
       await expect(page.getByLabel('Họ tên người trình báo')).toHaveValue('')
+    })
+
+    test('Giám định lỗi 102 mở toàn màn hình, giữ vị trí và trả thẻ vay ngay trong follow-up', async ({ page }) => {
+      test.setTimeout(70_000)
+      await page.emulateMedia({ reducedMotion: 'no-preference' })
+      await page.goto('/forensic')
+      const shell = page.locator('.desk-shell')
+      const geometry = await shell.evaluate(element => {
+        const rect = element.getBoundingClientRect()
+        return { top: rect.top, left: rect.left, width: rect.width, viewport: window.innerWidth,
+          radius: getComputedStyle(element).borderRadius, shadow: getComputedStyle(element).boxShadow }
+      })
+      expect(geometry).toMatchObject({ top: 0, left: 0, width: geometry.viewport, radius: '0px', shadow: 'none' })
+      await page.screenshot({ path: resolve(hybridScreenshots, 'fullscreen-' + viewport.width + '.png') })
+
+      await ask(page, 'Bên cho vay báo lỗi 102 và yêu cầu chuyển phí giải ngân 2 triệu vào tài khoản cá nhân.')
+      const skip = page.getByRole('button', { name: 'Hiện nhanh' })
+      await expect(skip).toBeVisible({ timeout: 30_000 })
+      const visualBlocks = page.locator('.forensic-report .scr-report-block')
+      // Bottom cards join the same animation wave as the verdict, while the narrative is still revealing.
+      await expect(page.locator('[data-report-section="privacy"].scr-report-block')).toBeAttached()
+      await expect(page.locator('[data-report-narrative] [data-scr-streaming]')).toBeAttached()
+      const timing = await visualBlocks.evaluateAll(blocks => blocks.map(block => [
+        getComputedStyle(block).animationName, getComputedStyle(block).animationDuration, getComputedStyle(block).animationDelay,
+      ]))
+      expect(timing.length).toBeGreaterThanOrEqual(6)
+      expect(timing).toEqual(timing.map((_, i) => ['forensic-report-enter', '0.2s', (i * 45 / 1000).toString() + 's']))
+      await skip.click()
+      await expect(visualBlocks).toHaveCount(0)
+
+      const followUp = page.getByRole('textbox', { name: 'Câu hỏi tiếp theo' })
+      const submit = page.getByRole('button', { name: 'Gửi câu hỏi', exact: true })
+      const verdict = page.locator('[data-verdict-heading]')
+      const originalVerdict = await verdict.textContent()
+      expect(originalVerdict).toMatch(/Dừng giao dịch|Rủi ro cao/i)
+      const transcript = page.getByRole('region', { name: 'Nội dung hội thoại' })
+      const chatResponse = page.waitForResponse(response => response.url().includes('/chat/stream') && response.request().method() === 'POST')
+      await followUp.fill(loanPrompt)
+      await submit.click()
+      const response = await chatResponse
+      expect(response.ok()).toBe(true)
+      expect(response.headers()['content-type']).toContain('text/event-stream')
+      const loan = page.getByRole('article', { name: 'Câu trả lời của FinCopilot' }).last()
+      await expect(loan.getByRole('heading', { name: 'Kế hoạch vay · Vay tín chấp' })).toBeVisible({ timeout: 25_000 })
+      await expect(loan.getByText(/VPBank ·/)).toBeVisible()
+      await expect(loan.locator('summary')).toContainText('Hồ sơ DTI · Kho ngân hàng NHNN')
+      await expect(verdict).toHaveText(originalVerdict ?? '')
+      await loan.evaluate(element => element.scrollIntoView({ block: 'start', behavior: 'instant' }))
+      await checkLayout(page)
+      await page.screenshot({ path: resolve(hybridScreenshots, 'follow-up-loan-' + viewport.width + '.png') })
+
+      const probe = await transcript.evaluate(element => {
+        element.scrollTop = Math.floor((element.scrollHeight - element.clientHeight) * 0.47)
+        return element.scrollTop
+      })
+      expect(probe).toBeGreaterThan(0)
+      await expect.poll(() => transcript.evaluate(element => element.scrollTop)).toBe(probe)
+      await nav(page, 'Khảo sát & Tính toán')
+      await nav(page, 'Bảng tin & Thị trường')
+      await nav(page, 'Giám định lừa đảo & QR')
+      await expect(verdict).toHaveText(originalVerdict ?? '')
+      await expect(page.locator('[data-report-section="privacy"]')).toBeAttached()
+      await expect(loan.getByRole('heading', { name: 'Kế hoạch vay · Vay tín chấp' })).toBeAttached()
+      await expect(skip).toHaveCount(0)
+      await expect(page.locator('.forensic-report .scr-report-block, [data-scr-streaming]')).toHaveCount(0)
+      await expect.poll(() => transcript.evaluate(element => element.scrollTop)).toBe(probe)
+
+      await followUp.fill('Bên kia vừa đòi chuyển thêm 5 triệu phí giải ngân.')
+      await submit.click()
+      const caution = page.getByRole('article', { name: 'Câu trả lời của FinCopilot' }).last()
+      await expect(caution.getByRole('button', { name: 'Giám định lại kèm thông tin vừa bổ sung' })).toBeVisible({ timeout: 25_000 })
+      await expect(caution.getByRole('heading', { name: 'Kế hoạch vay · Vay tín chấp' })).toHaveCount(0)
+      await expect(verdict).toHaveText(originalVerdict ?? '')
+    })
+
+    if (viewport.width === 1280) test('Rời Giám định giữa lúc báo cáo còn chạy thì quay lại thấy đầy đủ nội dung', async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: 'no-preference' })
+      await page.goto('/forensic')
+      await ask(page, 'Bên cho vay báo lỗi 102 và yêu cầu chuyển phí giải ngân 2 triệu vào tài khoản cá nhân.')
+      const streaming = page.locator('[data-report-narrative] [data-scr-streaming]')
+      await expect(streaming).toBeAttached({ timeout: 25_000 })
+      const surveyLink = page.getByRole('navigation', { name: 'Điều hướng chính' }).getByRole('link', { name: 'Khảo sát & Tính toán' })
+      const fullNarrative = await surveyLink.evaluate(link => {
+        const text = document.querySelector('[data-report-narrative] [data-scr-streaming] .sr-only')?.textContent
+        link.click()
+        return text
+      })
+      expect(fullNarrative).toMatch(/\S/u)
+      await expect(page).toHaveURL(url => url.pathname === '/survey')
+      await nav(page, 'Giám định lừa đảo & QR')
+      await expect(page.locator('[data-verdict-heading]')).toBeVisible()
+      await expect(page.locator('[data-report-narrative] p')).toHaveText(fullNarrative ?? '')
+      await expect(page.locator('[data-report-section="privacy"]')).toBeAttached()
+      await expect(page.locator('.forensic-report .scr-report-block, [data-scr-streaming]')).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Hiện nhanh' })).toHaveCount(0)
+    })
+
+    test('Follow-up dùng JSON dự phòng và giữ thẻ mục tiêu tài chính', async ({ page }) => {
+      await page.goto('/forensic')
+      await ask(page, 'Bên cho vay báo lỗi 102 và yêu cầu chuyển phí giải ngân 2 triệu vào tài khoản cá nhân.')
+      await expect(page.locator('[data-verdict-heading]')).toBeVisible({ timeout: 25_000 })
+      await expect(page.getByRole('button', { name: 'Hiện nhanh' })).toHaveCount(0)
+      await page.route('**/forensic/audits/*/chat/stream', route => route.fulfill({ json: { unavailable: true } }))
+      const reply = page.waitForResponse(response => response.url().endsWith('/chat') && response.request().method() === 'POST')
+      await page.getByRole('textbox', { name: 'Câu hỏi tiếp theo' }).fill('Muốn có 300 triệu sau 3 năm cần góp bao nhiêu?')
+      await page.getByRole('button', { name: 'Gửi câu hỏi', exact: true }).click()
+      expect((await reply).ok()).toBe(true)
+      const goal = page.getByRole('article', { name: 'Câu trả lời của FinCopilot' }).last()
+      await expect(goal.getByRole('heading', { name: 'Khoản góp để đạt mục tiêu' })).toBeVisible()
+      await expect(goal.getByRole('link', { name: 'Mở Khảo sát đầu tư và tích lũy' })).toHaveAttribute('href', /^\/survey\?mode=invest.*term=36$/)
+      await expect(page.locator('[data-scr-streaming]')).toHaveCount(0)
     })
 
     test('Copilot đối chiếu hồ sơ, khoản vay và tin Radar', async ({ page }) => {

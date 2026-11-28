@@ -19,7 +19,7 @@ async function persistedStreamedAudit(page: Page, response: Response) {
   expect(response.status()).toBe(200)
   expect(response.headers()['content-type']).toContain('text/event-stream')
   const exportLink = page.getByRole('link', { name: 'Xuất báo cáo JSON' })
-  await expect(exportLink).toHaveAttribute('href', /^\/api\/v1\/forensic\/audits\/[\da-f-]+\/export$/i)
+  await expect(exportLink).toHaveAttribute('href', /^\/api\/v1\/forensic\/audits\/[\da-f-]+\/export$/i, { timeout: 25_000 })
   const path = await exportLink.getAttribute('href')
   if (!path) throw new Error('The rendered audit has no export link')
   const audit = await page.request.get(path.replace(/\/export$/, ''))

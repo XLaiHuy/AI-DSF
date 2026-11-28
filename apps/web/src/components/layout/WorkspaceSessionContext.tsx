@@ -16,9 +16,11 @@ export type ForensicConversation = {
   audit: ForensicAuditResponse
   submission: { text: string; context: string; fields?: ForensicAuditFields }
   replies: ForensicReply[]
+  reportRevealed?: boolean
 }
 type ForensicSession = {
   conversation?: ForensicConversation
+  scrollTop?: number
   preAuditTurns: PreAuditTurnUi[]
   draft: string
   entity: string

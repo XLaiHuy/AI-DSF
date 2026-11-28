@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 const motionQuery = '(prefers-reduced-motion: reduce)'
@@ -94,8 +94,11 @@ export function LiveReplyText({ text, complete }: { text: string; complete: bool
   return <p className="whitespace-pre-wrap [overflow-wrap:anywhere]"><StreamingTextReveal text={text} complete={complete} /></p>
 }
 
-export function RevealBlock({ kind = 'card', section, animate, className, children }: {
-  kind?: 'card' | 'list' | 'table' | 'grid'; section?: string; animate: boolean; className?: string; children: ReactNode
+export function RevealBlock({ kind = 'card', section, order, animate, className, children }: {
+  kind?: 'card' | 'list' | 'table' | 'grid'; section?: string; order?: number; animate: boolean; className?: string; children: ReactNode
 }) {
-  return <div data-report-section={section} className={cn(animate && 'scr-block', animate && 'scr-kind-' + kind, className)}>{children}</div>
+  const reportEntry = animate && order !== undefined
+  return <div data-report-section={section} className={cn(
+    reportEntry ? 'scr-report-block' : animate && 'scr-block', animate && 'scr-kind-' + kind, className,
+  )} style={reportEntry ? { '--report-reveal-order': order } as CSSProperties : undefined}>{children}</div>
 }
